@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "todo-update",
+			"type": "shell",
+			"command": "echo Update todo list manually not via command",
+			"group": "none"
+		}
+	]
+}
