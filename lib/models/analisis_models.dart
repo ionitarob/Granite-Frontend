@@ -45,11 +45,24 @@ class ProjectFund {
     if (value is String) return value;
     return value.toString();
   }
+
+  static bool? _parseBool(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    if (value is String) {
+      final s = value.toLowerCase();
+      return s == 'true' || s == '1';
+    }
+    return null;
+  }
 }
 
 class Transaction {
   final int? id;
   final String? csku;
+  final String? orden;
+  final String? sku;
   final String? previ;
   final String? servicio;
   final String? fabricante;
@@ -67,10 +80,13 @@ class Transaction {
   final String? user;
   final String? numsap;
   final String? palets;
+  final bool? paid;
 
   Transaction({
     this.id,
     this.csku,
+    this.orden,
+    this.sku,
     this.previ,
     this.servicio,
     this.fabricante,
@@ -88,12 +104,19 @@ class Transaction {
     this.user,
     this.numsap,
     this.palets,
+    this.paid,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
     return Transaction(
       id: json['id'] as int?,
       csku: ProjectFund._parseString(json['csku']),
+      orden: ProjectFund._parseString(
+        json['previ'],
+      ), // Backend uses 'previ' for order number
+      sku: ProjectFund._parseString(
+        json['csku'],
+      ), // Map csku to sku as well if needed
       previ: ProjectFund._parseString(json['previ']),
       servicio: ProjectFund._parseString(json['servicio']),
       fabricante: ProjectFund._parseString(json['fabricante']),
@@ -111,6 +134,27 @@ class Transaction {
       user: ProjectFund._parseString(json['user']),
       numsap: ProjectFund._parseString(json['numsap']),
       palets: ProjectFund._parseString(json['palets']),
+      paid:
+          ProjectFund._parseBool(json['paid']) ??
+          ProjectFund._parseBool(json['pagado']) ??
+          ProjectFund._parseBool(json['PAID_STATUS']) ??
+          ProjectFund._parseBool(json['paid_status']),
+    );
+  }
+}
+
+class MasterService {
+  final int id;
+  final String servicio;
+  final double? pvd;
+
+  MasterService({required this.id, required this.servicio, this.pvd});
+
+  factory MasterService.fromJson(Map<String, dynamic> json) {
+    return MasterService(
+      id: json['id'] as int? ?? 0,
+      servicio: ProjectFund._parseString(json['servicio']) ?? '',
+      pvd: ProjectFund._parseDouble(json['pvd']),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../widgets/animated_background.dart';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart'; // For macOS controls
 import '../../themes/amazon_theme.dart';
+import 'amz_find_dsn_screen.dart';
 
 typedef JsonMap = Map<String, dynamic>;
 
@@ -153,36 +154,53 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
     try {
       final api = Provider.of<ApiService>(context, listen: false);
       await api.client.loadCookiesFromStorage();
-      final res = await api.client.get('/amz/grading/options');
+      // Changed from /amz/grading/options to /amz/grading/transfers per user request
+      final res = await api.client.get('/amz/grading/transfers');
 
       if (res.ok && res.body is Map) {
         final data = res.body as JsonMap;
-        final rawOptions = data['fc_options'];
-        List<String> options = [];
+        // The new endpoint returns { "records": [ ... ] }
+        final records = data['records'];
+        List<String> extractedFcs = [];
 
-        if (rawOptions is Map) {
-          // Backend returns a dict {key: value}, we use values for the dropdown
-          options = rawOptions.values.map((e) => e.toString()).toList();
-        } else if (rawOptions is List) {
-          // Fallback if backend changes to return a list
-          options = List<String>.from(rawOptions.map((e) => e.toString()));
+        if (records is List) {
+          final uniqueFcs = <String>{};
+          for (var item in records) {
+            if (item is Map) {
+              final nameFile = item['name_file']?.toString();
+              if (nameFile != null && nameFile.isNotEmpty) {
+                // Use the full filename as requested by the user
+                uniqueFcs.add(nameFile);
+              }
+            }
+          }
+          extractedFcs = uniqueFcs.toList()..sort();
         }
 
-        // Only update state if valid response structure.
-        // If options is empty (DB empty), we respect that and show no options (or empty list),
-        // instead of forcing hardcoded values which confuses the user.
-        setState(() {
-          _fcOptions = options;
-          _loading = false;
-        });
-        return;
+        // Only update state if we found valid FCs
+        if (extractedFcs.isNotEmpty) {
+          setState(() {
+            _fcOptions = extractedFcs;
+            _loading = false;
+          });
+          return;
+        }
       }
 
-      // If response was not OK, or body was not Map
-      debugPrint('Error fetching FC options: ${res.statusCode} ${res.body}');
-      _useFallbackFcOptions();
+      debugPrint('Error or empty transfers fetching FCs: ${res.statusCode}');
+      // Fallback only if strictly necessary (network error), but user prefers endpoint data.
+      // If endpoint returns empty list, we show empty.
+      if (!res.ok) {
+        _useFallbackFcOptions();
+      } else {
+        // Response OK but no data found -> Empty list (correct behavior)
+        setState(() {
+          _fcOptions = [];
+          _loading = false;
+        });
+      }
     } catch (e) {
-      debugPrint('Exception loading FCs: $e');
+      debugPrint('Exception loading FCs from transfers: $e');
       _useFallbackFcOptions();
     }
   }
@@ -196,8 +214,9 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
   }
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false) || _selectedFc == null)
+    if (!(_formKey.currentState?.validate() ?? false) || _selectedFc == null) {
       return;
+    }
     _formKey.currentState?.save();
 
     setState(() {
@@ -241,10 +260,18 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
         );
         _triggerOverlay();
       } else {
-        final msg = (data is Map)
-            ? (data['error_message'] ?? data['error'])
-            : (res.error ?? 'Error servidor');
-        _triggerErrorOverlay(error: msg?.toString());
+        String? msg;
+        if (data is Map) {
+          for (final key in ['error_message', 'error', 'message', 'detail']) {
+            final value = data[key];
+            if (value is String && value.trim().isNotEmpty) {
+              msg = value;
+              break;
+            }
+          }
+        }
+        msg ??= res.error ?? 'Error servidor';
+        _triggerErrorOverlay(error: msg);
       }
     } catch (e) {
       _triggerErrorOverlay(error: 'Error de red');
@@ -457,38 +484,32 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
 
     return Column(
       children: [
-        // Plain Header (Centered)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Align(
-                alignment: Alignment.center,
-                child: Text(
-                  'Grading Amazon',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: colorScheme.onSurface,
-                    letterSpacing: -0.5,
-                  ),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.center,
+              child: Text(
+                'Grading Amazon',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: colorScheme.onSurface,
+                  letterSpacing: -0.5,
                 ),
               ),
-              Positioned(
-                right: 0,
-                child: IconButton(
-                  icon: Icon(Icons.search, color: colorScheme.onSurface),
-                  tooltip: 'Buscar DSN',
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Find DSN not available')),
-                  ),
-                ),
+            ),
+            Positioned(
+              right: 0,
+              child: IconButton(
+                icon: Icon(Icons.search, color: colorScheme.onSurface),
+                tooltip: 'Buscar DSN',
+                onPressed: _openFindDsn,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-
+        const SizedBox(height: 16),
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
@@ -597,12 +618,20 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
                             DropdownButtonFormField<String>(
                               focusNode: _fcFocus,
                               isExpanded: true,
+                              icon: Icon(
+                                Icons.unfold_more_rounded,
+                                color: colorScheme.onSurface.withOpacity(0.5),
+                                size: 20,
+                              ),
                               style: TextStyle(
                                 fontSize: fontIn,
                                 color: colorScheme.onSurface,
+                                fontWeight: FontWeight.w500,
                               ),
+                              borderRadius: BorderRadius.circular(12),
+                              dropdownColor: theme.cardColor,
                               decoration: InputDecoration(
-                                labelText: 'FC Origen',
+                                labelText: 'FC Origen / Transfer File',
                                 labelStyle: TextStyle(
                                   fontSize: fontLbl,
                                   color: colorScheme.onSurface.withOpacity(0.6),
@@ -615,21 +644,66 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
                                 ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: colorScheme.primary.withOpacity(0.5),
+                                    width: 1.5,
+                                  ),
+                                ),
                                 contentPadding: const EdgeInsets.symmetric(
                                   vertical: 16,
                                   horizontal: 16,
                                 ),
                               ),
-                              dropdownColor: theme.cardColor,
-                              items: _fcOptions
-                                  .map(
-                                    (o) => DropdownMenuItem(
-                                      value: o,
-                                      child: Text(o),
+                              selectedItemBuilder: (context) {
+                                return _fcOptions.map((String item) {
+                                  return Text(
+                                    item,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: fontIn,
+                                      color: colorScheme.onSurface,
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                  )
-                                  .toList(),
-                              value: _selectedFc,
+                                  );
+                                }).toList();
+                              },
+                              items: _fcOptions.map((o) {
+                                final isLast = o == _fcOptions.last;
+                                return DropdownMenuItem(
+                                  value: o,
+                                  child: Container(
+                                    width: double.infinity,
+                                    alignment: Alignment.centerLeft,
+                                    decoration: isLast
+                                        ? null
+                                        : BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                color: colorScheme.onSurface
+                                                    .withOpacity(0.1),
+                                                width: 0.5,
+                                              ),
+                                            ),
+                                          ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ), // Slight padding adjustment
+                                    child: Text(
+                                      o,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              initialValue: _selectedFc,
                               onChanged: (v) => setState(() => _selectedFc = v),
                               validator: (v) => v == null ? 'Seleccione' : null,
                             ),
@@ -728,6 +802,12 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
     );
   }
 
+  void _openFindDsn() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AmzFindDsnScreen()));
+  }
+
   Widget _boxedSwitch(String key, double fontSize, double scale) => Container(
     margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -740,7 +820,7 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
             value: key == 'label_out'
                 ? (_labelOutCount > 0)
                 : (_checks[key] ?? false),
-            activeColor: Theme.of(context).colorScheme.primary,
+            activeTrackColor: Theme.of(context).colorScheme.primary,
             onChanged: (v) async {
               if (key == 'label_out') {
                 if (v) {
@@ -791,13 +871,6 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
         ),
       ],
     ),
-  );
-
-  Widget _buildCard({required Widget child}) => Card(
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    elevation: 4,
-    color: Theme.of(context).cardColor,
-    child: Padding(padding: const EdgeInsets.all(16), child: child),
   );
 
   Widget _buildMacInput({

@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import '../../services/api_service.dart';
 
 import '../../config.dart';
 import '../../widgets/animated_background.dart';
@@ -33,16 +32,45 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
   String? _turnoSeleccionado;
 
   bool _isLoading = false;
+  OverlayEntry? _edgeOverlay;
 
   @override
   void initState() {
     super.initState();
     _cargarEmpresas();
     _cargarRoles();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final routeName = ModalRoute.of(context)?.settings.name;
+      final overlay = Overlay.of(context, rootOverlay: true);
+      _edgeOverlay = OverlayEntry(
+        builder: (ctx) {
+          return Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: ApiService.instance?.currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          );
+        },
+      );
+      overlay.insert(_edgeOverlay!);
+    });
   }
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     _nombreController.dispose();
     _apellidoController.dispose();
     _usuarioController.dispose();
@@ -51,31 +79,50 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
   }
 
   Future<void> _cargarEmpresas() async {
-    final data = await _fetchCatalog('$baseUrl/empresas');
+    final data = await _fetchCatalog('/empresas');
     if (!mounted) return;
     setState(() => _empresas = data);
   }
 
   Future<void> _cargarRoles() async {
-    final data = await _fetchCatalog('$baseUrl/roles');
+    final data = await _fetchCatalog('/roles');
     if (!mounted) return;
     setState(() => _roles = data);
   }
 
-  Future<List<Map<String, dynamic>>> _fetchCatalog(String url) async {
+  Future<List<Map<String, dynamic>>> _fetchCatalog(String endpoint) async {
     try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body) as List<dynamic>;
-        return decoded
+      final service = ApiService.instance;
+      if (service == null) return [];
+
+      if (!service.client.hasAccessToken) {
+        debugPrint(
+          '[$runtimeType] Access token missing, attempting refresh...',
+        );
+        await service.refreshAccessToken();
+      }
+
+      final result = await service.client.get(endpoint);
+
+      dynamic data = result.body;
+
+      // Handle paginated responses (Django often returns { "results": [...] })
+      if (result.ok && data is Map && data.containsKey('results')) {
+        data = data['results'];
+      }
+
+      if (result.ok && data is List) {
+        return data
             .map<Map<String, dynamic>>(
               (item) => Map<String, dynamic>.from(item as Map),
             )
             .toList();
       }
-      debugPrint('[$runtimeType] GET $url failed (${response.statusCode})');
+      debugPrint(
+        '[$runtimeType] GET $endpoint failed or invalid format (${result.statusCode})',
+      );
     } catch (e, s) {
-      debugPrint('[$runtimeType] Error fetching $url -> $e');
+      debugPrint('[$runtimeType] Error fetching $endpoint -> $e');
       debugPrint('$s');
     }
     return [];
@@ -97,19 +144,31 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
     };
 
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/empleado'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(payload),
+      final service = ApiService.instance;
+      if (service == null) {
+        _showSnack('Error interno: ApiService no disponible', isError: true);
+        return;
+      }
+
+      if (!service.client.hasAccessToken) {
+        debugPrint(
+          '[$runtimeType] Access token missing, attempting refresh...',
+        );
+        await service.refreshAccessToken();
+      }
+
+      final response = await service.client.post(
+        '/empleados/',
+        jsonBody: payload,
       );
 
       if (!mounted) return;
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.ok) {
         _showSnack('Empleado registrado correctamente');
         _resetForm();
       } else {
         _showSnack(
-          'Error al registrar: ${response.body.isEmpty ? response.statusCode : response.body}',
+          'Error al registrar: ${response.error ?? response.body}',
           isError: true,
         );
       }
@@ -150,21 +209,26 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, color: colorScheme.primary),
+      labelStyle: TextStyle(
+        color: colorScheme.onSurface.withValues(alpha: .7),
+        fontWeight: FontWeight.w500,
+      ),
+      prefixIcon: Icon(icon, color: colorScheme.primary.withValues(alpha: .8)),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: .9),
+      fillColor: colorScheme.surface.withValues(alpha: .4),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: .2)),
+        borderRadius: BorderRadius.circular(24),
+        borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: .25)),
+        borderRadius: BorderRadius.circular(24),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: .15)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+        borderRadius: BorderRadius.circular(24),
+        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
       ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
     );
   }
 
@@ -187,12 +251,7 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
       .toList();
 
   List<DropdownMenuEntry<String>> get _turnoEntries => _turnos
-      .map(
-        (turno) => DropdownMenuEntry<String>(
-          value: turno,
-          label: turno,
-        ),
-      )
+      .map((turno) => DropdownMenuEntry<String>(value: turno, label: turno))
       .toList();
 
   @override
@@ -211,17 +270,7 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
       body: Stack(
         children: [
           const AnimatedBackgroundWidget(intensity: 1.1),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: EdgeNavHandle(width: 28),
-              ),
-            ),
-          ),
+
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -246,13 +295,14 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
         child: Container(
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: .85),
-            border: Border.all(color: Colors.white.withValues(alpha: .2)),
+            color: theme.cardColor.withValues(alpha: .65),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withValues(alpha: .25)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: .12),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
+                color: Colors.black.withValues(alpha: .1),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
               ),
             ],
           ),
@@ -270,14 +320,17 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                     Text(
                       'Registra a un nuevo colaborador',
                       style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       'Completa los datos y asigna empresa, turno y rol antes de guardar.',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: .7),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: .7,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 28),
@@ -289,27 +342,42 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                           width: fieldWidth,
                           child: TextFormField(
                             controller: _nombreController,
-                            decoration: _inputDecoration('Nombre', Icons.badge_outlined),
+                            decoration: _inputDecoration(
+                              'Nombre',
+                              Icons.badge_outlined,
+                            ),
                             validator: (value) =>
-                                value == null || value.trim().isEmpty ? 'Introduce el nombre' : null,
+                                value == null || value.trim().isEmpty
+                                ? 'Introduce el nombre'
+                                : null,
                           ),
                         ),
                         SizedBox(
                           width: fieldWidth,
                           child: TextFormField(
                             controller: _apellidoController,
-                            decoration: _inputDecoration('Apellido', Icons.perm_identity),
+                            decoration: _inputDecoration(
+                              'Apellido',
+                              Icons.perm_identity,
+                            ),
                             validator: (value) =>
-                                value == null || value.trim().isEmpty ? 'Introduce el apellido' : null,
+                                value == null || value.trim().isEmpty
+                                ? 'Introduce el apellido'
+                                : null,
                           ),
                         ),
                         SizedBox(
                           width: fieldWidth,
                           child: TextFormField(
                             controller: _usuarioController,
-                            decoration: _inputDecoration('Usuario', Icons.account_circle_outlined),
+                            decoration: _inputDecoration(
+                              'Usuario',
+                              Icons.account_circle_outlined,
+                            ),
                             validator: (value) =>
-                                value == null || value.trim().isEmpty ? 'Introduce el usuario' : null,
+                                value == null || value.trim().isEmpty
+                                ? 'Introduce el usuario'
+                                : null,
                           ),
                         ),
                         SizedBox(
@@ -317,9 +385,14 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                           child: TextFormField(
                             controller: _contrasenaController,
                             obscureText: true,
-                            decoration: _inputDecoration('Contraseña', Icons.lock_outline),
+                            decoration: _inputDecoration(
+                              'Contraseña',
+                              Icons.lock_outline,
+                            ),
                             validator: (value) =>
-                                value == null || value.trim().isEmpty ? 'Introduce la contraseña' : null,
+                                value == null || value.trim().isEmpty
+                                ? 'Introduce la contraseña'
+                                : null,
                           ),
                         ),
                         SizedBox(
@@ -365,14 +438,28 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2.2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                ),
                               )
                             : const Icon(Icons.save_alt_outlined),
-                        label: Text(_isLoading ? 'Guardando...' : 'Registrar empleado'),
+                        label: Text(
+                          _isLoading ? 'Guardando...' : 'Registrar empleado',
+                        ),
                         onPressed: _isLoading ? null : _registrarEmpleado,
                         style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 20,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          elevation: 0,
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),

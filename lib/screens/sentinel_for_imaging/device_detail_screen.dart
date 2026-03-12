@@ -8,7 +8,7 @@ import '../../services/api_service.dart';
 class DeviceDetailScreen extends StatefulWidget {
   final SentinelDevice device;
 
-  const DeviceDetailScreen({Key? key, required this.device}) : super(key: key);
+  const DeviceDetailScreen({super.key, required this.device});
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();

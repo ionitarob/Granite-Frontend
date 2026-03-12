@@ -13,10 +13,13 @@ class SplashScreen extends StatefulWidget {
 
 enum _Phase { glitch, showConfig, showGranite }
 
-class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with TickerProviderStateMixin {
   late final AnimationController _glitchController; // drives jitter and flashes
-  late final AnimationController _configShowController; // quick pop for ConfigTool
-  late final AnimationController _graniteColorController; // drives granite colors
+  late final AnimationController
+  _configShowController; // quick pop for ConfigTool
+  late final AnimationController
+  _graniteColorController; // drives granite colors
 
   _Phase _phase = _Phase.glitch;
 
@@ -25,13 +28,22 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     super.initState();
 
     // slower glitch ticks for a less frantic feel
-    _glitchController = AnimationController(vsync: this, duration: const Duration(milliseconds: 100))..repeat();
+    _glitchController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    )..repeat();
 
     // ConfigTool pop-in scale (slightly slower)
-    _configShowController = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
+    _configShowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
 
     // Granite color cycling (slower cycle)
-    _graniteColorController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+    _graniteColorController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
 
     // Phase timeline: glitch ~1100ms, then ConfigTool appears, after 420ms Granite appears
     Future.delayed(const Duration(milliseconds: 1100), () {
@@ -47,7 +59,28 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         // navigate to home after a short total delay so user sees the result
         Future.delayed(const Duration(milliseconds: 1800), () {
           if (!mounted) return;
-          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => const LoginScreen(),
+              transitionDuration: const Duration(milliseconds: 1200),
+              transitionsBuilder: (_, animation, __, child) {
+                // Fade in
+                return FadeTransition(
+                  opacity: animation,
+                  // Scale slightly from 1.1 down to 1.0
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 1.1, end: 1.0).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      ),
+                    ),
+                    child: child,
+                  ),
+                );
+              },
+            ),
+          );
         });
       });
     });
@@ -72,7 +105,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     final pos = (t * (shades.length - 1)).clamp(0.0, shades.length - 1.0);
     final i = pos.floor();
     final f = pos - i;
-    return Color.lerp(shades[i], shades[(i + 1).clamp(0, shades.length - 1)], f)!;
+    return Color.lerp(
+      shades[i],
+      shades[(i + 1).clamp(0, shades.length - 1)],
+      f,
+    )!;
   }
 
   @override
@@ -85,12 +122,20 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       body: SafeArea(
         child: Center(
           child: AnimatedBuilder(
-            animation: Listenable.merge([_glitchController, _configShowController, _graniteColorController]),
+            animation: Listenable.merge([
+              _glitchController,
+              _configShowController,
+              _graniteColorController,
+            ]),
             builder: (context, _) {
               // compute glitch offsets and flash intensity
               final g = _glitchController.value; // 0..1 rapidly
-              final jitterX = (_phase == _Phase.glitch) ? (math.sin(g * math.pi * 8) * 10.0) : 0.0;
-              final jitterY = (_phase == _Phase.glitch) ? (math.cos(g * math.pi * 6) * 4.0) : 0.0;
+              final jitterX = (_phase == _Phase.glitch)
+                  ? (math.sin(g * math.pi * 8) * 10.0)
+                  : 0.0;
+              final jitterY = (_phase == _Phase.glitch)
+                  ? (math.cos(g * math.pi * 6) * 4.0)
+                  : 0.0;
 
               // ConfigTool pop scale
               final pop = 0.8 + 0.2 * _configShowController.value;
@@ -105,7 +150,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       GlitchText(
                         text: 'ConfigTool',
                         textStyle: TextStyle(
-                          color: theme.textTheme.headlineLarge?.color ?? colorScheme.onBackground,
+                          color:
+                              theme.textTheme.headlineLarge?.color ??
+                              colorScheme.onSurface,
                           fontSize: 44,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.8,
@@ -122,7 +169,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                           'ConfigTool',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: theme.textTheme.headlineLarge?.color ?? colorScheme.onBackground,
+                            color:
+                                theme.textTheme.headlineLarge?.color ??
+                                colorScheme.onSurface,
                             fontSize: 44,
                             fontWeight: FontWeight.w900,
                           ),
@@ -138,19 +187,32 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: List.generate('Granite'.length, (i) {
-                            final t = (_graniteColorController.value + i * 0.12) % 1.0;
+                            final t =
+                                (_graniteColorController.value + i * 0.12) %
+                                1.0;
                             // Granite letter tint anchored to colorScheme.primary for theme coherence.
                             final base = _graniteShade(t);
-                            final col = Color.lerp(base, colorScheme.primary, 0.25)!;
+                            final col = Color.lerp(
+                              base,
+                              colorScheme.primary,
+                              0.25,
+                            )!;
                             return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2.0,
+                              ),
                               child: Text(
                                 'Granite'[i],
                                 style: TextStyle(
                                   color: col,
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
-                                  shadows: [Shadow(color: col.withOpacity(0.45), blurRadius: 10)],
+                                  shadows: [
+                                    Shadow(
+                                      color: col.withOpacity(0.45),
+                                      blurRadius: 10,
+                                    ),
+                                  ],
                                 ),
                               ),
                             );
@@ -178,13 +240,26 @@ class GlitchText extends StatelessWidget {
   final Color? channelRed;
   final Color? channelBlue;
 
-  const GlitchText({Key? key, required this.text, required this.textStyle, required this.t, this.channelRed, this.channelBlue}) : super(key: key);
+  const GlitchText({
+    super.key,
+    required this.text,
+    required this.textStyle,
+    required this.t,
+    this.channelRed,
+    this.channelBlue,
+  });
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: const Size(360, 80),
-      painter: _GlitchPainter(text: text, textStyle: textStyle, t: t, channelRed: channelRed, channelBlue: channelBlue),
+      painter: _GlitchPainter(
+        text: text,
+        textStyle: textStyle,
+        t: t,
+        channelRed: channelRed,
+        channelBlue: channelBlue,
+      ),
     );
   }
 }
@@ -196,7 +271,13 @@ class _GlitchPainter extends CustomPainter {
   final Color? channelRed;
   final Color? channelBlue;
 
-  _GlitchPainter({required this.text, required this.textStyle, required this.t, this.channelRed, this.channelBlue});
+  _GlitchPainter({
+    required this.text,
+    required this.textStyle,
+    required this.t,
+    this.channelRed,
+    this.channelBlue,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -228,14 +309,24 @@ class _GlitchPainter extends CustomPainter {
 
       // Draw red channel slightly offset
       final redPainter = TextPainter(
-        text: TextSpan(text: text, style: textStyle.copyWith(color: (channelRed ?? Colors.red).withOpacity(0.9))),
+        text: TextSpan(
+          text: text,
+          style: textStyle.copyWith(
+            color: (channelRed ?? Colors.red).withOpacity(0.9),
+          ),
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       redPainter.paint(canvas, Offset(cx + 2.0, cy));
 
       // Draw blue channel slightly opposite offset
       final bluePainter = TextPainter(
-        text: TextSpan(text: text, style: textStyle.copyWith(color: (channelBlue ?? Colors.blue).withOpacity(0.8))),
+        text: TextSpan(
+          text: text,
+          style: textStyle.copyWith(
+            color: (channelBlue ?? Colors.blue).withOpacity(0.8),
+          ),
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       bluePainter.paint(canvas, Offset(cx - 2.0, cy));
@@ -247,5 +338,6 @@ class _GlitchPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GlitchPainter oldDelegate) => oldDelegate.t != t || oldDelegate.text != text;
+  bool shouldRepaint(covariant _GlitchPainter oldDelegate) =>
+      oldDelegate.t != t || oldDelegate.text != text;
 }

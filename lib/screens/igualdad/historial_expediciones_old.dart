@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '/src/api/igualdad_api.dart';
 
 class HistorialExpedicionesOldScreen extends StatefulWidget {
-  const HistorialExpedicionesOldScreen({Key? key}) : super(key: key);
+  const HistorialExpedicionesOldScreen({super.key});
 
   @override
   _HistorialExpedicionesOldScreenState createState() =>

@@ -64,7 +64,7 @@ class _FormularioSmartphoneState extends State<FormularioSmartphone> {
             return Row(
               children: [
                 Radio<String>(
-                  fillColor: MaterialStateProperty.all(Colors.cyanAccent),
+                  fillColor: WidgetStateProperty.all(Colors.cyanAccent),
                   value: val,
                   groupValue: widget.radioValues[field],
                   onChanged: (value) {
@@ -127,7 +127,7 @@ class _FormularioSmartphoneState extends State<FormularioSmartphone> {
               if (widget.opcionesRegistro != null && widget.opcionesRegistro!.isNotEmpty)
                 DropdownButtonFormField<String>(
                   decoration: _glassDecoration('Selecciona IDIM u OYSTA'),
-                  value: widget.tipoRegistroSeleccionado,
+                  initialValue: widget.tipoRegistroSeleccionado,
                   dropdownColor: Colors.white.withOpacity(0.2),
                   style: const TextStyle(color: Colors.white),
                   items: widget.opcionesRegistro!.entries.map((entry) {
@@ -150,7 +150,7 @@ class _FormularioSmartphoneState extends State<FormularioSmartphone> {
               // Tipo Smartphone
               DropdownButtonFormField<String>(
                 decoration: _glassDecoration('Tipo de Smartphone'),
-                value: widget.tipoSmartphone,
+                initialValue: widget.tipoSmartphone,
                 dropdownColor: Colors.white.withOpacity(0.2),
                 style: const TextStyle(color: Colors.white),
                 items: const [

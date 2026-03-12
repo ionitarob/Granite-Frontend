@@ -17,6 +17,8 @@ class SentinelService {
   final StreamController<dynamic> _telemetryController =
       StreamController<dynamic>.broadcast();
   Timer? _pollingTimer;
+  Timer? _pingTimer;
+  DateTime _lastPongAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   final StreamController<SentinelEvent> _eventController =
       StreamController<SentinelEvent>.broadcast();
@@ -36,51 +38,62 @@ class SentinelService {
   void connect() {
     _connectEventSocket();
     _connectChatSocket();
-    _startPolling();
+    // _startPolling(); // Removed as per request
   }
 
-  void _startPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (_channel != null) {
-        _channel!.sink.add(jsonEncode({"action": "get_inventory"}));
-      }
-    });
-  }
-
-  void _connectEventSocket() {
+  Future<void> _connectEventSocket() async {
     try {
       final sanitizedUrl = _wsUrl.trim();
       print('Connecting to Sentinel WS: $sanitizedUrl');
+
+      // Force refresh if token is expired or about to expire
+      final api = ApiService.instance;
+      if (api != null && api.client.isTokenExpired(bufferSeconds: 300)) {
+        print('Event Socket: Token close to expiry. Refreshing...');
+        await api.refreshAccessToken();
+      }
 
       final token = ApiService.instance?.client.accessToken;
       print(
         'SENTINEL_SERVICE: ApiService.instance is available: ${ApiService.instance != null}',
       );
-      print('SENTINEL_SERVICE: Access Token length: ${token?.length ?? 0}');
 
       final Map<String, dynamic> headers = {};
       if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
-        print('SENTINEL_SERVICE: Added Authorization header');
       } else {
         print(
           'SENTINEL_SERVICE: WARNING - No access token available for WebSocket',
         );
       }
 
-      print(
-        'SENTINEL_SERVICE: Handshake headers keys: ${headers.keys.toList()}',
-      );
+      // Cancel any pending reconnect timer if we successfully connected
+      _reconnectTimer?.cancel();
+      _reconnectAttempts = 0;
 
-      _isConnected = true;
-      _connectionStatusController.add(true);
       _channel = IOWebSocketChannel.connect(
         Uri.parse(sanitizedUrl),
         headers: headers,
+        pingInterval: const Duration(seconds: 30), // Keep-alive every 30s
       );
+
+      // Ask for inventory once (compat)
+      try {
+        _channel!.sink.add(jsonEncode({"action": "get_inventory"}));
+      } catch (e) {
+        print('Error sending initial inventory request: $e');
+      }
+
+      bool _hasReceivedFirstMessage = false;
+
       _channel!.stream.listen(
         (message) {
+          if (!_hasReceivedFirstMessage) {
+            _hasReceivedFirstMessage = true;
+            _isConnected = true;
+            _connectionStatusController.add(true);
+          }
+
           try {
             // Handle "UPDATE RECEIVED:" prefix if present
             String rawMessage = message.toString();
@@ -94,12 +107,20 @@ class SentinelService {
               data = jsonDecode(message);
             }
 
+            if (data is Map && data['type'] == 'pong') {
+              _lastPongAt = DateTime.now();
+              return;
+            }
+
+            data = _unwrap(data); // ✅ NEW: Normalize first!
+
             _handleNewEvent(data);
 
             // CHECK FOR ACTIVE RUN (Robust Multi-Support)
             if (data is Map) {
               final Map<String, dynamic> devicesToProcess = {};
 
+              // Safe Map access
               if (data.containsKey('devices')) {
                 devicesToProcess.addAll(
                   Map<String, dynamic>.from(data['devices']),
@@ -112,17 +133,22 @@ class SentinelService {
               } else {
                 // ESSENTIAL: Check if it's a raw MAC map (e.g. the initial snapshot)
                 data.forEach((pk, pv) {
-                  if (pv is Map && pv.containsKey('active_run_id')) {
+                  if (pv is Map &&
+                      (pv.containsKey('active_run_id') ||
+                          pv.containsKey('imaging_progress'))) {
                     devicesToProcess[pk] = pv;
                   }
                 });
               }
+
               devicesToProcess.forEach((key, info) {
-                if (info is Map && info.containsKey('active_run_id')) {
-                  final runId = info['active_run_id']?.toString();
+                if (info is Map) {
+                  final runId =
+                      info['active_run_id']?.toString() ??
+                      info['run_id']?.toString();
                   if (runId != null && runId.isNotEmpty) {
-                    if (!_runSockets.containsKey(runId.toLowerCase())) {
-                      print("Found active run ID: $runId");
+                    final lowRunId = runId.toLowerCase();
+                    if (!_runSockets.containsKey(lowRunId)) {
                       _connectRunSocket(runId);
                     }
                   }
@@ -135,28 +161,92 @@ class SentinelService {
         },
         onError: (error) {
           print('WebSocket Error: $error');
-          _connectionStatusController.add(false);
-        },
-        onDone: () {
-          print('WebSocket Closed');
+          _hasReceivedFirstMessage = false;
           _isConnected = false;
           _connectionStatusController.add(false);
+          _scheduleReconnect();
+        },
+        onDone: () {
+          print('WebSocket Closed (Done)');
+          _hasReceivedFirstMessage = false;
+          _isConnected = false;
+          _connectionStatusController.add(false);
+          _scheduleReconnect();
         },
       );
+
+      _startKeepAlive();
     } catch (e) {
       print('Connection Error: $e');
+      _isConnected = false;
       _connectionStatusController.add(false);
+      _scheduleReconnect();
     }
   }
 
-  void _connectRunSocket(String rawRunId) {
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+
+  void _scheduleReconnect() {
+    if (_reconnectTimer != null && _reconnectTimer!.isActive) return;
+
+    // Exponential backoff: 2s, 4s, 8s, 16s... max 30s
+    int delaySeconds = 2 * (1 << _reconnectAttempts);
+    if (delaySeconds > 30) delaySeconds = 30;
+
+    print(
+      'Scheduling WebSocket reconnect in ${delaySeconds}s (Attempt ${_reconnectAttempts + 1})...',
+    );
+
+    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
+      _reconnectAttempts++;
+      _connectEventSocket();
+    });
+  }
+
+  void _startKeepAlive() {
+    _pingTimer?.cancel();
+    _lastPongAt = DateTime.now();
+
+    _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_channel == null || _channel!.sink == null) return;
+
+      // Check timeout
+      if (DateTime.now().difference(_lastPongAt).inSeconds > 60) {
+        print('WebSocket Keep-Alive Timeout. Reconnecting...');
+        _channel?.sink.close();
+        _isConnected = false;
+        _connectionStatusController.add(false);
+        _scheduleReconnect();
+        _pingTimer?.cancel();
+        return;
+      }
+
+      // Send Ping
+      try {
+        _channel!.sink.add(jsonEncode({"action": "ping"}));
+      } catch (e) {
+        print('Error sending ping: $e');
+      }
+    });
+  }
+
+  Future<void> _connectRunSocket(String rawRunId) async {
     final runId = rawRunId.toLowerCase(); // Enforce lowercase
     if (_runSockets.containsKey(runId)) return;
 
+    // Force refresh if token is expired or about to expire (buffer 5 mins)
+    final api = ApiService.instance;
+    if (api != null && api.client.isTokenExpired(bufferSeconds: 300)) {
+      print('Token close to expiry. Refreshing before WebSocket connection...');
+      await api.refreshAccessToken();
+    }
+
     // Try both header and query param (belt and suspenders)
     final token = ApiService.instance?.client.accessToken ?? '';
+    // Removed token from URL print for security
+    // final url = 'ws://10.20.31.10:7000/ws/runs/$runId/?token=$token';
     final url = 'ws://10.20.31.10:7000/ws/runs/$runId/?token=$token';
-    print('Connecting to Telemetry Run: $url');
 
     try {
       final Map<String, dynamic> headers = {};
@@ -174,6 +264,20 @@ class SentinelService {
             final event = jsonDecode(message);
             if (event is Map) {
               event['run_id'] = runId;
+
+              // AUTO-CLEANUP: If imaging is finished or failed, we can close the socket
+              final payload = event['payload'];
+              if (payload is Map) {
+                final stage = (payload['stage']?.toString() ?? "")
+                    .toUpperCase();
+                if (stage == 'FINISHED' || stage == 'FAILED') {
+                  print(
+                    "WS_CLEANUP: Closing run socket $runId because stage=$stage",
+                  );
+                  _runSockets[runId]?.sink.close();
+                  _runSockets.remove(runId);
+                }
+              }
             }
             _telemetryController.add(event);
           } catch (e) {
@@ -196,6 +300,27 @@ class SentinelService {
     }
   }
 
+  bool _looksLikeMacKey(String k) =>
+      RegExp(r'^[0-9a-fA-F]{12}$').hasMatch(k) ||
+      RegExp(r'^([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}$').hasMatch(k);
+
+  dynamic _unwrap(dynamic data) {
+    if (data is! Map) return data;
+    // Channels group_send wraps payload in {type: "event.message", message: ...}
+    if (data['type'] == 'event.message' && data['message'] != null) {
+      dynamic inner = data['message'];
+      if (inner is String) {
+        try {
+          inner = jsonDecode(inner);
+        } catch (_) {}
+      }
+      // Recursive unwrap? No, usually one level is enough, but safe to call again if needed.
+      // For now, return inner.
+      return inner;
+    }
+    return data;
+  }
+
   void _handleNewEvent(dynamic data) {
     if (data is List) {
       _eventController.add(
@@ -206,54 +331,79 @@ class SentinelService {
           data: {'devices': data},
         ),
       );
-    } else if (data is Map<String, dynamic>) {
-      // Check if this is a Raw Device Update (Map<Mac, DeviceData>)
-      // The backend sometimes sends { "mac_addr": { device_data } } without a "type" wrapper
-      if (!data.containsKey('type')) {
-        bool potentialDeviceMap = false;
-        data.forEach((key, value) {
-          if (value is Map<String, dynamic>) {
-            // Assume this is a device update
-            potentialDeviceMap = true;
-            _eventController.add(
-              SentinelEvent(
-                type: 'device_update',
-                message: 'Update for $key',
-                timestamp: DateTime.now(),
-                data:
-                    value, // The value is the device data containing active_run_id
-                mac: key,
-              ),
-            );
-          }
-        });
+      return;
+    }
 
-        if (potentialDeviceMap) return;
+    if (data is! Map) return;
+    // Safe cast to Map<String, dynamic>
+    final map = Map<String, dynamic>.from(data);
+
+    // ✅ NEW: backend monitor events come as {event_type: "..."} not {type: "..."}
+    if (!map.containsKey('type') && map.containsKey('event_type')) {
+      final t = map['event_type']?.toString() ?? 'event';
+      _eventController.add(
+        SentinelEvent(
+          type: t,
+          message: 'Monitor event: $t',
+          timestamp: DateTime.now(),
+          data: map, // includes mac + port_info
+          mac: map['mac']?.toString(),
+        ),
+      );
+      return;
+    }
+
+    // Existing: raw map of MAC -> device
+    if (!map.containsKey('type')) {
+      final keys = map.keys.toList();
+      final macLike = keys.isNotEmpty && keys.every(_looksLikeMacKey);
+
+      if (macLike) {
+        // ✅ OPTIMIZATION: Emit SINGLE batch event instead of loop
+        _eventController.add(
+          SentinelEvent(
+            type: 'devices_update', // Provider handles this as batch
+            message: 'Bulk device update',
+            timestamp: DateTime.now(),
+            data: {'devices': map},
+          ),
+        );
+        return;
       }
 
-      final event = SentinelEvent.fromJson(data);
-      _eventController.add(event);
+      // ✅ IMPORTANT: don’t silently ignore unknown messages anymore
+      _eventController.add(
+        SentinelEvent(
+          type: 'event',
+          message: 'Unclassified WS message',
+          timestamp: DateTime.now(),
+          data: map,
+        ),
+      );
+      return;
     }
+
+    // Normal typed events
+    final event = SentinelEvent.fromJson(map);
+    _eventController.add(event);
   }
 
-  void _connectChatSocket() {
+  Future<void> _connectChatSocket() async {
     try {
       final sanitizedUrl = _chatWsUrl.trim();
-      print('Connecting to Chat WS: $sanitizedUrl');
+
+      // Force refresh if token is expired or about to expire
+      final api = ApiService.instance;
+      if (api != null && api.client.isTokenExpired(bufferSeconds: 300)) {
+        print('Chat Socket: Token close to expiry. Refreshing...');
+        await api.refreshAccessToken();
+      }
 
       final token = ApiService.instance?.client.accessToken;
-      print(
-        'SENTINEL_CHAT_SERVICE: Access Token length: ${token?.length ?? 0}',
-      );
 
       final Map<String, String> headers = {};
       if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
-        print('SENTINEL_CHAT_SERVICE: Added Authorization header');
-      } else {
-        print(
-          'SENTINEL_CHAT_SERVICE: WARNING - No access token available for WebSocket',
-        );
       }
 
       _chatChannel = IOWebSocketChannel.connect(
@@ -263,7 +413,21 @@ class SentinelService {
 
       _chatChannel!.stream.listen(
         (message) {
-          _chatController.add(message.toString());
+          try {
+            final decoded = jsonDecode(message.toString());
+            if (decoded is Map && decoded.containsKey('message')) {
+              String msg = decoded['message'].toString();
+              if (msg == "Sentinel companion online") {
+                msg = "Bienvenido, Sentinel Listo";
+              }
+              _chatController.add(msg);
+            } else {
+              _chatController.add(message.toString());
+            }
+          } catch (_) {
+            // Not JSON, send as is
+            _chatController.add(message.toString());
+          }
         },
         onError: (error) {
           print('Chat WebSocket Error: $error');
@@ -277,8 +441,15 @@ class SentinelService {
     }
   }
 
+  void disconnectRunSocket(String runId) {
+    final rid = runId.toLowerCase();
+    _runSockets[rid]?.sink.close();
+    _runSockets.remove(rid);
+  }
+
   void disconnect() {
     _pollingTimer?.cancel();
+    _pingTimer?.cancel();
     _channel?.sink.close();
     _chatChannel?.sink.close();
     // Close all run sockets
@@ -298,6 +469,16 @@ class SentinelService {
       _chatChannel!.sink.add(message);
     } else {
       print('Chat socket not connected');
+    }
+  }
+
+  void requestInventory() {
+    try {
+      if (_channel != null) {
+        _channel!.sink.add(jsonEncode({"action": "get_inventory"}));
+      }
+    } catch (e) {
+      print("requestInventory error: $e");
     }
   }
 
@@ -327,6 +508,87 @@ class SentinelService {
     }
 
     return SentinelSwitch.fromJson(res.body);
+  }
+
+  Future<List<String>> fetchAvailableImages() async {
+    final api = ApiService.instance;
+    if (api == null) throw Exception('ApiService not initialized');
+
+    final res = await api.client.get('/sentinel/api/images/available/');
+    if (!res.ok) {
+      throw Exception('Failed to load available images: ${res.error}');
+    }
+
+    // Check if the backend returns a List directly or a Map with an 'images' key
+    List<dynamic> images;
+    if (res.body is List) {
+      images = res.body;
+    } else if (res.body is Map) {
+      images = res.body['images'] is List ? res.body['images'] : [];
+    } else {
+      images = [];
+    }
+
+    return images.map((e) {
+      if (e is Map && e.containsKey('name')) {
+        return e['name'].toString();
+      }
+      return e.toString();
+    }).toList();
+  }
+
+  Future<void> updateImageSelection({
+    required String scope, // 'port' or 'switch'
+    required int scopeId,
+    required String image,
+    required bool enabled,
+  }) async {
+    final api = ApiService.instance;
+    if (api == null) throw Exception('ApiService not initialized');
+
+    final res = await api.client.post(
+      '/sentinel/api/image-selection/',
+      jsonBody: {
+        'scope': scope,
+        'scope_id': scopeId,
+        'image': image,
+        'enabled': enabled,
+      },
+    );
+
+    if (!res.ok) {
+      throw Exception('Failed to update image selection: ${res.error}');
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchImageSelection({
+    required String scope,
+    required int scopeId,
+  }) async {
+    final api = ApiService.instance;
+    if (api == null) throw Exception('ApiService not initialized');
+
+    final res = await api.client.get('/sentinel/api/image-selection/');
+    if (!res.ok) return null;
+
+    final body = res.body;
+
+    // backend returns List by default
+    final List<dynamic> list = body is List
+        ? body
+        : (body is Map && body['selections'] is List ? body['selections'] : []);
+
+    for (final e in list) {
+      if (e is Map) {
+        final s = e['scope']?.toString();
+        final id = e['scope_id'];
+        final parsedId = id is int ? id : int.tryParse('$id');
+        if (s == scope && parsedId == scopeId) {
+          return Map<String, dynamic>.from(e);
+        }
+      }
+    }
+    return null;
   }
 
   // Mock Data Methods (Keeping for backward compatibility or testing)

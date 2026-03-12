@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart' as ms;
 import 'package:open_filex/open_filex.dart';
@@ -973,16 +972,17 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
   }
 
   Widget _listaPiezas(ServerRegistro servidor) {
-    if (servidor.piezas.isEmpty)
+    if (servidor.piezas.isEmpty) {
       return Text(
         'Sin piezas añadidas',
         style: TextStyle(color: Theme.of(context).disabledColor),
       );
+    }
     return DataTable(
-      headingRowColor: MaterialStateProperty.all(
+      headingRowColor: WidgetStateProperty.all(
         Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      dataRowColor: MaterialStateProperty.all(
+      dataRowColor: WidgetStateProperty.all(
         Theme.of(context).colorScheme.surface,
       ),
       columns: const [
@@ -1015,13 +1015,14 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
   }
 
   Widget _previewBarcodes(ServerRegistro servidor) {
-    if (servidor.piezas.isEmpty)
+    if (servidor.piezas.isEmpty) {
       return Center(
         child: Text(
           'Escanee o añada piezas',
           style: TextStyle(color: Theme.of(context).disabledColor),
         ),
       );
+    }
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: servidor.piezas.length,

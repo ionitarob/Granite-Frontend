@@ -153,8 +153,9 @@ class _CreateProjectFundDialogState extends State<CreateProjectFundDialog> {
                 ),
                 validator: (v) {
                   if (v?.trim().isEmpty == true) return 'Requerido';
-                  if (double.tryParse(v!.trim()) == null)
+                  if (double.tryParse(v!.trim()) == null) {
                     return 'Debe ser un número válido';
+                  }
                   return null;
                 },
               ),

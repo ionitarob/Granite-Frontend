@@ -385,7 +385,7 @@ class _ICQAScreenState extends State<ICQAScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _selectedDisposition,
+              initialValue: _selectedDisposition,
               decoration: const InputDecoration(labelText: 'Disposition'),
               items: dispositions
                   .map((d) => DropdownMenuItem(value: d, child: Text(d)))

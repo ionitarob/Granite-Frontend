@@ -18,7 +18,7 @@ import 'package:configtool_granite_frontend/dashboard_screen.dart';
 import 'models/user_model.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -26,7 +26,7 @@ class LoginScreen extends StatefulWidget {
 
 /// Simple animated background: radial gradients that slowly shift and subtle moving highlights.
 class AnimatedBackground extends StatefulWidget {
-  const AnimatedBackground({Key? key}) : super(key: key);
+  const AnimatedBackground({super.key});
 
   @override
   State<AnimatedBackground> createState() => _AnimatedBackgroundState();
@@ -222,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen>
   // Hover / interaction state
   // Keep only the fields currently used by the UI.
 
-  bool _updatesHover = false;
+  final bool _updatesHover = false;
 
   // Update/info state
   bool _updatesLoading = true;
@@ -378,7 +378,7 @@ class _LoginScreenState extends State<LoginScreen>
       }
 
       final file = File(
-        '${chosenDir.path}${Platform.pathSeparator}${_downloadingName}',
+        '${chosenDir.path}${Platform.pathSeparator}$_downloadingName',
       );
       final sink = file.openWrite();
 
@@ -439,12 +439,13 @@ class _LoginScreenState extends State<LoginScreen>
               await OpenFilex.open(file.path);
               launched = true;
             } catch (e3) {
-              if (mounted)
+              if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Error al ejecutar el instalador: $e3'),
                   ),
                 );
+              }
             }
           }
 
@@ -459,27 +460,30 @@ class _LoginScreenState extends State<LoginScreen>
         try {
           await OpenFilex.open(file.path);
         } catch (e) {
-          if (mounted)
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Error al abrir el archivo: $e')),
             );
+          }
         }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error en la descarga: $e')));
+      }
     } finally {
       try {
         _activeDownloadClient?.close();
       } catch (_) {}
       _activeDownloadClient = null;
-      if (mounted)
+      if (mounted) {
         setState(() {
           _downloading = false;
           _downloadingName = null;
         });
+      }
       _downloadingNotifier.value = false;
       _downloadProgressNotifier.value = 0.0;
       _downloadingNameNotifier.value = null;
@@ -491,11 +495,12 @@ class _LoginScreenState extends State<LoginScreen>
       _activeDownloadClient?.close();
     } catch (_) {}
     _activeDownloadClient = null;
-    if (mounted)
+    if (mounted) {
       setState(() {
         _downloading = false;
         _downloadingName = null;
       });
+    }
     _downloadingNotifier.value = false;
     _downloadProgressNotifier.value = 0.0;
     _downloadingNameNotifier.value = null;
@@ -503,8 +508,9 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool get _updateAvailable {
     if (_serverVersion == null) return false;
-    if (_clientVersion == null)
+    if (_clientVersion == null) {
       return true; // unknown client -> consider update available
+    }
     return _serverVersion != _clientVersion;
   }
 
@@ -732,14 +738,17 @@ class _LoginScreenState extends State<LoginScreen>
           res.error ?? 'Error de inicio de sesión (estado ${res.statusCode})';
 
       // If 401/403, show password-level error; otherwise global
-      if (res.statusCode == 401 || res.statusCode == 403) {
+      if (res.statusCode == 401) {
+        setState(() => _passwordError = 'Contraseña o usuario Invalido');
+      } else if (res.statusCode == 403) {
         setState(() => _passwordError = msg);
       } else {
         // Show global errors as a SnackBar for immediate feedback.
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(msg)));
+        }
       }
       return;
     }
@@ -763,9 +772,9 @@ class _LoginScreenState extends State<LoginScreen>
           final Map mb = me.body as Map;
           if (mb['username'] != null) display = mb['username'].toString();
           // Try various common name fields; prefer Spanish 'nombre'
-          if (mb['nombre'] != null)
+          if (mb['nombre'] != null) {
             nombre = mb['nombre'].toString();
-          else if (mb['first_name'] != null)
+          } else if (mb['first_name'] != null)
             nombre = mb['first_name'].toString();
           else if (mb['firstName'] != null)
             nombre = mb['firstName'].toString();
@@ -774,9 +783,9 @@ class _LoginScreenState extends State<LoginScreen>
             nombre = s.split(' ').first;
           }
           // role - try common fields
-          if (mb['role'] != null)
+          if (mb['role'] != null) {
             role = mb['role'].toString();
-          else if (mb['roles'] != null &&
+          } else if (mb['roles'] != null &&
               mb['roles'] is List &&
               (mb['roles'] as List).isNotEmpty)
             role = (mb['roles'] as List).first.toString();
@@ -797,7 +806,21 @@ class _LoginScreenState extends State<LoginScreen>
       apiService.setCurrentUser(user);
     } catch (_) {}
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => DashboardScreen(user: user)),
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => DashboardScreen(user: user),
+        transitionDuration: const Duration(milliseconds: 1200),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 1.1, end: 1.0).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+              child: child,
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -855,55 +878,16 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                       const SizedBox(height: 6),
                       // Title
-                      AnimatedBuilder(
-                        animation: _titleController,
-                        builder: (context, _) {
-                          final t = _titleController.value;
-                          return ShaderMask(
-                            shaderCallback: (rect) => LinearGradient(
-                              colors: [
-                                theme.textTheme.headlineLarge?.color ??
-                                    colorScheme.onBackground,
-                                // Softer, more seamless shimmer (lower opacity, closer color)
-                                theme.textTheme.headlineLarge?.color
-                                        ?.withOpacity(0.5) ??
-                                    colorScheme.onBackground.withOpacity(0.5),
-                                theme.textTheme.headlineLarge?.color ??
-                                    colorScheme.onBackground,
-                              ],
-                              stops: const [
-                                0.3,
-                                0.5,
-                                0.7,
-                              ], // Tighter band for smoother passing
-                              begin: Alignment(
-                                -1.5 + 3.0 * t,
-                                0.0,
-                              ), // Pure horizontal scan
-                              end: Alignment(-0.5 + 3.0 * t, 0.0),
-                              tileMode: TileMode.clamp,
-                            ).createShader(rect),
-                            child: Text(
-                              'ConfigTool',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors
-                                    .white, // Base color for shader mask to act upon
-                                fontSize: 40, // Slightly larger
-                                letterSpacing: -0.5, // Tighter tracking
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 6),
+                      const _GraniteProfessionalTitle(text: 'ConfigTool'),
+                      const SizedBox(height: 8),
+                      // Subtext with wide tracking for premium feel
                       Text(
-                        'Granite',
+                        'GRANITE',
                         style: TextStyle(
-                          color: colorScheme.primary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                          color: colorScheme.primary.withOpacity(0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 8.0, // Wide spacing
                         ),
                       ),
                       const SizedBox(height: 28),
@@ -1279,6 +1263,48 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A professional, clean gradient title with subtle glow.
+class _GraniteProfessionalTitle extends StatelessWidget {
+  final String text;
+
+  const _GraniteProfessionalTitle({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 48,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -1.0, // Tight, modern tracking
+        // Metallic/Silver Gradient
+        foreground: Paint()
+          ..shader = const LinearGradient(
+            colors: [Color(0xFFFFFFFF), Color(0xFFE3E3E3), Color(0xFFF5F5F5)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ).createShader(const Rect.fromLTWH(0, 0, 300, 100)),
+        shadows: [
+          // Soft ambient brand glow (simulated with white/silver here since text is white)
+          // Actually, let's use a subtle drop shadow to lift it off the BG
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          // Slight crisp outline shadow
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 1,
+            offset: const Offset(0, 1),
           ),
         ],
       ),

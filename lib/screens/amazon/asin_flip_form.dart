@@ -455,7 +455,7 @@ class _AsinFlipFormState extends State<AsinFlipForm> {
                                 horizontal: 20,
                               ),
                             ),
-                            value: _wrapPuesto,
+                            initialValue: _wrapPuesto,
                             items: _opcionesWrap
                                 .map(
                                   (e) => DropdownMenuItem(
@@ -488,7 +488,7 @@ class _AsinFlipFormState extends State<AsinFlipForm> {
                                 horizontal: 20,
                               ),
                             ),
-                            value: _incidenciaCorregida,
+                            initialValue: _incidenciaCorregida,
                             items: _opcionesIncidencia
                                 .map(
                                   (e) => DropdownMenuItem(

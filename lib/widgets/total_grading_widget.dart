@@ -14,7 +14,7 @@ class TotalGradingWidget extends StatefulWidget {
   // WS URL is configurable here for easier testing.
   final String wsUrl;
 
-  TotalGradingWidget({Key? key, String? wsUrl}) : wsUrl = wsUrl ?? ('$kBackendWebSocketBase/ws/amz/stats'), super(key: key);
+  TotalGradingWidget({super.key, String? wsUrl}) : wsUrl = wsUrl ?? ('$kBackendWebSocketBase/ws/amz/stats');
 
   @override
   State<TotalGradingWidget> createState() => _TotalGradingWidgetState();

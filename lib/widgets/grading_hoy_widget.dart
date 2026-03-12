@@ -11,7 +11,7 @@ import '../config.dart';
 class GradingHoyWidget extends StatefulWidget {
   final String wsUrl;
 
-  GradingHoyWidget({Key? key, String? wsUrl}) : wsUrl = wsUrl ?? ('$kBackendWebSocketBase/ws/amz/today'), super(key: key);
+  GradingHoyWidget({super.key, String? wsUrl}) : wsUrl = wsUrl ?? ('$kBackendWebSocketBase/ws/amz/today');
 
   @override
   State<GradingHoyWidget> createState() => _GradingHoyWidgetState();
@@ -46,8 +46,9 @@ class _GradingHoyWidgetState extends State<GradingHoyWidget> {
           final data = json.decode(message.toString());
           if (data is Map && data['type'] == 'amz.today') {
             final c = data['count'];
-            if (c is int) setState(() => _count = c);
-            else if (c is String) setState(() => _count = int.tryParse(c));
+            if (c is int) {
+              setState(() => _count = c);
+            } else if (c is String) setState(() => _count = int.tryParse(c));
           }
         } catch (e, st) {
           developer.log('GradingHoyWidget parse error: $e', stackTrace: st);

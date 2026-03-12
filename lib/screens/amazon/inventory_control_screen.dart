@@ -532,7 +532,7 @@ class InventoryLog {
   });
 
   factory InventoryLog.fromJson(Map<String, dynamic> j) {
-    String? _pick(List<String> keys) {
+    String? pick(List<String> keys) {
       for (final k in keys) {
         if (j.containsKey(k) && j[k] != null) return j[k].toString();
       }
@@ -546,9 +546,9 @@ class InventoryLog {
           ? j['quantity_delta'] as int
           : int.tryParse((j['quantity_delta'] ?? '').toString()),
       partNumber: j['part_number']?.toString(),
-      wplId: _pick(['wpl_id', 'pallet_id', 'pallet_unit_id']),
-      fromWplId: _pick(['from_wpl_id', 'from_pallet_id', 'fromWplId']),
-      toWplId: _pick(['to_wpl_id', 'to_pallet_id', 'toWplId']),
+      wplId: pick(['wpl_id', 'pallet_id', 'pallet_unit_id']),
+      fromWplId: pick(['from_wpl_id', 'from_pallet_id', 'fromWplId']),
+      toWplId: pick(['to_wpl_id', 'to_pallet_id', 'toWplId']),
       user: j['user']?.toString(),
     );
   }
@@ -1080,10 +1080,11 @@ class _GlassExpanderState extends State<_GlassExpander>
 
   void _toggle() {
     setState(() => _open = !_open);
-    if (_open)
+    if (_open) {
       _c.forward();
-    else
+    } else {
       _c.reverse();
+    }
   }
 
   @override

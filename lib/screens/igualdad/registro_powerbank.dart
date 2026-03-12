@@ -179,7 +179,7 @@ class _RegistroPowerbankScreenState extends State<RegistroPowerbankScreen> {
                                       ),
                                       const SizedBox(height: 12),
                                       DropdownButtonFormField<String>(
-                                        value: _registroSeleccionado,
+                                        initialValue: _registroSeleccionado,
                                         decoration: InputDecoration(
                                           labelText:
                                               "Seleccionar Registro Activo",

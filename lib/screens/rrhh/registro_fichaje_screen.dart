@@ -55,8 +55,9 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
                 alignment: Alignment.centerLeft,
                 child: EdgeNavHandle(
                   user: ApiService.instance?.currentUser,
-                  width: 28,
+                  width: 32,
                   currentRoute: routeName,
+                  showIndicator: true,
                 ),
               ),
             ),
@@ -208,307 +209,64 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
   }
 
   void _mostrarDetalleDia(Map<String, dynamic> dia, Map<String, dynamic> emp) {
-    _entradaCtrl.text = (dia["planificado"]["hora_entrada"] ?? '') as String;
-    _salidaCtrl.text = (dia["planificado"]["hora_salida"] ?? '') as String;
-    _obsCtrl.text = (dia["planificado"]["observaciones"] ?? '') as String;
-    String tipoDia = (dia["tipo_dia"] ?? 'laboral').toString();
-
-    Future<String?> pick(String initial) async {
-      final now = TimeOfDay.now();
-      TimeOfDay base = now;
-      if (initial.contains(':')) {
-        final p = initial.split(':');
-        final h = int.tryParse(p[0]);
-        final m = int.tryParse(p[1]);
-        if (h != null && m != null) base = TimeOfDay(hour: h, minute: m);
-      }
-      final sel = await showTimePicker(
-        context: context,
-        initialTime: base,
-        helpText: 'Selecciona hora',
-      );
-      if (sel == null) return null;
-      return '${sel.hour.toString().padLeft(2, '0')}:${sel.minute.toString().padLeft(2, '0')}';
-    }
-
     showDialog(
       context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setStateD) {
-            final size = MediaQuery.of(ctx).size;
-            final maxHeight = size.height * 0.75; // limit dialog height
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 24,
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: SizedBox(
-                  height: maxHeight,
-                  child: Scrollbar(
-                    thumbVisibility: true,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '${emp["nombre"]} ${emp["apellido"]}\n${dia["fecha"]}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                    height: 1.2,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Cerrar',
-                                icon: const Icon(Icons.close),
-                                onPressed: () => Navigator.pop(ctx),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _entradaCtrl,
-                                  readOnly: true,
-                                  onTap: () async {
-                                    final t = await pick(_entradaCtrl.text);
-                                    if (t != null) {
-                                      setStateD(() => _entradaCtrl.text = t);
-                                    }
-                                  },
-                                  decoration: InputDecoration(
-                                    labelText: 'Entrada',
-                                    prefixIcon: const Icon(Icons.login),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextField(
-                                  controller: _salidaCtrl,
-                                  readOnly: true,
-                                  onTap: () async {
-                                    final t = await pick(_salidaCtrl.text);
-                                    if (t != null) {
-                                      setStateD(() => _salidaCtrl.text = t);
-                                    }
-                                  },
-                                  decoration: InputDecoration(
-                                    labelText: 'Salida',
-                                    prefixIcon: const Icon(Icons.logout),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _obsCtrl,
-                            minLines: 1,
-                            maxLines: 3,
-                            decoration: InputDecoration(
-                              labelText: 'Observaciones',
-                              prefixIcon: const Icon(Icons.note_alt_outlined),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              for (final opt in [
-                                'laboral',
-                                'festivo',
-                                'vacaciones',
-                                'baja',
-                              ])
-                                ChoiceChip(
-                                  label: Text(
-                                    opt[0].toUpperCase() + opt.substring(1),
-                                  ),
-                                  selected: tipoDia == opt,
-                                  onSelected: (_) =>
-                                      setStateD(() => tipoDia = opt),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.save),
-                                label: const Text('Guardar planificación'),
-                                onPressed: () {
-                                  // TODO: PUT planificación
-                                  Navigator.pop(ctx);
-                                  _cargarFichajes();
-                                },
-                              ),
-                              const SizedBox(width: 12),
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.close),
-                                label: const Text('Cancelar'),
-                                onPressed: () => Navigator.pop(ctx),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          const Divider(height: 1),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Fichajes reales',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 260),
-                            child: SingleChildScrollView(
-                              child: _bloqueFichajesEditable(
-                                dia["fichajes"],
-                                emp["empleado_id"],
-                                dia["fecha"],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      barrierDismissible: true,
+      builder: (_) => _FichajeDiaDialog(
+        emp: emp,
+        dia: dia,
+        onPatchGrid: (payload) {
+          _patchDiaInMemory(
+            empleadoId: payload.empleadoId,
+            fecha: payload.fecha,
+            fichajes: payload.fichajes,
+            primeraEntrada: payload.primeraEntrada,
+            ultimaSalida: payload.ultimaSalida,
+          );
+        },
+      ),
     );
   }
 
-  Widget _bloqueFichajesEditable(List? fichajes, int empleadoId, String fecha) {
-    final horaCtrl = TextEditingController();
-    String tipoNuevo = 'entrada';
-    return StatefulBuilder(
-      builder: (ctx, setStateD) {
-        // aseguramos orden por hora para mostrar y borrar
-        final List<Map<String, dynamic>> ordenados =
-            (fichajes ?? <Map<String, dynamic>>[]).cast<Map<String, dynamic>>()
-              ..sort(
-                (a, b) => _timeToMinutes(
-                  a['hora'],
-                ).compareTo(_timeToMinutes(b['hora'])),
-              );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Fichajes reales:",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            ...ordenados.map<Widget>(
-              (f) => Row(
-                children: [
-                  Text(
-                    "${f["hora"]} • ${f["tipo"]}${f["auto_generado"] == 1 ? " (auto)" : ""}",
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red, size: 18),
-                    onPressed: () async {
-                      final navigator = Navigator.of(context);
-                      final api = ApiService.instance?.client;
-                      if (api != null) {
-                        await api.delete('/fichajes/${f["id"]}');
-                      }
-                      if (!mounted) return;
-                      navigator.pop();
-                      _cargarFichajes();
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: horaCtrl,
-                    decoration: const InputDecoration(labelText: "HH:MM"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                DropdownButton<String>(
-                  value: tipoNuevo,
-                  items: ['entrada', 'salida']
-                      .map(
-                        (t) => DropdownMenuItem(
-                          value: t,
-                          child: Text(t[0].toUpperCase() + t.substring(1)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setStateD(() => tipoNuevo = v!),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle, color: Colors.blue),
-                  onPressed: () async {
-                    final navigator = Navigator.of(context);
-                    final parts = fecha.split('-');
-                    final y = parts[0].padLeft(4, '0');
-                    final m = parts[1].padLeft(2, '0');
-                    final d = parts[2].padLeft(2, '0');
-                    final fIso = '$y-$m-$d';
-                    final hParts = horaCtrl.text.split(':');
-                    final hh = hParts[0].padLeft(2, '0');
-                    final mm = (hParts.length > 1 ? hParts[1] : '').padLeft(
-                      2,
-                      '0',
-                    );
-                    final hIso = '$hh:$mm';
-                    final api = ApiService.instance?.client;
-                    if (api != null) {
-                      await api.post(
-                        '/fichajes/manual',
-                        jsonBody: {
-                          'empleado_id': empleadoId,
-                          'fecha_hora': '$fIso $hIso',
-                          'tipo': tipoNuevo,
-                          'auto_generado': 0,
-                        },
-                      );
-                    }
-                    if (!mounted) return;
-                    navigator.pop();
-                    _cargarFichajes();
-                  },
-                ),
-              ],
-            ),
-          ],
-        );
-      },
+  void _patchDiaInMemory({
+    required int empleadoId,
+    required String fecha, // YYYY-MM-DD
+    List<Map<String, dynamic>>? fichajes,
+    String? primeraEntrada,
+    String? ultimaSalida,
+  }) {
+    // Find employee
+    final empIndex = _empleados.indexWhere(
+      (e) => e["empleado_id"] == empleadoId,
     );
+    if (empIndex == -1) return;
+
+    final emp = _empleados[empIndex];
+    final dias = ((emp["dias"] as List?) ?? []).cast<Map<String, dynamic>>();
+
+    final diaIndex = dias.indexWhere(
+      (d) => (d["fecha"] ?? '').toString() == fecha,
+    );
+    if (diaIndex == -1) return;
+
+    final dia = dias[diaIndex];
+
+    if (fichajes != null) {
+      dia["fichajes"] = fichajes;
+    }
+    if (primeraEntrada != null) {
+      dia["primera_entrada"] = primeraEntrada;
+    }
+    if (ultimaSalida != null) {
+      dia["ultima_salida"] = ultimaSalida;
+    }
+
+    // Write back (defensive)
+    dias[diaIndex] = dia;
+    emp["dias"] = dias;
+    _empleados[empIndex] = emp;
+
+    setState(() {});
   }
 
   void _mostrarError(String msg) {
@@ -686,20 +444,7 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
       body: Stack(
         children: [
           const AnimatedBackgroundWidget(intensity: 0.9),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: EdgeNavHandle(
-                  user: ApiService.instance?.currentUser,
-                  width: 28,
-                ),
-              ),
-            ),
-          ),
+
           SafeArea(
             child: _cargando
                 ? _buildLoading()
@@ -740,6 +485,81 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.fromLTRB(
+                                                        14,
+                                                        12,
+                                                        14,
+                                                        10,
+                                                      ),
+                                                  child: Row(
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.grid_view_rounded,
+                                                        size: 18,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      const Text(
+                                                        'Planificación vs Real',
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          fontSize: 15,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 10,
+                                                              vertical: 6,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              Theme.of(
+                                                                    context,
+                                                                  ).brightness ==
+                                                                  Brightness
+                                                                      .dark
+                                                              ? Colors.white
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.06,
+                                                                    )
+                                                              : Colors.black
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.04,
+                                                                    ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                999,
+                                                              ),
+                                                          border: Border.all(
+                                                            color: Colors.black
+                                                                .withValues(
+                                                                  alpha: 0.06,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          '${_empleados.length} empleados',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                                fontSize: 12,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const Divider(height: 1),
+                                                const SizedBox(height: 8),
+
                                                 // cabecera
                                                 Row(
                                                   crossAxisAlignment:
@@ -983,21 +803,11 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
               },
             ),
           ),
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              backgroundColor: Colors.white.withValues(alpha: .7),
-              shape: RoundedRectangleBorder(
-                side: BorderSide(color: Colors.black.withValues(alpha: .06)),
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.calendar_today, size: 17),
-            label: Text(
-              "${_fechaIni.toIso8601String().substring(0, 10)} → ${_fechaFin.toIso8601String().substring(0, 10)}",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            onPressed: () async {
+          LiquidGlassCard(
+            radius: 14,
+            elevated: false,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            onTap: () async {
               final picked = await showDateRangePicker(
                 context: context,
                 firstDate: DateTime(2023, 1, 1),
@@ -1015,6 +825,23 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
                 _cargarFichajes();
               }
             },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.date_range_rounded, size: 18),
+                const SizedBox(width: 10),
+                Text(
+                  "${_fechaIni.toIso8601String().substring(0, 10)} → ${_fechaFin.toIso8601String().substring(0, 10)}",
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(width: 10),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: Colors.black.withValues(alpha: .5),
+                ),
+              ],
+            ),
           ),
           Tooltip(
             message: 'Semana siguiente',
@@ -1124,23 +951,49 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
     dynamic dia, {
     bool esHoy = false,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     if (dia == null) {
-      return Container(
+      return _HoverCell(
         width: 96,
-        height: 88,
-        alignment: Alignment.center,
-        decoration: _baseCellDecoration(esHoy: esHoy, muted: true),
-        child: const Text(
-          "Sin fichaje",
-          style: TextStyle(color: Colors.grey, fontSize: 11),
+        height: 86,
+        tooltip: 'Sin fichajes ni planificación',
+        child: Container(
+          width: 96,
+          height: 86,
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          alignment: Alignment.center,
+          decoration: _baseCellDecoration(
+            context: context,
+            esHoy: esHoy,
+            muted: true,
+          ),
+          child: Text(
+            "—",
+            style: TextStyle(
+              color: isDark ? Colors.white54 : Colors.black38,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
       );
     }
-    final esFestivo = (dia["tipo_dia"] ?? '').toString().toLowerCase().contains(
-      'festivo',
-    );
+
     final tipoDia = (dia["tipo_dia"] ?? 'laboral').toString().toLowerCase();
-    final plan = dia["planificado"] ?? {};
+    final esFestivo = tipoDia.contains('festivo');
+    final plan = (dia["planificado"] ?? {}) as Map;
+
+    final primera = dia["primera_entrada"] as String?;
+    final ultima = dia["ultima_salida"] as String?;
+
+    final tooltip = StringBuffer()
+      ..writeln('Empleado: ${emp["nombre"]} ${emp["apellido"]}')
+      ..writeln('Fecha: ${dia["fecha"]}')
+      ..writeln('Tipo: ${tipoDia.toUpperCase()}')
+      ..writeln('Plan: ${_lineaPlan(plan)}')
+      ..writeln('Real: ${primera ?? "—"} / ${ultima ?? "—"}');
 
     Color horaPlanColor;
     if (esFestivo) {
@@ -1153,72 +1006,67 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
       horaPlanColor = const Color(0xFF1565C0);
     }
 
-    final primera = dia["primera_entrada"] as String?;
-    final ultima = dia["ultima_salida"] as String?;
+    final baseDecor = _baseCellDecoration(
+      context: context,
+      esHoy: esHoy,
+      tipoDia: tipoDia,
+      festivo: esFestivo,
+    );
 
-    return AnimatedScale(
-      scale: esHoy ? 1.02 : 1.0,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutBack,
-      child: GestureDetector(
-        onTap: () => _mostrarDetalleDia(dia, emp),
-        child: Container(
-          width: 96,
-          height: 86,
-          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-          decoration: _baseCellDecoration(
-            esHoy: esHoy,
-            tipoDia: tipoDia,
-            festivo: esFestivo,
-          ),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    FittedBox(
-                      child: Text(
-                        _lineaPlan(plan),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: .2,
-                          color: horaPlanColor,
-                        ),
-                        textAlign: TextAlign.center,
+    return _HoverCell(
+      width: 96,
+      height: 86,
+      tooltip: tooltip.toString(),
+      onTap: () => _mostrarDetalleDia(dia, emp),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+        width: 96,
+        height: 86,
+        decoration: baseDecor,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FittedBox(
+                    child: Text(
+                      _lineaPlan(plan),
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: .2,
+                        color: horaPlanColor,
                       ),
+                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 6),
-                    _contenidoReal(
-                      primera: primera,
-                      ultima: ultima,
-                      esFestivo: esFestivo,
-                      tipoDia: tipoDia,
-                    ),
-                  ],
+                  ),
+                  const SizedBox(height: 3),
+                  _contenidoReal(
+                    context: context,
+                    primera: primera,
+                    ultima: ultima,
+                    esFestivo: esFestivo,
+                    tipoDia: tipoDia,
+                  ),
+                ],
+              ),
+            ),
+            if (tipoDia != 'laboral' && !esFestivo)
+              Positioned(top: 4, right: 4, child: _ChipTipoDia(tipo: tipoDia)),
+            if (esHoy)
+              const Positioned(
+                top: 4,
+                left: 4,
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 16,
+                  color: Color(0xFF64B5F6),
                 ),
               ),
-              if (tipoDia != 'laboral' && !esFestivo)
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: _ChipTipoDia(tipo: tipoDia),
-                ),
-              if (esHoy)
-                Positioned(
-                  top: 4,
-                  left: 4,
-                  child: Icon(
-                    Icons.star_rounded,
-                    size: 16,
-                    color: const Color(0xFF64B5F6),
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -1273,67 +1121,90 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
   // ───── Helpers UI ─────
 
   BoxDecoration _baseCellDecoration({
+    required BuildContext context,
     bool esHoy = false,
     String? tipoDia,
     bool festivo = false,
     bool muted = false,
+    bool hovered = false,
   }) {
-    Color base = Colors.white.withValues(alpha: 0.9);
-    if (festivo) {
-      base = const Color(0xFFE53935).withValues(alpha: .06);
-    }
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cs = theme.colorScheme;
+
+    Color surface = isDark
+        ? Colors.white.withValues(alpha: muted ? 0.04 : 0.07)
+        : Colors.white.withValues(alpha: muted ? 0.65 : 0.85);
+
+    // tintes suaves por tipo
+    Color tint = Colors.transparent;
+    if (festivo) tint = const Color(0xFFE53935).withValues(alpha: .10);
     if (tipoDia == 'vacaciones') {
-      base = const Color(0xFF3949AB).withValues(alpha: .06);
+      tint = const Color(0xFF3949AB).withValues(alpha: .10);
     }
     if (tipoDia == 'baja') {
-      base = const Color(0xFF6A1B9A).withValues(alpha: .06);
+      tint = const Color(0xFF6A1B9A).withValues(alpha: .10);
     }
-    if (muted) {
-      base = Colors.white.withValues(alpha: 0.75);
-    }
+
+    // hover: sube un pelín el “cristal”
+    final hoverBoost = hovered ? (isDark ? 0.04 : 0.06) : 0.0;
+
+    final borderColor = esHoy
+        ? cs.primary.withValues(alpha: isDark ? 0.70 : 0.60)
+        : (isDark
+              ? Colors.white.withValues(alpha: 0.10)
+              : Colors.black.withValues(alpha: 0.06));
+
     return BoxDecoration(
-      color: base,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(
-        color: esHoy
-            ? const Color(0xFF64B5F6)
-            : Colors.black.withValues(alpha: .05),
-        width: esHoy ? 1.2 : 1.0,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: borderColor, width: esHoy ? 1.4 : 1),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          surface.withValues(alpha: (surface.a + hoverBoost).clamp(0, 1)),
+          surface.withValues(
+            alpha: (surface.a + hoverBoost - 0.02).clamp(0, 1),
+          ),
+        ],
       ),
       boxShadow: [
         if (!muted)
           BoxShadow(
-            color: Colors.black.withValues(alpha: .06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: (isDark ? Colors.black : Colors.black).withValues(
+              alpha: isDark ? 0.40 : 0.12,
+            ),
+            blurRadius: hovered ? 18 : 12,
+            offset: const Offset(0, 8),
           ),
       ],
-      gradient: esHoy
-          ? LinearGradient(
-              colors: [const Color(0xFFBBDEFB).withValues(alpha: .4), base],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            )
-          : null,
+      // overlay de tint
+      backgroundBlendMode: BlendMode.srcOver,
+      color: tint == Colors.transparent ? null : tint,
     );
   }
 
   Widget _buildLoading() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const SizedBox(height: 8),
-        const CircularProgressIndicator(strokeWidth: 5),
-        const SizedBox(height: 18),
-        Text(
-          'Cargando fichajes...',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: .9),
-            fontWeight: FontWeight.w600,
-            letterSpacing: .5,
-          ),
+    return Center(
+      child: LiquidGlassCard(
+        radius: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(strokeWidth: 5),
+            const SizedBox(height: 14),
+            Text(
+              'Cargando fichajes...',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                letterSpacing: .3,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -1412,43 +1283,87 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
   }
 
   Widget _contenidoReal({
+    required BuildContext context,
     String? primera,
     String? ultima,
     required bool esFestivo,
     required String tipoDia,
   }) {
-    Text styled(String txt, Color c) => Text(
-      txt,
-      style: TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w700,
-        color: c,
-        height: 1.05,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.clip,
-    );
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    Widget pill(String text, IconData icon, Color c) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: isDark ? 0.18 : 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: c.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: c),
+            const SizedBox(width: 4),
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: c,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (esFestivo) {
-      return styled('FESTIVO', Colors.red).center();
-    }
-    if (tipoDia == 'vacaciones') {
-      return styled('VACACIONES', Colors.indigo).center();
-    }
-    if (tipoDia == 'baja') {
-      return styled('BAJA', Colors.deepPurple).center();
-    }
-    if (primera == null && ultima == null) {
-      return const Text(
-        '—',
-        style: TextStyle(fontSize: 11, color: Colors.grey),
+      return pill(
+        'Festivo',
+        Icons.event_busy_rounded,
+        const Color(0xFFE53935),
       ).center();
     }
+    if (tipoDia == 'vacaciones') {
+      return pill(
+        'Vacaciones',
+        Icons.beach_access_rounded,
+        const Color(0xFF3949AB),
+      ).center();
+    }
+    if (tipoDia == 'baja') {
+      return pill(
+        'Baja',
+        Icons.healing_rounded,
+        const Color(0xFF6A1B9A),
+      ).center();
+    }
+
+    final hasAny =
+        (primera != null && primera.trim().isNotEmpty) ||
+        (ultima != null && ultima.trim().isNotEmpty);
+    if (!hasAny) {
+      return Text(
+        '—',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          color: isDark ? Colors.white54 : Colors.black38,
+        ),
+      ).center();
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        if (primera != null) styled(primera, Colors.green[700]!),
-        if (ultima != null) styled(ultima, Colors.orange[700]!),
+        if (primera != null && primera.trim().isNotEmpty)
+          pill(primera, Icons.login_rounded, const Color(0xFF2E7D32)),
+        if (ultima != null && ultima.trim().isNotEmpty) ...[
+          const SizedBox(height: 3),
+          pill(ultima, Icons.logout_rounded, const Color(0xFFEF6C00)),
+        ],
       ],
     ).center();
   }
@@ -1460,41 +1375,82 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
   }
 
   Widget _empleadoBubble(Map<String, dynamic> emp) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .08),
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: Colors.white.withValues(alpha: .20)),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final nombre = '${emp["nombre"] ?? ""} ${emp["apellido"] ?? ""}'.trim();
+    final empresa =
+        _normalizarEmpresaNombre(_empresaDeEmp(emp)) ??
+        (emp["empresa"]?.toString() ?? '');
+    final turno = (emp["turno"] ?? '').toString();
+
+    Widget tag(String t) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
         ),
+      ),
+      child: Text(
+        t,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: isDark ? Colors.white70 : Colors.black54,
+        ),
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: LiquidGlassCard(
+        radius: 18,
+        blur: 18,
+        elevated: false,
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
-              radius: 14,
+              radius: 16,
               backgroundColor: const Color(0xFF1565C0),
               child: Text(
                 _iniciales(emp["nombre"], emp["apellido"]).toUpperCase(),
                 style: const TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
-              child: Text(
-                '${emp["nombre"]} ${emp["apellido"]}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  height: 1.1,
-                ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    nombre.isEmpty ? '—' : nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13.5,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.92)
+                          : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (empresa.trim().isNotEmpty) tag(empresa),
+                      if (turno.trim().isNotEmpty) tag(turno),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -1513,22 +1469,146 @@ extension _CenterExt on Widget {
 
 class LiquidGlassCard extends StatelessWidget {
   final Widget child;
-  const LiquidGlassCard({required this.child, super.key});
+  final EdgeInsets padding;
+  final double radius;
+  final double blur;
+  final bool elevated;
+  final VoidCallback? onTap;
+  final Color? tint; // opcional: forzar tinte
+
+  const LiquidGlassCard({
+    required this.child,
+    this.padding = EdgeInsets.zero,
+    this.radius = 18,
+    this.blur = 18,
+    this.elevated = true,
+    this.onTap,
+    this.tint,
+    super.key,
+  });
+
   @override
   Widget build(BuildContext ctx) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+    final theme = Theme.of(ctx);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final base =
+        tint ??
+        (isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.white.withValues(alpha: 0.72));
+
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.black.withValues(alpha: 0.06);
+
+    final shadow = isDark
+        ? Colors.black.withValues(alpha: 0.45)
+        : Colors.black.withValues(alpha: 0.12);
+
+    final content = ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: Container(
+          padding: padding,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: border, width: 1),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                base,
+                base.withValues(alpha: isDark ? 0.03 : 0.52),
+              ],
+            ),
+            boxShadow: elevated
+                ? [
+                    BoxShadow(
+                      color: shadow,
+                      blurRadius: 22,
+                      offset: const Offset(0, 14),
+                    ),
+                  ]
+                : null,
           ),
           child: child,
         ),
       ),
+    );
+
+    if (onTap == null) return content;
+
+    // Material para que el InkWell se vea bien encima del glass
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(radius),
+        child: content,
+      ),
+    );
+  }
+}
+
+class _HoverCell extends StatefulWidget {
+  final double width;
+  final double height;
+  final Widget child;
+  final String? tooltip;
+  final VoidCallback? onTap;
+
+  const _HoverCell({
+    required this.width,
+    required this.height,
+    required this.child,
+    this.tooltip,
+    this.onTap,
+  });
+
+  @override
+  State<_HoverCell> createState() => _HoverCellState();
+}
+
+class _HoverCellState extends State<_HoverCell> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final themedChild = AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      transform: Matrix4.identity()..scale(_hover ? 1.02 : 1.0),
+      child: widget.child,
+    );
+
+    final clickable = MouseRegion(
+      cursor: widget.onTap != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: widget.onTap == null
+          ? themedChild
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(14),
+                child: themedChild,
+              ),
+            ),
+    );
+
+    if (widget.tooltip == null || widget.tooltip!.trim().isEmpty) {
+      return clickable;
+    }
+
+    return Tooltip(
+      message: widget.tooltip!,
+      waitDuration: const Duration(milliseconds: 220),
+      child: clickable,
     );
   }
 }
@@ -1541,40 +1621,65 @@ class _HeaderDia extends StatelessWidget {
   final String fecha; // YYYY-MM-DD
   final bool esHoy;
   const _HeaderDia({required this.fecha, required this.esHoy});
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final dt = DateTime.tryParse(fecha);
+
     final letra = dt != null
         ? ['L', 'M', 'X', 'J', 'V', 'S', 'D'][dt.weekday - 1]
         : '';
+    final isWeekend =
+        dt != null &&
+        (dt.weekday == DateTime.saturday || dt.weekday == DateTime.sunday);
+
+    final bg = esHoy
+        ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.16)
+        : isWeekend
+        ? (isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.04))
+        : Colors.transparent;
+
+    final fg = esHoy
+        ? theme.colorScheme.primary
+        : isWeekend
+        ? (isDark ? Colors.white70 : Colors.black54)
+        : (isDark ? Colors.white60 : Colors.blueGrey[700]!);
+
     return Container(
       width: 96,
       margin: const EdgeInsets.symmetric(horizontal: 3),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
       decoration: BoxDecoration(
-        color: esHoy
-            ? const Color(0xFFBBDEFB).withValues(alpha: .6)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: esHoy
+              ? theme.colorScheme.primary.withValues(alpha: 0.55)
+              : Colors.transparent,
+        ),
       ),
       child: Column(
         children: [
           Text(
             letra,
             style: TextStyle(
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w900,
               fontSize: 12,
-              color: esHoy ? const Color(0xFF1976D2) : Colors.blueGrey[600],
+              color: fg,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             fecha.substring(5),
             style: TextStyle(
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w900,
               fontSize: 13,
               letterSpacing: .3,
-              color: esHoy ? const Color(0xFF1976D2) : Colors.blueGrey[800],
+              color: fg,
             ),
           ),
         ],
@@ -1647,12 +1752,18 @@ class _EmpresaActivosCard extends StatelessWidget {
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            Text(
-              activos.toString(),
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF1565C0),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: Text(
+                activos.toString(),
+                key: ValueKey(activos),
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1565C0),
+                ),
               ),
             ),
             const SizedBox(height: 4),
@@ -1677,5 +1788,704 @@ extension _ColorShade on Color {
     final hsl = HSLColor.fromColor(this);
     final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
     return hslDark.toColor();
+  }
+}
+
+class _DiaPatchPayload {
+  final int empleadoId;
+  final String fecha;
+  final List<Map<String, dynamic>> fichajes;
+  final String? primeraEntrada;
+  final String? ultimaSalida;
+
+  _DiaPatchPayload({
+    required this.empleadoId,
+    required this.fecha,
+    required this.fichajes,
+    required this.primeraEntrada,
+    required this.ultimaSalida,
+  });
+}
+
+class _FichajeDiaDialog extends StatefulWidget {
+  final Map<String, dynamic> emp;
+  final Map<String, dynamic> dia;
+  final void Function(_DiaPatchPayload payload) onPatchGrid;
+
+  const _FichajeDiaDialog({
+    required this.emp,
+    required this.dia,
+    required this.onPatchGrid,
+  });
+
+  @override
+  State<_FichajeDiaDialog> createState() => _FichajeDiaDialogState();
+}
+
+class _FichajeDiaDialogState extends State<_FichajeDiaDialog> {
+  late final TextEditingController _entradaCtrl;
+  late final TextEditingController _salidaCtrl;
+  late final TextEditingController _obsCtrl;
+
+  // Add real punch
+  late final TextEditingController _horaNuevaCtrl;
+  String _tipoNuevo = 'entrada';
+  late String _tipoDia; // laboral/festivo/vacaciones/baja
+
+  late List<Map<String, dynamic>> _fichajes;
+  bool _busyFichajes = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final plan = (widget.dia["planificado"] ?? {}) as Map;
+    _entradaCtrl = TextEditingController(
+      text: (plan["hora_entrada"] ?? '').toString(),
+    );
+    _salidaCtrl = TextEditingController(
+      text: (plan["hora_salida"] ?? '').toString(),
+    );
+    _obsCtrl = TextEditingController(
+      text: (plan["observaciones"] ?? '').toString(),
+    );
+
+    _horaNuevaCtrl = TextEditingController();
+    _tipoDia = (widget.dia["tipo_dia"] ?? 'laboral').toString().toLowerCase();
+
+    // Local copy of real punches
+    final raw = ((widget.dia["fichajes"] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
+    _fichajes = List<Map<String, dynamic>>.from(raw);
+    // Don't auto-patch on init, just sort
+    _fichajes.sort(
+      (a, b) => _timeToMinutes(a['hora']).compareTo(_timeToMinutes(b['hora'])),
+    );
+  }
+
+  @override
+  void dispose() {
+    _entradaCtrl.dispose();
+    _salidaCtrl.dispose();
+    _obsCtrl.dispose();
+    _horaNuevaCtrl.dispose();
+    super.dispose();
+  }
+
+  int _timeToMinutes(dynamic value) {
+    if (value == null) return -1;
+    final s = value.toString().trim();
+    if (s.isEmpty) return -1;
+    final parts = s.split(':');
+    final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
+    final m = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    return h * 60 + m;
+  }
+
+  void _sortAndCompute() {
+    _fichajes.sort(
+      (a, b) => _timeToMinutes(a['hora']).compareTo(_timeToMinutes(b['hora'])),
+    );
+
+    final primera = _fichajes.firstWhere(
+      (f) => (f['tipo']?.toString().toLowerCase() ?? '') == 'entrada',
+      orElse: () => <String, dynamic>{},
+    );
+
+    final ultima = _fichajes.lastWhere(
+      (f) => (f['tipo']?.toString().toLowerCase() ?? '') == 'salida',
+      orElse: () => <String, dynamic>{},
+    );
+
+    final primeraEntrada = primera.isEmpty
+        ? null
+        : (primera['hora'] as String?);
+    final ultimaSalida = ultima.isEmpty ? null : (ultima['hora'] as String?);
+
+    // Patch parent grid instantly
+    final empleadoId = widget.emp["empleado_id"] as int;
+    final fecha = (widget.dia["fecha"] ?? '').toString();
+
+    widget.onPatchGrid(
+      _DiaPatchPayload(
+        empleadoId: empleadoId,
+        fecha: fecha,
+        fichajes: List<Map<String, dynamic>>.from(_fichajes),
+        primeraEntrada: primeraEntrada,
+        ultimaSalida: ultimaSalida,
+      ),
+    );
+  }
+
+  Future<String?> _pickTime(String initial) async {
+    TimeOfDay base = TimeOfDay.now();
+    if (initial.contains(':')) {
+      final p = initial.split(':');
+      final h = int.tryParse(p[0]);
+      final m = int.tryParse(p.length > 1 ? p[1] : '0');
+      if (h != null && m != null) base = TimeOfDay(hour: h, minute: m);
+    }
+
+    final sel = await showTimePicker(
+      context: context,
+      initialTime: base,
+      helpText: 'Selecciona hora',
+    );
+    if (sel == null) return null;
+    return '${sel.hour.toString().padLeft(2, '0')}:${sel.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _nombreCompleto() {
+    final n = (widget.emp["nombre"] ?? '').toString().trim();
+    final a = (widget.emp["apellido"] ?? '').toString().trim();
+    return ('$n $a').trim();
+  }
+
+  String _iniciales() {
+    final n = (widget.emp["nombre"] ?? '').toString().trim();
+    final a = (widget.emp["apellido"] ?? '').toString().trim();
+    final i1 = n.isNotEmpty ? n[0] : '';
+    final i2 = a.isNotEmpty ? a[0] : '';
+    return (i1 + i2).toUpperCase();
+  }
+
+  // --- Actions with local state update ---
+
+  Future<void> _deleteFichaje(dynamic id) async {
+    final api = ApiService.instance?.client;
+    if (api == null) return;
+
+    setState(() => _busyFichajes = true);
+    try {
+      await api.delete('/fichajes/$id');
+      _fichajes.removeWhere((x) => x["id"] == id);
+      _sortAndCompute();
+      setState(() {});
+    } finally {
+      if (mounted) setState(() => _busyFichajes = false);
+    }
+  }
+
+  Future<void> _addFichajeManual() async {
+    final api = ApiService.instance?.client;
+    if (api == null) return;
+
+    final hora = _horaNuevaCtrl.text.trim();
+    final re = RegExp(r'^\d{2}:\d{2}$');
+    if (!re.hasMatch(hora)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Hora inválida. Usa HH:MM')));
+      return;
+    }
+
+    final empleadoId = widget.emp["empleado_id"];
+    final fecha = (widget.dia["fecha"] ?? '').toString(); // YYYY-MM-DD
+    final fechaHora = '$fecha $hora';
+
+    setState(() => _busyFichajes = true);
+    try {
+      final resp = await api.post(
+        '/fichajes/manual',
+        jsonBody: {
+          'empleado_id': empleadoId,
+          'fecha_hora': fechaHora,
+          'tipo': _tipoNuevo,
+          'auto_generado': 0,
+        },
+      );
+
+      // Best-case: backend returns created record with ID
+      Map<String, dynamic> created = {
+        "id": DateTime.now().millisecondsSinceEpoch, // fallback temp id
+        "hora": hora,
+        "tipo": _tipoNuevo,
+        "auto_generado": 0,
+      };
+
+      if (resp.ok && resp.body is Map) {
+        final b = resp.body as Map;
+        // try to map common keys
+        created["id"] = b["id"] ?? created["id"];
+        created["hora"] = b["hora"] ?? created["hora"];
+        created["tipo"] = b["tipo"] ?? created["tipo"];
+        created["auto_generado"] =
+            b["auto_generado"] ?? created["auto_generado"];
+      }
+
+      _fichajes.add(created);
+      _horaNuevaCtrl.clear();
+      _sortAndCompute();
+      setState(() {});
+    } finally {
+      if (mounted) setState(() => _busyFichajes = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final maxW = 600.0;
+    final maxH = MediaQuery.of(context).size.height * 0.78;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW),
+        child: LiquidGlassCard(
+          radius: 26,
+          blur: 20,
+          elevated: true,
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          child: SizedBox(
+            height: maxH,
+            child: Column(
+              children: [
+                // Header
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: const Color(0xFF1565C0),
+                      child: Text(
+                        _iniciales(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _nombreCompleto().isEmpty
+                                ? 'Empleado'
+                                : _nombreCompleto(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            (widget.dia["fecha"] ?? '').toString(),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Cerrar',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SectionTitle(
+                          icon: Icons.event_available_rounded,
+                          title: 'Planificación',
+                        ),
+                        const SizedBox(height: 10),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _TimeField(
+                                label: 'Entrada',
+                                icon: Icons.login_rounded,
+                                controller: _entradaCtrl,
+                                onPick: () async {
+                                  final t = await _pickTime(_entradaCtrl.text);
+                                  if (t != null)
+                                    setState(() => _entradaCtrl.text = t);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _TimeField(
+                                label: 'Salida',
+                                icon: Icons.logout_rounded,
+                                controller: _salidaCtrl,
+                                onPick: () async {
+                                  final t = await _pickTime(_salidaCtrl.text);
+                                  if (t != null)
+                                    setState(() => _salidaCtrl.text = t);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _obsCtrl,
+                          minLines: 1,
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            labelText: 'Observaciones',
+                            prefixIcon: const Icon(Icons.note_alt_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+                        _TipoDiaSelector(
+                          value: _tipoDia,
+                          onChanged: (v) => setState(() => _tipoDia = v),
+                        ),
+
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.icon(
+                                icon: const Icon(Icons.save_rounded),
+                                label: const Text('Guardar planificación'),
+                                onPressed: () async {
+                                  // TODO: aquí metes tu PUT real de planificación
+                                  // - hora_entrada, hora_salida, observaciones, tipo_dia
+                                  Navigator.of(context).pop();
+                                  // widget.onReload(); // No longer needed
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.close),
+                                label: const Text('Cancelar'),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+                        const Divider(height: 1),
+                        const SizedBox(height: 14),
+
+                        _SectionTitle(
+                          icon: Icons.punch_clock_rounded,
+                          title: 'Fichajes reales',
+                          trailing: Row(
+                            children: [
+                              Text(
+                                '${_fichajes.length}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark
+                                      ? Colors.white60
+                                      : Colors.black54,
+                                ),
+                              ),
+                              if (_busyFichajes) ...[
+                                const SizedBox(width: 8),
+                                const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        if (_fichajes.isEmpty)
+                          _EmptyState(
+                            text: 'No hay fichajes reales para este día.',
+                            icon: Icons.hourglass_empty_rounded,
+                          )
+                        else
+                          Column(
+                            children: [
+                              for (final f in _fichajes)
+                                _FichajeRealTile(
+                                  hora: (f["hora"] ?? '').toString(),
+                                  tipo: (f["tipo"] ?? '')
+                                      .toString()
+                                      .toLowerCase(),
+                                  auto: f["auto_generado"] == 1,
+                                  onDelete: () async {
+                                    final ok = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dCtx) => AlertDialog(
+                                        title: const Text('Eliminar fichaje'),
+                                        content: const Text(
+                                          '¿Seguro que quieres borrar este fichaje?',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(dCtx, false),
+                                            child: const Text('Cancelar'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(dCtx, true),
+                                            child: const Text('Eliminar'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (ok != true) return;
+                                    await _deleteFichaje(f["id"]);
+                                  },
+                                ),
+                            ],
+                          ),
+
+                        const SizedBox(height: 12),
+
+                        // Add row
+                        LiquidGlassCard(
+                          radius: 18,
+                          elevated: false,
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _horaNuevaCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'HH:MM',
+                                    prefixIcon: Icon(Icons.schedule_rounded),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              DropdownButton<String>(
+                                value: _tipoNuevo,
+                                underline: const SizedBox.shrink(),
+                                items: const ['entrada', 'salida']
+                                    .map(
+                                      (t) => DropdownMenuItem(
+                                        value: t,
+                                        child: Text(
+                                          t[0].toUpperCase() + t.substring(1),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) =>
+                                    setState(() => _tipoNuevo = v ?? 'entrada'),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: 'Añadir fichaje',
+                                icon: Icon(
+                                  Icons.add_circle_rounded,
+                                  size: 30,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                onPressed: _addFichajeManual,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget? trailing;
+
+  const _SectionTitle({required this.icon, required this.title, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+        ),
+        const Spacer(),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+class _TimeField extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final TextEditingController controller;
+  final VoidCallback onPick;
+
+  const _TimeField({
+    required this.label,
+    required this.icon,
+    required this.controller,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      onTap: onPick,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixIcon: const Icon(Icons.access_time_rounded),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+}
+
+class _TipoDiaSelector extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const _TipoDiaSelector({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    const opts = ['laboral', 'festivo', 'vacaciones', 'baja'];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final opt in opts)
+          ChoiceChip(
+            label: Text(opt[0].toUpperCase() + opt.substring(1)),
+            selected: value == opt,
+            onSelected: (_) => onChanged(opt),
+          ),
+      ],
+    );
+  }
+}
+
+class _FichajeRealTile extends StatelessWidget {
+  final String hora;
+  final String tipo; // entrada/salida
+  final bool auto;
+  final VoidCallback onDelete;
+
+  const _FichajeRealTile({
+    required this.hora,
+    required this.tipo,
+    required this.auto,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isEntrada = tipo == 'entrada';
+    final c = isEntrada ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: c.withValues(alpha: 0.10),
+        border: Border.all(color: c.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isEntrada ? Icons.login_rounded : Icons.logout_rounded,
+            color: c,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$hora • ${isEntrada ? "Entrada" : "Salida"}${auto ? " (auto)" : ""}',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Eliminar',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String text;
+  final IconData icon;
+
+  const _EmptyState({required this.text, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return LiquidGlassCard(
+      radius: 18,
+      elevated: false,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Icon(icon, color: isDark ? Colors.white54 : Colors.black45),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white60 : Colors.black54,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

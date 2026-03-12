@@ -37,7 +37,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
   List<ProjectFund> _funds = [];
   List<String> _fabricantes = [];
   List<String> _clientes = [];
-  List<String> _servicios = [];
+  List<MasterService> _masterServicios = [];
   List<String> _internals = [];
 
   bool _loadingData = true;
@@ -53,45 +53,8 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
 
   void _initializeControllers() {
     final t = widget.transaction;
-    _orderController = TextEditingController(
-      text: t.csku,
-    ); // Assuming csku maps to order/sku combo or similar? Wait, CreateServiceDialog maps 'orden' to orderController. Transaction has 'csku'. Let's check mapping.
-    // In CreateServiceDialog: 'orden': _orderController.text, 'sku': _skuController.text.
-    // In Transaction model: 'csku' seems to be the combined field or one of them?
-    // Looking at Transaction model, it has 'csku'.
-    // Let's assume 'csku' in Transaction holds the order/sku info or just one.
-    // Actually, let's look at the payload in CreateServiceDialog again.
-    // 'orden' and 'sku' are sent.
-    // Transaction model has 'csku'. It might be a concatenation or just one field.
-    // Let's assume for now we edit what we can.
-    // Wait, if the backend returns 'csku', maybe we should split it or just use it?
-    // Let's look at Transaction model again.
-    // It has `csku`.
-    // Let's assume `csku` corresponds to `sku` or `orden`?
-    // Actually, let's just use `csku` for `_skuController` and maybe `_orderController` is not in Transaction?
-    // Transaction has `numsap` -> `_sapController`.
-    // `unit` -> `_unitsController`.
-    // `descripcion` -> `_descController`.
-    // `observacion` -> `_obsController`.
-    // `palets` -> `_palletsController`.
-    // `claimacc` -> `_accountController`.
-    // `cost` -> `_costController`.
-    // `servicio` -> `_serviceController`.
-    // `fabricante` -> `_fabricante`.
-    // `cliente` -> `_cliente`.
-    // `idxiaomi` -> `_idXiaomi`.
-    // `internal` -> `_internalIm`.
-
-    // Missing `orden` in Transaction?
-    // If `csku` is the SKU, where is the Order number?
-    // Maybe `csku` is "Order - SKU"?
-    // For now, I'll populate `_skuController` with `csku` and leave `_orderController` empty or try to parse if it looks like "XX-XXXXX-XX".
-    // But `_orderController` validator expects "XX-XXXXX-XX".
-    // Let's check if `csku` contains the order.
-
-    _skuController = TextEditingController(text: t.csku);
-    _orderController =
-        TextEditingController(); // We might lose this if not in Transaction
+    _orderController = TextEditingController(text: t.orden ?? t.previ);
+    _skuController = TextEditingController(text: t.sku ?? t.csku);
     _unitsController = TextEditingController(text: t.unit);
     _descController = TextEditingController(text: t.descripcion);
     _obsController = TextEditingController(text: t.observacion);
@@ -113,7 +76,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
         _analisisService.getFunds(),
         _analisisService.getClientes(),
         _analisisService.getFabricantes(),
-        _analisisService.getServicios(),
+        _analisisService.getMasterServicios(),
         _analisisService.getInternals(),
       ]);
 
@@ -122,21 +85,25 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
           _funds = results[0] as List<ProjectFund>;
           _clientes = results[1] as List<String>;
           _fabricantes = results[2] as List<String>;
-          _servicios = results[3] as List<String>;
+          _masterServicios = results[3] as List<MasterService>;
           _internals = results[4] as List<String>;
 
           // Ensure dropdown values are valid
-          if (_fabricante != null && !_fabricantes.contains(_fabricante))
+          if (_fabricante != null && !_fabricantes.contains(_fabricante)) {
             _fabricante = null;
-          if (_cliente != null && !_clientes.contains(_cliente))
+          }
+          if (_cliente != null && !_clientes.contains(_cliente)) {
             _cliente = null;
-          if (_internalIm != null && !_internals.contains(_internalIm))
+          }
+          if (_internalIm != null && !_internals.contains(_internalIm)) {
             _internalIm = null;
+          }
 
           // For idXiaomi, we need to check against _funds + 'No Aplica'
           final fundIds = ['No Aplica', ..._funds.map((e) => e.idxiaomi ?? '')];
-          if (_idXiaomi != null && !fundIds.contains(_idXiaomi))
+          if (_idXiaomi != null && !fundIds.contains(_idXiaomi)) {
             _idXiaomi = null;
+          }
 
           _loadingData = false;
         });
@@ -182,15 +149,44 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
         'fabricante': _fabricante,
         'descripcion': _descController.text.trim(),
         'servicio': _serviceController.text.trim(),
-        'orden': _orderController.text.trim(),
-        'sku': _skuController.text.trim(),
+        'previ': _orderController.text.trim(), // Mapped to 'previ'
+        'csku': _skuController.text.trim(),
         'unit': int.tryParse(_unitsController.text.trim()) ?? 0,
-        'observaciones': _obsController.text.trim(),
-        'sap_vdf': _sapController.text.trim(),
-        'palets': int.tryParse(_palletsController.text.trim()) ?? 0,
-        'account_claim': _accountController.text.trim(),
-        'internal_im': _internalIm,
+        'observacion': _obsController.text.trim(), // Mapped to 'observacion'
+        'numsap': _sapController.text.trim(), // Mapped to 'numsap'
+        'palets':
+            int.tryParse(_palletsController.text.trim())?.toString() ?? '0',
+        'claimacc': _accountController.text.trim(), // Mapped to 'claimacc'
+        'internal': _internalIm, // Mapped to 'internal'
       };
+
+      // Check local funds before submitting
+      if (_idXiaomi != null && _idXiaomi != 'No Aplica') {
+        final fund = _funds.firstWhere(
+          (f) => f.idxiaomi == _idXiaomi,
+          orElse: () => ProjectFund(totalSpent: 0, transactions: 0),
+        );
+        if ((fund.remaining ?? 0) <= 0) {
+          setState(() {
+            _error =
+                "No hay fondos disponibles para realizar este servicio en este ID XIAOMI";
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      // Check if service exists in master list
+      final serviceName = _serviceController.text.trim();
+      final master = _masterServicios.where((m) => m.servicio == serviceName);
+      if (master.isEmpty) {
+        setState(() {
+          _error =
+              "El servicio '$serviceName' no existe en la lista maestra. Por favor, selecciona uno de la lista.";
+          _isLoading = false;
+        });
+        return;
+      }
 
       await _analisisService.patchOpenTransaction(
         widget.transaction.id!,
@@ -203,7 +199,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = e.toString().replaceFirst('Exception: ', '');
           _isLoading = false;
         });
       }
@@ -247,7 +243,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = e.toString().replaceFirst('Exception: ', '');
           _isLoading = false;
         });
       }
@@ -258,8 +254,8 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
+      // backgroundColor: removed to inherit theme
+      // surfaceTintColor: removed to inherit theme
       child: Container(
         width: 900,
         padding: const EdgeInsets.all(32),
@@ -286,7 +282,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF2C3E50),
+                              // color: removed to inherit theme
                             ),
                           ),
                           IconButton(
@@ -380,10 +376,12 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
                                   'Ingrese unidades',
                                   isNumber: true,
                                   validator: (v) {
-                                    if (v == null || v.isEmpty)
+                                    if (v == null || v.isEmpty) {
                                       return 'Requerido';
-                                    if (int.tryParse(v) == null)
+                                    }
+                                    if (int.tryParse(v) == null) {
                                       return 'Debe ser un número';
+                                    }
                                     return null;
                                   },
                                 ),
@@ -497,7 +495,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label + ':',
+          '$label:',
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 8),
@@ -507,20 +505,30 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey.shade400),
+            hintStyle: TextStyle(color: Theme.of(context).hintColor),
             filled: !enabled,
-            fillColor: !enabled ? Colors.grey.shade100 : null,
+            fillColor: !enabled
+                ? (Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white10
+                      : Colors.grey.shade100)
+                : null,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade200),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.1),
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -539,30 +547,49 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
     String? value,
     ValueChanged<String?> onChanged,
   ) {
+    // Ensure uniqueness and presence of value
+    final distinctItems = items.toSet();
+    if (value != null) {
+      distinctItems.add(value);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label + ':',
+          '$label:',
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: value,
-          items: items
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+          isExpanded: true, // Fix for overflow
+          initialValue: value,
+          items: distinctItems
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(
+                    e,
+                    overflow: TextOverflow.ellipsis, // Fix for overflow
+                  ),
+                ),
+              )
               .toList(),
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: 'Selecciona un valor',
-            hintStyle: TextStyle(color: Colors.grey.shade400),
+            hintStyle: TextStyle(color: Theme.of(context).hintColor),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -588,14 +615,22 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
             if (textEditingValue.text == '') {
               return const Iterable<String>.empty();
             }
-            return _servicios.where((String option) {
+            return _masterServicios.map((m) => m.servicio).where((
+              String option,
+            ) {
               return option.toLowerCase().contains(
                 textEditingValue.text.toLowerCase(),
               );
             });
           },
           onSelected: (String selection) {
+            final master = _masterServicios.firstWhere(
+              (m) => m.servicio == selection,
+            );
             _serviceController.text = selection;
+            if (master.pvd != null) {
+              _costController.text = master.pvd!.toStringAsFixed(2);
+            }
           },
           fieldViewBuilder:
               (context, controller, focusNode, onEditingComplete) {
@@ -613,14 +648,18 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
                   onEditingComplete: onEditingComplete,
                   decoration: InputDecoration(
                     hintText: 'Selecciona o escribe un valor',
-                    hintStyle: TextStyle(color: Colors.grey.shade400),
+                    hintStyle: TextStyle(color: Theme.of(context).hintColor),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(4),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).dividerColor.withOpacity(0.2),
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(4),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).dividerColor.withOpacity(0.2),
+                      ),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -635,10 +674,10 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
   }
 
   Widget _buildIdXiaomiDropdown() {
-    final items = [
-      'No Aplica',
-      ..._funds.map((e) => e.idxiaomi ?? ''),
-    ].toSet().toList();
+    final items = {'No Aplica', ..._funds.map((e) => e.idxiaomi ?? '')};
+    if (_idXiaomi != null) {
+      items.add(_idXiaomi!);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -649,9 +688,18 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _idXiaomi,
+          isExpanded: true, // Fix for overflow
+          initialValue: _idXiaomi,
           items: items
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(
+                    e,
+                    overflow: TextOverflow.ellipsis, // Fix for overflow
+                  ),
+                ),
+              )
               .toList(),
           onChanged: (v) {
             setState(() {
@@ -663,14 +711,18 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
           },
           decoration: InputDecoration(
             hintText: 'Selecciona un valor',
-            hintStyle: TextStyle(color: Colors.grey.shade400),
+            hintStyle: TextStyle(color: Theme.of(context).hintColor),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,

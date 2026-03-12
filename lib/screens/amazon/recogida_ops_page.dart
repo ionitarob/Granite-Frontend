@@ -4,7 +4,7 @@ import '../../themes/amazon_theme.dart';
 import '../../services/api_service.dart';
 
 class RecogidaOpsPage extends StatefulWidget {
-  const RecogidaOpsPage({Key? key}) : super(key: key);
+  const RecogidaOpsPage({super.key});
 
   @override
   _RecogidaOpsPageState createState() => _RecogidaOpsPageState();

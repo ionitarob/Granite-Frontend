@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'sentinel_provider.dart';
+import 'sentinel_theme.dart';
 
 class SentinelChat extends StatefulWidget {
-  const SentinelChat({Key? key}) : super(key: key);
+  const SentinelChat({super.key});
 
   @override
   State<SentinelChat> createState() => _SentinelChatState();
@@ -30,46 +31,49 @@ class _SentinelChatState extends State<SentinelChat> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     return Container(
-      color: const Color(0xFF121212),
+      color: Colors.transparent, // Handled by parent glass container
       child: Column(
         children: [
           // Chat Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(bottom: BorderSide(color: Colors.white10)),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: SentinelTheme.primary.withOpacity(0.1),
+                ),
+              ),
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.cyanAccent.withOpacity(0.1),
+                    color: SentinelTheme.primary.withOpacity(0.1),
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: SentinelTheme.primary.withOpacity(0.2),
+                        blurRadius: 10,
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     Icons.security,
-                    color: Colors.cyanAccent,
+                    color: SentinelTheme.primary,
                     size: 20,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
+                    const Text('SENTINEL AI', style: SentinelTheme.header),
                     Text(
-                      'SENTINEL AI',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 1.0,
+                      'Online',
+                      style: SentinelTheme.label.copyWith(
+                        color: SentinelTheme.success,
                       ),
-                    ),
-                    Text(
-                      'En línea',
-                      style: TextStyle(color: Colors.greenAccent, fontSize: 10),
                     ),
                   ],
                 ),
@@ -80,19 +84,20 @@ class _SentinelChatState extends State<SentinelChat> {
                       horizontal: 8,
                       vertical: 4,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.redAccent),
+                    decoration: SentinelTheme.glowDecoration(
+                      color: SentinelTheme.error,
+                      opacity: 0.1,
+                      glowOpacity: 0.2,
+                      borderRadius: 12,
                     ),
                     child: Row(
                       children: const [
-                        Icon(Icons.mic, color: Colors.redAccent, size: 12),
+                        Icon(Icons.mic, color: SentinelTheme.error, size: 12),
                         SizedBox(width: 4),
                         Text(
-                          'Escuchando...',
+                          'Listening...',
                           style: TextStyle(
-                            color: Colors.redAccent,
+                            color: SentinelTheme.error,
                             fontSize: 10,
                           ),
                         ),
@@ -127,9 +132,10 @@ class _SentinelChatState extends State<SentinelChat> {
           // Input Area
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(top: BorderSide(color: Colors.white10)),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: SentinelTheme.primary.withOpacity(0.1)),
+              ),
             ),
             child: Row(
               children: [
@@ -137,8 +143,8 @@ class _SentinelChatState extends State<SentinelChat> {
                   icon: Icon(
                     provider.isListening ? Icons.mic : Icons.mic_none_rounded,
                     color: provider.isListening
-                        ? Colors.redAccent
-                        : Colors.white54,
+                        ? SentinelTheme.error
+                        : SentinelTheme.textSecondary,
                   ),
                   onPressed: () {
                     if (provider.isListening) {
@@ -147,7 +153,7 @@ class _SentinelChatState extends State<SentinelChat> {
                       provider.startListening();
                     }
                   },
-                  tooltip: 'Entrada de voz',
+                  tooltip: 'Voice Input',
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -155,16 +161,18 @@ class _SentinelChatState extends State<SentinelChat> {
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white10),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
                     child: TextField(
                       controller: _controller,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        hintText: 'Escribe un comando o consulta...',
-                        hintStyle: TextStyle(color: Colors.white30),
+                      style: SentinelTheme.body.copyWith(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Type a command or query...',
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.3),
+                        ),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 14,
                         ),
@@ -181,12 +189,18 @@ class _SentinelChatState extends State<SentinelChat> {
                 const SizedBox(width: 8),
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.cyanAccent.withOpacity(0.1),
+                    color: SentinelTheme.primary.withOpacity(0.1),
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: SentinelTheme.primary.withOpacity(0.2),
+                        blurRadius: 8,
+                      ),
+                    ],
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.send_rounded),
-                    color: Colors.cyanAccent,
+                    color: SentinelTheme.primary,
                     onPressed: () {
                       if (_controller.text.isNotEmpty) {
                         provider.sendMessage(_controller.text);
@@ -205,7 +219,7 @@ class _SentinelChatState extends State<SentinelChat> {
 }
 
 class _ThinkingBubble extends StatelessWidget {
-  const _ThinkingBubble({Key? key}) : super(key: key);
+  const _ThinkingBubble();
 
   @override
   Widget build(BuildContext context) {
@@ -221,29 +235,34 @@ class _ThinkingBubble extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: Colors.cyanAccent.withOpacity(0.1),
+                color: SentinelTheme.primary.withOpacity(0.1),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
+                border: Border.all(
+                  color: SentinelTheme.primary.withOpacity(0.3),
+                ),
               ),
               child: const Icon(
                 Icons.security,
-                color: Colors.cyanAccent,
+                color: SentinelTheme.primary,
                 size: 14,
               ),
             ),
             const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                  bottomLeft: Radius.circular(4),
-                  bottomRight: Radius.circular(16),
-                ),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-              ),
+              decoration:
+                  SentinelTheme.glassDecoration(
+                    borderRadius: 16,
+                    opacity: 0.05,
+                    border: true,
+                  ).copyWith(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(4),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -257,10 +276,8 @@ class _ThinkingBubble extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Pensando...',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 12,
+                    'Thinking...',
+                    style: SentinelTheme.body.copyWith(
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -278,8 +295,7 @@ class _MessageBubble extends StatelessWidget {
   final String message;
   final bool isUser;
 
-  const _MessageBubble({Key? key, required this.message, required this.isUser})
-    : super(key: key);
+  const _MessageBubble({required this.message, required this.isUser});
 
   String _parseMessage(String rawMessage) {
     try {
@@ -312,13 +328,21 @@ class _MessageBubble extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: Colors.cyanAccent.withOpacity(0.1),
+                  color: SentinelTheme.primary.withOpacity(0.1),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
+                  border: Border.all(
+                    color: SentinelTheme.primary.withOpacity(0.3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SentinelTheme.primary.withOpacity(0.2),
+                      blurRadius: 6,
+                    ),
+                  ],
                 ),
                 child: const Icon(
                   Icons.security,
-                  color: Colors.cyanAccent,
+                  color: SentinelTheme.primary,
                   size: 14,
                 ),
               ),
@@ -332,7 +356,7 @@ class _MessageBubble extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: isUser
-                      ? Colors.blueAccent.withOpacity(0.1)
+                      ? SentinelTheme.secondary.withOpacity(0.15)
                       : Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
@@ -342,15 +366,21 @@ class _MessageBubble extends StatelessWidget {
                   ),
                   border: Border.all(
                     color: isUser
-                        ? Colors.blueAccent.withOpacity(0.3)
+                        ? SentinelTheme.secondary.withOpacity(0.3)
                         : Colors.white.withOpacity(0.1),
                   ),
+                  boxShadow: [
+                    if (isUser)
+                      BoxShadow(
+                        color: SentinelTheme.secondary.withOpacity(0.05),
+                        blurRadius: 8,
+                      ),
+                  ],
                 ),
                 child: Text(
                   displayMessage,
-                  style: TextStyle(
+                  style: SentinelTheme.body.copyWith(
                     color: Colors.white.withOpacity(0.9),
-                    height: 1.4,
                   ),
                 ),
               ),
@@ -362,13 +392,15 @@ class _MessageBubble extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: Colors.blueAccent.withOpacity(0.1),
+                  color: SentinelTheme.secondary.withOpacity(0.1),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                  border: Border.all(
+                    color: SentinelTheme.secondary.withOpacity(0.3),
+                  ),
                 ),
                 child: const Icon(
                   Icons.person,
-                  color: Colors.blueAccent,
+                  color: SentinelTheme.secondary,
                   size: 14,
                 ),
               ),

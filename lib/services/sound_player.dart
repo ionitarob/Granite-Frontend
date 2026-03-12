@@ -9,9 +9,9 @@ import 'package:audioplayers/audioplayers.dart';
 /// errors to help debugging when playback silently fails.
 class SoundPlayer {
   // Use default constructor to remain compatible across platforms/versions.
-  static AudioPlayer _successPlayer = AudioPlayer();
-  static AudioPlayer _errorPlayer = AudioPlayer();
-  static AudioPlayer _closeBoxPlayer = AudioPlayer();
+  static final AudioPlayer _successPlayer = AudioPlayer();
+  static final AudioPlayer _errorPlayer = AudioPlayer();
+  static final AudioPlayer _closeBoxPlayer = AudioPlayer();
   static bool _initialized = false;
 
   static const String _okLower = 'sounds/ok.mp3';

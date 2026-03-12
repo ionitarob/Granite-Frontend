@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../api_client.dart';
 import '../models/analisis_models.dart';
 import 'api_service.dart';
@@ -75,8 +76,10 @@ class AnalisisService {
     return [];
   }
 
-  Future<List<Transaction>> getClosedTransactions({int limit = 100}) async {
-    final uri = '/serveis/transactions/close/?limit=$limit';
+  Future<List<Transaction>> getClosedTransactions({int? limit}) async {
+    final uri = limit != null
+        ? '/serveis/transactions/close/?limit=$limit'
+        : '/serveis/transactions/close/';
     final res = await _client.get(uri);
     if (!res.ok) {
       throw _asException(res, fallback: 'Error fetching closed transactions');
@@ -181,7 +184,52 @@ class AnalisisService {
       list = body;
     }
 
-    return list.map((e) => e['servicio'].toString()).toList();
+    return list
+        .map((e) => (e['servicio'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<MasterService>> getMasterServicios() async {
+    final res = await _client.get('/serveis/servicios/');
+    if (!res.ok) return [];
+
+    final body = res.body;
+    List list = [];
+    if (body is Map && body.containsKey('results')) {
+      list = body['results'];
+    } else if (body is List) {
+      list = body;
+    }
+
+    return list.map((e) => MasterService.fromJson(e)).toList();
+  }
+
+  Future<void> createMasterServicio(String name, double? pvd) async {
+    final res = await _client.post(
+      '/serveis/servicios/create/',
+      jsonBody: {'servicio': name, 'pvd': pvd},
+    );
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error creating master service');
+    }
+  }
+
+  Future<void> updateMasterServicioPrice(int id, double pvd) async {
+    final res = await _client.post(
+      '/serveis/servicios/$id/price/',
+      jsonBody: {'pvd': pvd},
+    );
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error updating service price');
+    }
+  }
+
+  Future<void> deleteMasterServicio(int id) async {
+    final res = await _client.delete('/serveis/servicios/$id/');
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error deleting master service');
+    }
   }
 
   Future<List<String>> getInternals() async {
@@ -220,6 +268,29 @@ class AnalisisService {
     }
   }
 
+  Future<void> closeTransaction(int id) async {
+    final res = await _client.post('/serveis/transactions/close/$id/');
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error closing transaction');
+    }
+  }
+
+  Future<Transaction> togglePaymentStatus(int id, bool paid) async {
+    final res = await _client.post(
+      '/serveis/transactions/pay/$id/',
+      jsonBody: {
+        'paid': paid ? 1 : 0,
+        'pagado': paid ? 1 : 0,
+        'PAID_STATUS': paid ? 1 : 0,
+        'paid_status': paid ? 1 : 0,
+      },
+    );
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error updating payment status');
+    }
+    return Transaction.fromJson(res.body);
+  }
+
   Exception _asException(ApiResult result, {String? fallback}) {
     final msg =
         _extractMessage(result) ??
@@ -242,5 +313,77 @@ class AnalisisService {
       return result.error!.trim();
     }
     return null;
+  }
+
+  Future<Uint8List> exportTransactionsExcel({
+    String? monthStr,
+    String? yearStr,
+    String? startDate,
+    String? endDate,
+  }) async {
+    String uri = '/serveis/transactions/export/';
+    final params = <String>[];
+    if (monthStr != null) {
+      params.add('month_str=${Uri.encodeQueryComponent(monthStr)}');
+    }
+    if (yearStr != null) {
+      params.add('year_str=${Uri.encodeQueryComponent(yearStr)}');
+    }
+    if (startDate != null) {
+      params.add('start_date=${Uri.encodeQueryComponent(startDate)}');
+    }
+    if (endDate != null) {
+      params.add('end_date=${Uri.encodeQueryComponent(endDate)}');
+    }
+
+    if (params.isNotEmpty) {
+      uri += '?${params.join('&')}';
+    }
+
+    final res = await _client.getBytes(uri);
+    if (!res.ok) {
+      throw _asException(
+        res,
+        fallback: 'Error exporting transactions to Excel',
+      );
+    }
+    return res.body as Uint8List;
+  }
+
+  Future<List<Transaction>> getTransactionsByDate({
+    String? monthStr,
+    String? yearStr,
+    String? startDate,
+    String? endDate,
+  }) async {
+    String uri = '/serveis/transactions/by_date/';
+    final params = <String>[];
+    if (monthStr != null) {
+      params.add('month_str=${Uri.encodeQueryComponent(monthStr)}');
+    }
+    if (yearStr != null) {
+      params.add('year_str=${Uri.encodeQueryComponent(yearStr)}');
+    }
+    if (startDate != null) {
+      params.add('start_date=${Uri.encodeQueryComponent(startDate)}');
+    }
+    if (endDate != null) {
+      params.add('end_date=${Uri.encodeQueryComponent(endDate)}');
+    }
+
+    if (params.isNotEmpty) {
+      uri += '?${params.join('&')}';
+    }
+
+    final res = await _client.get(uri);
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error fetching transactions by date');
+    }
+
+    final body = res.body;
+    if (body is List) {
+      return body.map((e) => Transaction.fromJson(e)).toList();
+    }
+    return [];
   }
 }

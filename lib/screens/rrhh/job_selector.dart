@@ -11,6 +11,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/main_sidebar.dart';
+import 'package:provider/provider.dart';
+import '../../api_client.dart';
+import '../../services/api_service.dart';
 
 const String baseUrl = kBackendBaseUrl;
 
@@ -185,13 +188,14 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
 
   String get _fechaStr => _fecha.toIso8601String().substring(0, 10);
 
+  ApiClient get _api => Provider.of<ApiService>(context, listen: false).client;
+
   Future<void> _cargarEmpresas() async {
     try {
-      final res = await http.get(Uri.parse('$baseUrl/empresas'));
-      if (res.statusCode == 200) {
+      final res = await _api.get('/empresas');
+      if (res.ok) {
         setState(
-          () => _empresas = (json.decode(res.body) as List)
-              .cast<Map<String, dynamic>>(),
+          () => _empresas = (res.body as List).cast<Map<String, dynamic>>(),
         );
       }
     } catch (_) {}
@@ -201,13 +205,12 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
     setState(() => _cargando = true);
     final params = <String, String>{'fecha': _fechaStr};
     if (_empresaId != null) params['empresa_id'] = _empresaId.toString();
-    final uri = Uri.parse(
-      '$baseUrl/jobs/board',
-    ).replace(queryParameters: params);
+
+    final query = Uri(queryParameters: params).query;
     try {
-      final res = await http.get(uri);
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body) as Map<String, dynamic>;
+      final res = await _api.get('/jobs/board?$query');
+      if (res.ok) {
+        final data = res.body as Map<String, dynamic>;
         setState(() {
           _jobs = (data['jobs'] as List).cast<Map<String, dynamic>>();
           _unassigned = (data['unassigned'] as List)
@@ -284,15 +287,14 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
 
   Future<void> _crearJob({required String nombre, String? descripcion}) async {
     try {
-      final res = await http.post(
-        Uri.parse('$baseUrl/jobs'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
+      final res = await _api.post(
+        '/jobs',
+        jsonBody: {
           'nombre': nombre,
           if (descripcion != null) 'descripcion': descripcion,
-        }),
+        },
       );
-      if (res.statusCode == 200 || res.statusCode == 201) {
+      if (res.ok) {
         _showSnack('Trabajo creado');
         _cargarBoard();
       } else {
@@ -324,8 +326,8 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
     );
     if (ok != true) return;
     try {
-      final res = await http.delete(Uri.parse('$baseUrl/jobs/$jobId'));
-      if (res.statusCode == 200) {
+      final res = await _api.delete('/jobs/$jobId');
+      if (res.ok) {
         _showSnack('Trabajo eliminado');
         _cargarBoard();
       } else {
@@ -341,16 +343,15 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
     required int jobId,
   }) async {
     try {
-      final res = await http.post(
-        Uri.parse('$baseUrl/jobs/assign'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
+      final res = await _api.post(
+        '/jobs/assign',
+        jsonBody: {
           'fecha': _fechaStr,
           'empleado_id': empleadoId,
           'job_id': jobId,
-        }),
+        },
       );
-      if (res.statusCode == 200) {
+      if (res.ok) {
         _cargarBoard();
       } else {
         _showSnack('Error al asignar (${res.statusCode})');
@@ -361,10 +362,18 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
   }
 
   Future<void> _desasignarEmpleado({required int empleadoId}) async {
+    // Delete with body is non-standard, using http but attaching token manually
+    if (!_api.hasAccessToken) {
+      _showSnack('No autenticado');
+      return;
+    }
     try {
       final res = await http.delete(
         Uri.parse('$baseUrl/jobs/assign'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${_api.accessToken}',
+        },
         body: json.encode({'fecha': _fechaStr, 'empleado_id': empleadoId}),
       );
       if (res.statusCode == 200) {
@@ -379,12 +388,8 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
 
   Future<void> _renombrarJob(int jobId, String nombre) async {
     try {
-      final res = await http.put(
-        Uri.parse('$baseUrl/jobs/$jobId'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'nombre': nombre}),
-      );
-      if (res.statusCode == 200) {
+      final res = await _api.put('/jobs/$jobId', jsonBody: {'nombre': nombre});
+      if (res.ok) {
         _showSnack('Trabajo actualizado');
         _cargarBoard();
       } else {
@@ -409,20 +414,21 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
     // 2) Llamar endpoint y descargar bytes
     final qp = <String, String>{'fecha': fechaStr};
     if (_empresaId != null) qp['empresa_id'] = _empresaId.toString();
-    final uri = Uri.parse('$baseUrl/jobs/export').replace(queryParameters: qp);
-    http.Response res;
+    final query = Uri(queryParameters: qp).query;
+
+    ApiResult res;
     try {
-      res = await http.get(uri);
+      res = await _api.getBytes('/jobs/export?$query');
     } catch (_) {
       _showSnack('No se pudo contactar con el servidor');
       return;
     }
-    if (res.statusCode != 200) {
+    if (!res.ok) {
       _showSnack('Error ${res.statusCode} al exportar');
       return;
     }
-    final contentType = res.headers['content-type'] ?? '';
-    final bytes = res.bodyBytes;
+    final contentType = res.headers?['content-type'] ?? '';
+    final bytes = res.body as List<int>;
 
     // 3) Guardar en carpeta destino estándar
     final suggested =
@@ -632,7 +638,7 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int>(
-                    value: _empresaId,
+                    initialValue: _empresaId,
                     isExpanded: true,
                     dropdownColor: theme.cardColor,
                     items: _empresas
@@ -1013,9 +1019,10 @@ class _JobColumnState extends State<_JobColumn> {
                         return const SizedBox.shrink();
                       }
                       return DragTarget<_DragData>(
-                        onWillAccept: (_) => true,
+                        onWillAcceptWithDetails: (_) => true,
                         onLeave: (_) {},
-                        onAccept: (d) async {
+                        onAcceptWithDetails: (details) async {
+                          final d = details.data;
                           // Si cae en el mismo grupo, no hacemos nada
                           if (widget.jobId == d.sourceJobId) return;
 

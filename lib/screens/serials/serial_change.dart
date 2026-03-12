@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../../api_client.dart';
@@ -54,6 +55,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   bool _configLocked = false;
 
   // Focus nodes to support scanner/tab flow
+  final FocusNode _orderFocus = FocusNode();
   final FocusNode _boxNumberFocus = FocusNode();
   final FocusNode _boxUnitsFocus = FocusNode();
   // Timer for active box stopwatch
@@ -108,6 +110,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     _startSeqController.dispose();
     _boxNumberController.dispose();
     _boxUnitsController.dispose();
+    _orderFocus.dispose();
     _boxNumberFocus.dispose();
     _boxUnitsFocus.dispose();
     _typeSearchController.dispose();
@@ -172,8 +175,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => _operatorsError = 'Error cargando operadores: $e');
+      }
     } finally {
       if (mounted) setState(() => _operatorsLoading = false);
     }
@@ -230,6 +234,257 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     if (body is List) return body;
     if (body is Map && body['results'] is List) return body['results'] as List;
     return const [];
+  }
+
+  String? _boxFromRecord(Map<String, dynamic> record) {
+    final raw = record['nr_box'] ?? record['nrCaja'] ?? record['box'];
+    final text = raw?.toString().trim();
+    return (text == null || text.isEmpty) ? null : text;
+  }
+
+  int? _boxUnitsFromRecord(Map<String, dynamic> record) {
+    final raw =
+        record['nr_unidades_box'] ?? record['nr_unidades'] ?? record['units'];
+    final units = int.tryParse(raw?.toString() ?? '');
+    return (units != null && units > 0) ? units : null;
+  }
+
+  DateTime? _parseDate(dynamic raw) {
+    if (raw == null) return null;
+    try {
+      final text = raw.toString();
+      final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(text);
+      if (match != null) {
+        final year = int.parse(match.group(1)!);
+        final month = int.parse(match.group(2)!);
+        final day = int.parse(match.group(3)!);
+        return DateTime(year, month, day);
+      }
+      final parsed = DateTime.parse(text);
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime? _extractDateFromSerial(String? serial) {
+    if (serial == null || serial.length < 8) return null;
+    // Check if starts with YYYYMMDD
+    final match = RegExp(r'^(\d{4})(\d{2})(\d{2})').firstMatch(serial);
+    if (match != null) {
+      try {
+        final y = int.parse(match.group(1)!);
+        final m = int.parse(match.group(2)!);
+        final d = int.parse(match.group(3)!);
+        // Basic validation
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          return DateTime(y, m, d);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  DateTime? _recordDate(Map<String, dynamic> record) {
+    final raw =
+        record['fecha_finalizacion'] ??
+        record['fecha'] ??
+        record['fecha_creacion'] ??
+        record['created_at'] ??
+        record['createdAt'];
+    return _parseDate(raw);
+  }
+
+  DateTime? _getProductionDate(Map<String, dynamic> record) {
+    // 1. Try to extract from the label string itself (most reliable for "same label date")
+    final sn =
+        (record['serial_new'] ??
+                record['serial_new_label'] ??
+                record['label_new'])
+            ?.toString();
+    final fromSerial = _extractDateFromSerial(sn);
+    if (fromSerial != null) return fromSerial;
+
+    // 2. Try the explicit 'fecha' field (production date)
+    final fromFecha = _parseDate(record['fecha']);
+    if (fromFecha != null) return fromFecha;
+
+    // 3. Fallback to record creation/scan date
+    return _recordDate(record);
+  }
+
+  DateTime? _latestProductionDate(List<Map<String, dynamic>> records) {
+    DateTime? latest;
+    for (final record in records) {
+      final date = _getProductionDate(record);
+      if (date == null) continue;
+      // We want the LATEST date found (assuming user wants to match the most recent batch)
+      // Or do we want the common date? Usually for Resume, if they are all from same order,
+      // they should have same date. If mixed, taking latest is safer than earliest?
+      // Actually, if we are resuming an order from yesterday, and we find records from yesterday,
+      // we want yesterday. If we find records from TODAY (which shouldn't happen unless we already started today),
+      // then likely we continue with today.
+      if (latest == null || date.isAfter(latest)) {
+        latest = date;
+      }
+    }
+    return latest;
+  }
+
+  Map<String, dynamic> _pickLastBoxInfo(List<Map<String, dynamic>> records) {
+    String? lastBox;
+    DateTime? lastDate;
+    int? lastId;
+
+    for (final record in records) {
+      final box = _boxFromRecord(record);
+      if (box == null) continue;
+
+      final date = _recordDate(record);
+      final id = int.tryParse(record['id']?.toString() ?? '');
+
+      final isLater = () {
+        if (date != null) {
+          if (lastDate == null) return true;
+          return date.isAfter(lastDate);
+        }
+        if (lastDate == null && id != null) {
+          if (lastId == null) return true;
+          return id > lastId;
+        }
+        return false;
+      }();
+
+      if (isLater) {
+        lastBox = box;
+        lastDate = date ?? lastDate;
+        lastId = id ?? lastId;
+      }
+    }
+
+    int? lastUnits;
+    if (lastBox != null) {
+      for (final record in records) {
+        final box = _boxFromRecord(record);
+        if (box != lastBox) continue;
+        lastUnits = _boxUnitsFromRecord(record);
+        if (lastUnits != null) break;
+      }
+    }
+
+    return {'box': lastBox, 'units': lastUnits};
+  }
+
+  String? _vodafoneMonthLetter(DateTime date) {
+    switch (date.month) {
+      case 1:
+        return 'E';
+      case 2:
+        return 'F';
+      case 3:
+        return 'M';
+      case 4:
+        return 'A';
+      case 5:
+        return 'Y';
+      case 6:
+        return 'J';
+      case 7:
+        return 'L';
+      case 8:
+        return 'A';
+      case 9:
+        return 'S';
+      case 10:
+        return 'O';
+      case 11:
+        return 'N';
+      case 12:
+        return 'D';
+    }
+    return null;
+  }
+
+  Map<String, int?> _sequenceBounds(
+    List<Map<String, dynamic>> records, {
+    String? operatorName,
+    String? sapClient,
+  }) {
+    int? minSeq;
+    int? maxSeq;
+    int? minSuffix;
+    int? maxSuffix;
+    bool foundVodafoneSeq = false;
+    final isVodafone =
+        operatorName != null &&
+        operatorName.trim().toLowerCase().contains('vodafone');
+    final sap = sapClient?.trim() ?? '';
+
+    for (final record in records) {
+      final seq = int.tryParse(record['inicio']?.toString() ?? '');
+      if (!isVodafone && seq != null && seq > 0) {
+        if (minSeq == null || seq < minSeq) minSeq = seq;
+        if (maxSeq == null || seq > maxSeq) maxSeq = seq;
+      }
+
+      final sn =
+          (record['serial_new'] ??
+                  record['serial_new_label'] ??
+                  record['label_new'])
+              ?.toString();
+      if (sn != null && sn.isNotEmpty) {
+        int? extracted;
+        if (isVodafone) {
+          final d = _getProductionDate(record);
+          if (d != null) {
+            final yearDigit = d.year % 10;
+            final monthLetter = _vodafoneMonthLetter(d);
+            final dayText = d.day.toString().padLeft(2, '0');
+            if (sap.isNotEmpty && monthLetter != null) {
+              final prefix = '$sap$yearDigit$monthLetter$dayText';
+              if (sn.startsWith(prefix) && sn.length > prefix.length) {
+                final seqPart = sn.substring(prefix.length);
+                extracted = int.tryParse(seqPart);
+                if (extracted != null && extracted > 0) {
+                  foundVodafoneSeq = true;
+                }
+              }
+            }
+            if (extracted == null) {
+              final trailing = RegExp(r'(\d+)$').firstMatch(sn)?.group(1);
+              if (trailing != null && trailing.length > dayText.length) {
+                if (trailing.startsWith(dayText)) {
+                  final seqPart = trailing.substring(dayText.length);
+                  extracted = int.tryParse(seqPart);
+                  if (extracted != null && extracted > 0) {
+                    foundVodafoneSeq = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+        extracted ??= int.tryParse(
+          RegExp(r'(\d+)$').firstMatch(sn)?.group(1) ?? '',
+        );
+        if (extracted != null && extracted > 0) {
+          if (minSuffix == null || extracted < minSuffix) {
+            minSuffix = extracted;
+          }
+          if (maxSuffix == null || extracted > maxSuffix) {
+            maxSuffix = extracted;
+          }
+        }
+      }
+    }
+
+    if (isVodafone &&
+        foundVodafoneSeq &&
+        (minSuffix != null || maxSuffix != null)) {
+      return {'min': minSuffix, 'max': maxSuffix};
+    }
+
+    return {'min': minSeq ?? minSuffix, 'max': maxSeq ?? maxSuffix};
   }
 
   /// Fetch serial-change rows for a given order using a no-limit endpoint when available.
@@ -434,15 +689,15 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     if (manualIp != null) {
       result['printer_ip'] = manualIp;
     } else if (selectedPrinter != null) {
-      if (selectedPrinter!['id_printer'] != null)
+      if (selectedPrinter!['id_printer'] != null) {
         result['printer_id'] = selectedPrinter!['id_printer'];
-      else if (selectedPrinter!['ip_address'] != null)
+      } else if (selectedPrinter!['ip_address'] != null)
         result['printer_ip'] = selectedPrinter!['ip_address'];
     } else if (printers.isNotEmpty) {
       final first = printers.first;
-      if (first['id_printer'] != null)
+      if (first['id_printer'] != null) {
         result['printer_id'] = first['id_printer'];
-      else if (first['ip_address'] != null)
+      } else if (first['ip_address'] != null)
         result['printer_ip'] = first['ip_address'];
     } else {
       throw Exception('No printer selected or provided');
@@ -494,8 +749,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       if (res.ok) {
         final body = res.body;
         String msg = 'Impresión enviada';
-        if (body is Map && body['printed'] != null)
+        if (body is Map && body['printed'] != null) {
           msg = 'Impresos: ${body['printed']}';
+        }
         scaffoldMessenger.showSnackBar(SnackBar(content: Text(msg)));
       } else {
         final error = res.body is Map
@@ -542,8 +798,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       if (res.ok) {
         final body = res.body;
         String msg = 'Impresión enviada';
-        if (body is Map && body['printed'] != null)
+        if (body is Map && body['printed'] != null) {
           msg = 'Impresos: ${body['printed']}';
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(msg)));
@@ -556,10 +813,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         ).showSnackBar(SnackBar(content: Text('Error imprimiendo: $error')));
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error impresión: $e')));
+      }
     }
   }
 
@@ -600,10 +858,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     } catch (_) {}
     if (res != true) return;
     if (newVal.isEmpty) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('S/N no puede estar vacío')),
         );
+      }
       return;
     }
     try {
@@ -646,10 +905,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         ).showSnackBar(SnackBar(content: Text('Error actualizando: $err')));
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error actualizando S/N: $e')));
+      }
     }
   }
 
@@ -686,7 +946,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                 .toList();
             // Debug: surface server count so we can confirm the resume endpoint returned records
             if (kDebugMode) {
-              if (mounted)
+              if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -695,6 +955,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                     duration: const Duration(seconds: 2),
                   ),
                 );
+              }
             }
             final existing = list.length;
             if (existing > 0 && existing < totalUnits) {
@@ -720,8 +981,6 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               if (resume == true) {
                 // Best-effort: reconstruct consumed labels and pending labels
                 final serverNew = <String>[];
-                String? lastBox;
-                int? lastBoxUnits;
                 for (final m in list) {
                   try {
                     final snNew =
@@ -730,26 +989,55 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                 m['label_new'])
                             ?.toString();
                     if (snNew != null && snNew.isNotEmpty) serverNew.add(snNew);
-                    if (lastBox == null &&
-                        (m['nr_box'] ?? m['nrCaja'] ?? m['box']) != null)
-                      lastBox = (m['nr_box'] ?? m['nrCaja'] ?? m['box'])
-                          .toString();
-                    if (lastBoxUnits == null &&
-                        (m['nr_unidades_box'] ??
-                                m['nr_unidades'] ??
-                                m['nr_unidades_box']) !=
-                            null) {
-                      try {
-                        lastBoxUnits = int.tryParse(
-                          (m['nr_unidades_box'] ??
-                                  m['nr_unidades'] ??
-                                  m['nr_unidades_box'])
-                              .toString(),
-                        );
-                      } catch (_) {}
-                    }
                   } catch (_) {}
                 }
+                final latestDate = _latestProductionDate(list);
+                if (latestDate != null) {
+                  _productionDate = latestDate;
+                }
+                final lastBoxInfo = _pickLastBoxInfo(list);
+                final lastBox = lastBoxInfo['box'] as String?;
+                final lastBoxUnits = lastBoxInfo['units'] as int?;
+                final seqBounds = _sequenceBounds(
+                  list,
+                  operatorName: _selectedOperator?.name,
+                  sapClient: _selectedType?.sapClient,
+                );
+                final startSequenceForGeneration = seqBounds['min'] ?? 1;
+                final lastUsedSeq = seqBounds['max'];
+                final recordsInLastBox = lastBox == null
+                    ? const <Map<String, dynamic>>[]
+                    : list
+                          .where(
+                            (m) =>
+                                (m['nr_box'] ?? m['nrCaja'] ?? m['box'])
+                                    ?.toString() ==
+                                lastBox,
+                          )
+                          .toList();
+                final registeredInLastBox = recordsInLastBox.length;
+                final shouldResume =
+                    lastBox != null &&
+                    (lastBoxUnits == null ||
+                        registeredInLastBox < lastBoxUnits);
+                final lastBoxLabels = shouldResume
+                    ? recordsInLastBox
+                          .map(
+                            (m) =>
+                                (m['serial_new'] ??
+                                        m['serial_new_label'] ??
+                                        m['label_new'])
+                                    ?.toString(),
+                          )
+                          .where((s) => s != null && s.isNotEmpty)
+                          .cast<String>()
+                          .toList()
+                    : const <String>[];
+                final consumedLabels = shouldResume
+                    ? serverNew
+                          .where((s) => !lastBoxLabels.contains(s))
+                          .toList()
+                    : serverNew;
                 // Generate labels locally so we can compute pending labels and box labels
                 final labels = await Future<List<String>>(
                   () => LocalLabelGenerator.generate(
@@ -759,19 +1047,21 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                     article: _selectedType!.article,
                     sapClient: _selectedType!.sapClient,
                     codeLetter: _selectedType!.codeLetter,
-                    startSequence: _continueSequence
-                        ? (int.tryParse(_startSeqController.text.trim()) ?? 1)
-                        : 1,
+                    startSequence: startSequenceForGeneration,
                   ),
                 );
                 if (!mounted) return;
+                if (lastUsedSeq != null) {
+                  _startSeqController.text = (lastUsedSeq + 1).toString();
+                  _continueSequence = true;
+                }
                 // Mark consumed labels and set pending labels
                 setState(() {
                   _configLocked = true;
                   _consumedLabels.clear();
-                  _consumedLabels.addAll(serverNew);
+                  _consumedLabels.addAll(consumedLabels);
                   _pendingLabels = labels
-                      .where((l) => !serverNew.contains(l))
+                      .where((l) => !consumedLabels.contains(l))
                       .toList();
                   _history.clear();
                 });
@@ -780,68 +1070,61 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                 if (lastBox != null) {
                   final lastBoxNumber = lastBox;
                   _boxNumberController.text = lastBoxNumber;
-                  // If we know the box units, and the server registered less than that, open the box session
                   if (lastBoxUnits != null) {
-                    final registeredInLastBox = list
-                        .where(
-                          (m) =>
-                              (m['nr_box'] ?? m['nrCaja'] ?? m['box'])
-                                  ?.toString() ==
-                              lastBoxNumber,
-                        )
-                        .length;
-                    if (registeredInLastBox < lastBoxUnits) {
-                      // Build a new _BoxSession for this box and mark already registered entries
-                      final startIndex = labels.indexWhere(
-                        (l) => !_consumedLabels.contains(l),
-                      );
-                      final boxUnits = lastBoxUnits;
-                      final boxLabels = <String>[];
-                      if (startIndex >= 0) {
-                        final end = (startIndex + boxUnits) <= labels.length
-                            ? (startIndex + boxUnits)
-                            : labels.length;
-                        boxLabels.addAll(labels.sublist(startIndex, end));
-                      } else {
-                        // fallback: take next boxUnits from pending labels
-                        boxLabels.addAll(_pendingLabels.take(boxUnits));
-                      }
-                      setState(() {
-                        _activeBox?.dispose();
-                        _activeBox = _BoxSession(
-                          boxNumber: lastBoxNumber,
-                          units: boxUnits,
-                          labels: boxLabels,
-                        );
-                        _activeBox!.startTime = DateTime.now();
-                        // prefill controllers for entries that are already registered by matching serial_old
-                        for (final entry in _activeBox!.entries) {
-                          // try to find server record that maps to this label
-                          final found = list.firstWhere(
-                            (m) =>
-                                (m['serial_new']?.toString() ?? '') ==
-                                entry.label,
-                            orElse: () => {} as Map<String, dynamic>,
-                          );
-                          if (found.isNotEmpty) {
-                            entry.controller.text =
-                                (found['serial_old'] ??
-                                        found['serial_old_value'] ??
-                                        '')
-                                    .toString();
-                            entry.registered = true;
-                            entry.isValid = true;
-                            try {
-                              entry.registryId = (found['id'] is num)
-                                  ? (found['id'] as num).toInt()
-                                  : null;
-                            } catch (_) {}
-                          }
-                        }
-                      });
+                    _boxUnitsController.text = lastBoxUnits.toString();
+                  }
+                  if (shouldResume) {
+                    // Build a new _BoxSession for this box and mark already registered entries
+                    final startIndex = labels.indexWhere(
+                      (l) => !_consumedLabels.contains(l),
+                    );
+                    final fallbackUnits = registeredInLastBox > 0
+                        ? registeredInLastBox
+                        : 1;
+                    final boxUnits = lastBoxUnits ?? fallbackUnits;
+                    final boxLabels = <String>[];
+                    if (startIndex >= 0) {
+                      final end = (startIndex + boxUnits) <= labels.length
+                          ? (startIndex + boxUnits)
+                          : labels.length;
+                      boxLabels.addAll(labels.sublist(startIndex, end));
+                    } else {
+                      // fallback: take next boxUnits from pending labels
+                      boxLabels.addAll(_pendingLabels.take(boxUnits));
                     }
-                  } else {
-                    _boxNumberController.text = lastBoxNumber;
+                    setState(() {
+                      _activeBox?.dispose();
+                      _activeBox = _BoxSession(
+                        boxNumber: lastBoxNumber,
+                        units: boxUnits,
+                        labels: boxLabels,
+                      );
+                      _activeBox!.startTime = DateTime.now();
+                      // prefill controllers for entries that are already registered by matching serial_old
+                      for (final entry in _activeBox!.entries) {
+                        // try to find server record that maps to this label
+                        final found = list.firstWhere(
+                          (m) =>
+                              (m['serial_new']?.toString() ?? '') ==
+                              entry.label,
+                          orElse: () => {} as Map<String, dynamic>,
+                        );
+                        if (found.isNotEmpty) {
+                          entry.controller.text =
+                              (found['serial_old'] ??
+                                      found['serial_old_value'] ??
+                                      '')
+                                  .toString();
+                          entry.registered = true;
+                          entry.isValid = true;
+                          try {
+                            entry.registryId = (found['id'] is num)
+                                ? (found['id'] as num).toInt()
+                                : null;
+                          } catch (_) {}
+                        }
+                      }
+                    });
                   }
                 }
                 // Focus UX: land on first unregistered entry if activeBox is open
@@ -855,8 +1138,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                       break;
                     }
                   }
-                  if (next != null)
+                  if (next != null) {
                     FocusScope.of(context).requestFocus(next.focusNode);
+                  }
                 }
                 // We finished the resume flow; stop prepareLabels early.
                 return;
@@ -986,11 +1270,18 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         _activeBox = null;
         _history.clear();
         _consumedLabels.clear();
-        _boxNumberController.text = '1';
+        _boxNumberController.clear();
         _boxUnitsController.clear();
       });
       // Ask for EAN and an example original S/N to derive mask length before starting step 3
       await _askEanAndOriginalExample();
+
+      if (mounted) {
+        _boxNumberController.clear();
+        _boxUnitsController.clear();
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) _boxNumberFocus.requestFocus();
+      }
       // Send generation audit to backend (non-blocking for the user flow)
       try {
         final client2 = _clientOrNull();
@@ -1020,8 +1311,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => _generationError = 'Error generando etiquetas: $e');
+      }
     } finally {
       if (mounted) setState(() => _generatingLabels = false);
     }
@@ -1053,7 +1345,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       final first = list.first as Map;
       final dbUnits =
           int.tryParse((first['nr_unidades'] ?? '').toString()) ?? 0;
-      final dbSku = (first['nr_sku'] ?? '').toString();
+      final dbSku = (first['nr_sku'] ?? first['sku'] ?? first['csku'] ?? '')
+          .toString();
       final dbTypeId = int.tryParse(
         (first['tipo_etiqueta_id'] ?? '').toString(),
       );
@@ -1061,10 +1354,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       final dbOperator = (first['operador'] ?? '').toString();
       final dbEan = (first['ean'] ?? '').toString();
       // Iterate to find:
-      // 1. Earliest start sequence (to cover the whole range)
-      // 2. Latest date (to resume with the most recent production date)
+      // 1. Last used sequence (to continue from the latest registry)
+      // 2. Earliest date (to resume with the original production date)
       // 3. Mask length from the very first registry (lowest ID)
-      int? minStartSeq;
+      int? maxStartSeq;
+      int? maxSerialSuffix;
       DateTime? minDate;
       int? minIdForMask;
       int? maskLength;
@@ -1075,42 +1369,30 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         // Sequence
         final seq = int.tryParse((m['inicio'] ?? '').toString());
         if (seq != null && seq > 0) {
-          if (minStartSeq == null || seq < minStartSeq) {
-            minStartSeq = seq;
+          if (maxStartSeq == null || seq > maxStartSeq) {
+            maxStartSeq = seq;
           }
         }
 
-        // Date
-        final dStr =
-            (m['fecha'] ??
-                    m['fecha_creacion'] ??
-                    m['created_at'] ??
-                    m['createdAt'] ??
-                    '')
-                .toString();
-        if (dStr.isNotEmpty) {
-          try {
-            final d = DateTime.parse(dStr);
-            if (minDate == null || d.isBefore(minDate)) {
-              minDate = d;
-            }
-          } catch (_) {}
+        // Date (Production Date)
+        final d = _getProductionDate(m.cast<String, dynamic>());
+        if (d != null) {
+          if (minDate == null || d.isBefore(minDate)) {
+            minDate = d;
+          }
         }
 
-        // Try to extract sequence from serial_new if inicio is missing
-        if (seq == null || seq <= 0) {
-          final sn =
-              (m['serial_new'] ?? m['serial_new_label'] ?? m['label_new'])
-                  ?.toString();
-          if (sn != null && sn.isNotEmpty) {
-            // Look for trailing digits
-            final match = RegExp(r'(\d+)$').firstMatch(sn);
-            if (match != null) {
-              final extracted = int.tryParse(match.group(1)!);
-              if (extracted != null && extracted > 0) {
-                if (minStartSeq == null || extracted < minStartSeq) {
-                  minStartSeq = extracted;
-                }
+        // Try to extract sequence from serial_new suffix (always, regardless of inicio)
+        final sn = (m['serial_new'] ?? m['serial_new_label'] ?? m['label_new'])
+            ?.toString();
+        if (sn != null && sn.isNotEmpty) {
+          // Look for trailing digits
+          final match = RegExp(r'(\d+)$').firstMatch(sn);
+          if (match != null) {
+            final extracted = int.tryParse(match.group(1)!);
+            if (extracted != null && extracted > 0) {
+              if (maxSerialSuffix == null || extracted > maxSerialSuffix) {
+                maxSerialSuffix = extracted;
               }
             }
           }
@@ -1147,12 +1429,6 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       // Autofill EAN if available (always prefer server value on resume)
       if (dbEan.isNotEmpty) {
         _ean = dbEan;
-      }
-
-      // Restore sequence (earliest)
-      if (minStartSeq != null) {
-        _startSeqController.text = minStartSeq.toString();
-        _continueSequence = true;
       }
 
       // Restore date (earliest)
@@ -1300,6 +1576,19 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         selectionError = 'Operador "$dbOperator" no encontrado.';
       }
 
+      // Restore sequence (continue from last used + 1), but generate labels from earliest
+      final seqBounds = _sequenceBounds(
+        list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList(),
+        operatorName: _selectedOperator?.name ?? dbOperator,
+        sapClient: _selectedType?.sapClient,
+      );
+      final lastUsedSeq = seqBounds['max'];
+      if (lastUsedSeq != null) {
+        _startSeqController.text = (lastUsedSeq + 1).toString();
+        _continueSequence = true;
+      }
+      final startSequenceForGeneration = seqBounds['min'] ?? 1;
+
       if (!mounted) return;
       final proceed = await showDialog<bool>(
         context: context,
@@ -1351,34 +1640,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
           name: 'SerialChange._checkOrderResume',
         );
       } catch (_) {}
-      String? lastBox;
-      int? lastBoxUnits;
-
-      // Find the last box number and its units
-      // We need to iterate all records to find the one with the highest box number
-      int maxBoxNum = 0;
-
-      for (final m in allServerRecords) {
-        final boxVal = (m['nr_box'] ?? m['nrCaja'] ?? m['box'])
-            ?.toString()
-            .trim();
-        if (boxVal != null) {
-          final bInt = int.tryParse(boxVal);
-          if (bInt != null && bInt > maxBoxNum) {
-            maxBoxNum = bInt;
-            lastBox = boxVal;
-            // Update units for this box if available
-            final uVal =
-                (m['nr_unidades_box'] ??
-                        m['nr_unidades'] ??
-                        m['nr_unidades_box'])
-                    ?.toString();
-            if (uVal != null) {
-              lastBoxUnits = int.tryParse(uVal);
-            }
-          }
-        }
-      }
+      final lastBoxInfo = _pickLastBoxInfo(allServerRecords);
+      final lastBox = lastBoxInfo['box'] as String?;
+      final lastBoxUnits = lastBoxInfo['units'] as int?;
 
       // Generate labels locally
       if (_selectedOperator == null || _selectedType == null) {
@@ -1413,9 +1677,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
             article: _selectedType!.article,
             sapClient: _selectedType!.sapClient,
             codeLetter: _selectedType!.codeLetter,
-            startSequence: _continueSequence
-                ? (int.tryParse(_startSeqController.text.trim()) ?? 1)
-                : 1,
+            startSequence: startSequenceForGeneration,
           ),
         );
         if (!mounted) return;
@@ -1425,7 +1687,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         List<Map<String, dynamic>> activeBoxRecords = [];
         List<String> consumedLabelsList = [];
 
-        if (lastBox != null && lastBoxUnits != null) {
+        if (lastBox != null) {
           final recordsInLastBox = allServerRecords
               .where(
                 (m) =>
@@ -1435,7 +1697,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                     lastBox,
               )
               .toList();
-          if (recordsInLastBox.length < lastBoxUnits) {
+          if (lastBoxUnits == null || recordsInLastBox.length < lastBoxUnits) {
             resumeBox = true;
             activeBoxRecords = recordsInLastBox;
             try {
@@ -1534,16 +1796,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
             // Determine submission date (latest in box)
             DateTime? submitted;
             for (final r in records) {
-              final dStr =
-                  (r['fecha_finalizacion'] ?? r['fecha'] ?? r['fecha_creacion'])
-                      ?.toString();
-              if (dStr != null) {
-                try {
-                  final d = DateTime.parse(dStr);
-                  if (submitted == null || d.isAfter(submitted)) {
-                    submitted = d;
-                  }
-                } catch (_) {}
+              final d = _recordDate(r);
+              if (d != null) {
+                if (submitted == null || d.isAfter(submitted)) {
+                  submitted = d;
+                }
               }
             }
             submitted ??= DateTime.now();
@@ -1572,11 +1829,14 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
             );
           }
 
-          if (resumeBox && lastBox != null && lastBoxUnits != null) {
+          if (resumeBox && lastBox != null) {
             // Create active box with ALL labels for that box (registered + unregistered)
             // The start index is simply the number of consumed labels (since we assume sequential filling)
             final startIndex = _consumedLabels.length;
-            final endIndex = startIndex + lastBoxUnits;
+            final boxUnits =
+                lastBoxUnits ??
+                (activeBoxRecords.isNotEmpty ? activeBoxRecords.length : 1);
+            final endIndex = startIndex + boxUnits;
 
             if (startIndex < labels.length) {
               final boxLabels = labels.sublist(
@@ -1587,7 +1847,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               _activeBox?.dispose();
               _activeBox = _BoxSession(
                 boxNumber: lastBox,
-                units: lastBoxUnits,
+                units: boxUnits,
                 labels: boxLabels,
               );
               _activeBox!.startTime = DateTime.now();
@@ -1617,7 +1877,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               }
             }
             _boxNumberController.text = lastBox;
-            _boxUnitsController.text = lastBoxUnits.toString();
+            _boxUnitsController.text = (lastBoxUnits ?? boxUnits).toString();
           } else {
             // No active box, prepare for next
             _activeBox?.dispose();
@@ -1625,10 +1885,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
             // Try to guess next box number
             if (lastBox != null) {
               final lbInt = int.tryParse(lastBox);
-              if (lbInt != null)
+              if (lbInt != null) {
                 _boxNumberController.text = (lbInt + 1).toString();
+              }
             } else {
-              _boxNumberController.text = '1';
+              _boxNumberController.clear();
             }
             // Default units to same as last box if available, or 20
             if (lastBoxUnits != null) {
@@ -1669,6 +1930,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         } else if (_boxNumberController.text.isNotEmpty) {
           // If no active box but we have a number, focus units
           FocusScope.of(context).requestFocus(_boxUnitsFocus);
+        } else {
+          // If no active box and no number, focus box number input
+          FocusScope.of(context).requestFocus(_boxNumberFocus);
         }
       } finally {
         if (mounted) setState(() => _generatingLabels = false);
@@ -1694,6 +1958,16 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       _completionMessage = null;
       _generationError = null;
       _boxError = null;
+
+      // Clear order inputs for fresh start
+      _orderController.clear();
+      _skuController.clear();
+      _unitsController.clear();
+      _startSeqController.text = '1';
+    });
+    // Ensure we start fresh with focus on order number
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _orderFocus.requestFocus();
     });
   }
 
@@ -1701,8 +1975,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    if (h > 0)
+    if (h > 0) {
       return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
@@ -1789,10 +2064,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   Color _entryBackgroundColor(_BoxEntryField entry, ThemeData theme) {
     final txt = entry.controller.text.trim();
     if (entry.registered) return Colors.green.withOpacity(.12);
-    if (txt.isEmpty) return theme.colorScheme.surfaceVariant.withOpacity(.04);
+    if (txt.isEmpty)
+      return theme.colorScheme.surfaceContainerHighest.withOpacity(.04);
     if (entry.isInvalid) return Colors.red.withOpacity(.12);
     if (entry.isValid) return Colors.green.withOpacity(.12);
-    return theme.colorScheme.surfaceVariant.withOpacity(.02);
+    return theme.colorScheme.surfaceContainerHighest.withOpacity(.02);
   }
 
   Future<void> _startBox() async {
@@ -1869,7 +2145,199 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     });
   }
 
+  Future<void> _finalizeOrderAndUpload(String orderNr) async {
+    debugPrint('_finalizeOrderAndUpload called for order: $orderNr');
+
+    // Add a small delay to ensure previous dialogs are fully closed
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted) return;
+
+    // Show Progress Dialog
+    // We do NOT await this because we want to run code while it is open.
+    // However, we capture the future to ensure we can pop it correctly or wait for it if needed?
+    // In this pattern, we just push it and then pop it.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const PopScope(
+        canPop: false,
+        child: Dialog(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 24),
+                Expanded(child: Text('Finalizando orden y subiendo a SFTP...')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Perform check
+    bool verified = false;
+    String? errorMsg;
+
+    try {
+      final client = _clientOrNull();
+      // Artificial delay to ensure user sees the progress dialog
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (client != null) {
+        debugPrint(
+          '_finalizeOrderAndUpload: Client OK. Posting finish-order-upload...',
+        );
+        // Trigger
+        final postRes = await client.post(
+          '/serials/finish-order-upload',
+          jsonBody: {'nr_orden': orderNr},
+        );
+
+        if (!postRes.ok) {
+          debugPrint('Upload POST failed: ${postRes.statusCode}');
+          // We continue to check anyway? Or fail?
+          // Usually if POST fails, the file might not be there.
+          // But let's let the loop check explicitly.
+        }
+
+        // Loop check
+        final encFilename = Uri.encodeQueryComponent('$orderNr.xlsx');
+        for (int i = 0; i < 5; i++) {
+          debugPrint('_finalizeOrderAndUpload: Check Attempt ${i + 1}');
+          await Future.delayed(const Duration(seconds: 2));
+          try {
+            final res = await client.get(
+              '/serials/check-sftp?filename=$encFilename',
+            );
+            if (res.ok) {
+              debugPrint('_finalizeOrderAndUpload: Verified OK');
+              verified = true;
+              break;
+            } else {
+              debugPrint(
+                '_finalizeOrderAndUpload: Check failed ${res.statusCode}',
+              );
+            }
+          } catch (e) {
+            debugPrint('_finalizeOrderAndUpload: Check exception $e');
+          }
+        }
+      } else {
+        debugPrint('_finalizeOrderAndUpload: Client is NULL');
+        errorMsg = 'API Client no disponible';
+      }
+    } catch (e) {
+      debugPrint('_finalizeOrderAndUpload: Exception $e');
+      errorMsg = e.toString();
+    }
+
+    // Close Progress Dialog
+    if (mounted) {
+      // Ensure we are popping the dialog we showed
+      Navigator.of(context).pop();
+    }
+
+    // Show Result Dialog
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(verified ? 'SUBIDA SFTP COMPLETADA' : 'AVISO SFTP'),
+        content: Row(
+          children: [
+            Icon(
+              verified ? Icons.check_circle : Icons.warning_amber_rounded,
+              color: verified ? Colors.green : Colors.orange,
+              size: 32,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                verified
+                    ? 'La orden se ha finalizado y el archivo Excel se ha subido correctamente al SFTP.'
+                    : 'No se pudo verificar el archivo en el SFTP.\n${errorMsg ?? "Intentos agotados."}',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+    debugPrint('_finalizeOrderAndUpload: completed');
+  }
+
+  Future<bool> _checkAndTriggerCompletion() async {
+    if (!mounted) return false;
+    final orderNr = _orderController.text.trim();
+    if (orderNr.isEmpty) return false;
+
+    try {
+      final client = _clientOrNull();
+      if (client == null) return false;
+
+      // Call the new endpoint
+      final res = await client.get(
+        '/serials/order-completion?num_orden=$orderNr',
+      );
+
+      bool isComplete = false;
+      if (res.ok) {
+        if (res.body is Map) {
+          final m = res.body as Map;
+          if (m['is_complete'] == true ||
+              m['complete'] == true ||
+              m['completed'] == true ||
+              m['status'] == 'completed') {
+            isComplete = true;
+          }
+        } else if (res.body.toString().toLowerCase() == 'true') {
+          isComplete = true;
+        }
+      }
+
+      if (isComplete) {
+        await _finalizeOrderAndUpload(orderNr);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error checking order completion: $e');
+    }
+    return false;
+  }
+
   Future<void> _submitBox() async {
+    // 1. Connectivity Check
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Sin conexión'),
+          content: const Text(
+            'No hay conexión a internet. No se puede registrar la caja.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Aceptar'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     final box = _activeBox;
     if (box == null) return;
     // Ensure all serial fields are filled. If any are empty, block submission.
@@ -1880,6 +2348,26 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       setState(() => _boxError = 'Completa todos los S/N antes de registrar.');
       return;
     }
+
+    // 2. Serial Length Validation
+    if (entriesToSubmit.isNotEmpty) {
+      final firstToken = entriesToSubmit.first.controller.text.trim();
+      final expectedLength = _originalSerialMaskLength ?? firstToken.length;
+
+      for (final entry in entriesToSubmit) {
+        final s = entry.controller.text.trim();
+        if (s.length != expectedLength) {
+          setState(
+            () => _boxError =
+                'Longitud inválida: "$s" tiene ${s.length} caracteres (se esperaban $expectedLength).',
+          );
+          // Opt: Focus the invalid one
+          FocusScope.of(context).requestFocus(entry.focusNode);
+          return;
+        }
+      }
+    }
+
     final client = _clientOrNull();
     if (client == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2089,8 +2577,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Caja ${box.boxNumber} registrada.')),
         );
-        SoundPlayer.playCloseBox();
         // After successful registration, persist individual serial mappings to backend via add_registry endpoint.
+        SoundPlayer.playCloseBox();
+
         try {
           final client2 = _clientOrNull();
           if (client2 != null) {
@@ -2165,6 +2654,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         } catch (_) {
           // ignore auditing errors
         }
+
         // After auditing, print one label per box (ask for printer)
         try {
           final newSerials = box.labels;
@@ -2173,11 +2663,16 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               .toList();
           await _printForBox(box.boxNumber, newSerials, oldSerials, box.units);
         } catch (_) {
-          // ignore print errors here; user will see snackbars from _printForBox
+          // ignore print errors
         }
-        // If we've completed the planned amount, offer to print a final label, then reset workflow
-        if (_consumedLabels.length >= _plannedUnits) {
+
+        // 3. Check backend completion
+        if (await _checkAndTriggerCompletion()) {
+          // debugPrint('Completion condition MET.');
+
           if (!mounted) return;
+
+          // Offer to print final label
           final doPrint = await showDialog<bool>(
             context: context,
             builder: (dctx) => AlertDialog(
@@ -2197,30 +2692,22 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               ],
             ),
           );
+          // debugPrint(
+          //   'DEBUG: (_submitBox) Print dialog closed. doPrint=$doPrint',
+          // );
           if (doPrint == true) {
-            await _printFinalLabel();
-          }
-
-          // Trigger SFTP upload of the finished order
-          try {
-            final uClient = _clientOrNull();
-            if (uClient != null) {
-              final uRes = await uClient.post(
-                '/serials/finish-order-upload',
-                jsonBody: {'nr_orden': _orderController.text.trim()},
-              );
-              if (mounted && !uRes.ok) {
+            try {
+              // debugPrint('Calling _printFinalLabel...');
+              await _printFinalLabel();
+              // debugPrint('_printFinalLabel completed.');
+            } catch (e) {
+              debugPrint('Error in _printFinalLabel: $e');
+              if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Error enviando archivo SFTP: ${uRes.statusCode}',
-                    ),
-                  ),
+                  SnackBar(content: Text('Error imprimiendo: $e')),
                 );
               }
             }
-          } catch (e) {
-            debugPrint('Error triggering order upload: $e');
           }
 
           if (!mounted) return;
@@ -2239,7 +2726,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               ],
             ),
           );
+
           if (!mounted) return;
+          // debugPrint('DEBUG: (_submitBox) Reset dialog closed.');
+          // debugPrint('DEBUG: (_submitBox) Resetting workflow...');
           _resetWorkflow();
         }
       } else {
@@ -2271,7 +2761,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       prefixIcon: Icon(icon, color: colorScheme.primary),
       filled: true,
       enabled: enabled,
-      fillColor: colorScheme.surfaceVariant.withOpacity(.98),
+      fillColor: colorScheme.surfaceContainerHighest.withOpacity(.98),
       contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -2392,6 +2882,89 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     );
   }
 
+  Future<void> _confirmEraseLabelType() async {
+    final client = _clientOrNull();
+    if (client == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Servicio API no disponible')),
+      );
+      return;
+    }
+
+    if (_selectedType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona un tipo para borrar.')),
+      );
+      return;
+    }
+
+    final type = _selectedType!;
+    final operatorName = _selectedOperator?.name ?? '';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar borrado'),
+        content: Text(
+          '¿Seguro que quieres borrar el tipo "${type.displayName}" para $operatorName?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      // Construct payload
+      final payload = <String, dynamic>{
+        'operador': operatorName,
+        'articulo': type.article ?? type.displayName,
+      };
+      if (type.id != null) {
+        payload['tipo_id'] = type.id;
+      }
+
+      final res = await client.post('/serials/labels/erase', jsonBody: payload);
+
+      if (res.ok) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Tipo borrado correctamente.')),
+        );
+        // Reload list
+        if (_selectedOperator != null) {
+          await _loadTypesForOperator(_selectedOperator!);
+        } else {
+          // Fallback if operator somehow lost, though unlikely
+          setState(() {
+            _selectedType = null;
+          });
+        }
+      } else {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Error borrando: ${res.statusCode}')),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
   Widget _buildTypeSelector() {
     if (_selectedOperator == null) {
       return const Text('Selecciona primero un operador.');
@@ -2421,8 +2994,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         ],
       );
     }
-    if (_labelTypes.isEmpty)
+    if (_labelTypes.isEmpty) {
       return const Text('No hay tipos activos para este operador.');
+    }
     final isOrange = _selectedOperator!.name.toLowerCase() == 'orange';
     final isVodafone = _selectedOperator!.name.toLowerCase() == 'vodafone';
 
@@ -2452,6 +3026,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               tooltip: 'Añadir tipo',
               icon: const Icon(Icons.add),
               onPressed: _showAddLabelTypeDialog,
+            ),
+            IconButton(
+              tooltip: 'Borrar tipo seleccionado',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _confirmEraseLabelType,
             ),
           ],
         ),
@@ -2936,7 +3515,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                         builder: (c) => AlertDialog(
                           title: const Text('Longitud inválida'),
                           content: Text(
-                            'La longitud del S/N debe ser ${_originalSerialMaskLength} caracteres.',
+                            'La longitud del S/N debe ser $_originalSerialMaskLength caracteres.',
                           ),
                           actions: [
                             FilledButton(
@@ -3008,6 +3587,68 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
 
                     // success: play success sound then register this S/N immediately
                     SoundPlayer.playSuccess();
+
+                    // Check if we are updating an existing registry or creating a new one
+                    if (entry.registered && entry.registryId != null) {
+                      // UPDATE EXISTING REGISTRY
+                      try {
+                        final client2 = _clientOrNull();
+                        if (client2 == null) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Servicio API no disponible'),
+                            ),
+                          );
+                          if (!mounted) return;
+                          FocusScope.of(context).requestFocus(entry.focusNode);
+                          return;
+                        }
+
+                        final id = entry.registryId!;
+                        final payload = <String, dynamic>{
+                          'serial_old': entry.controller.text.trim(),
+                        };
+
+                        final resp = await client2.put(
+                          '/serials/serial-changes/$id',
+                          jsonBody: payload,
+                        );
+
+                        if (resp.ok) {
+                          // update registeredMappings
+                          final newVal = entry.controller.text.trim();
+                          for (final m in _registeredMappings) {
+                            if (m['id'] == id) {
+                              m['old'] = newVal;
+                            }
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('S/N actualizado')),
+                          );
+                          // Do not auto-advance focus on edit; stay here or let user move
+                        } else {
+                          final err = resp.body is Map
+                              ? (resp.body['error']?.toString() ??
+                                    resp.error ??
+                                    'Error')
+                              : (resp.error ?? 'Error');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error actualizando: $err')),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error actualizando S/N: $e'),
+                            ),
+                          );
+                        }
+                      }
+                      return;
+                    }
+
                     // Attempt to register this single S/N immediately so data is persisted even if the app closes
                     try {
                       final client2 = _clientOrNull();
@@ -3131,6 +3772,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                             if (_consumedLabels.length >= _plannedUnits) {
                               _completionMessage =
                                   'Se registraron todas las $_plannedUnits unidades.';
+                            } else {
+                              // If order not complete, focus on box number for next box
+                              _boxNumberFocus.requestFocus();
                             }
                           });
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -3153,7 +3797,12 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                             );
                           } catch (_) {}
 
-                          if (_consumedLabels.length >= _plannedUnits) {
+                          // Check backend and trigger logic
+                          // debugPrint(
+                          //   'DEBUG: (Single) Calling _checkAndTriggerCompletion...',
+                          // );
+                          if (mounted && await _checkAndTriggerCompletion()) {
+                            // debugPrint('DEBUG: (Single) Completion MET.');
                             if (!mounted) return;
                             final doPrint = await showDialog<bool>(
                               context: context,
@@ -3176,8 +3825,21 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                 ],
                               ),
                             );
+                            // debugPrint(
+                            //   'DEBUG: (Single) Print dialog closed. doPrint=$doPrint',
+                            // );
                             if (doPrint == true) await _printFinalLabel();
-                            if (!mounted) return;
+
+                            if (!mounted) {
+                              // debugPrint(
+                              //   'DEBUG: (Single) Not mounted after print.',
+                              // );
+                              return;
+                            }
+                            // debugPrint(
+                            //   'DEBUG: (Single) Showing reset dialog...',
+                            // );
+
                             await showDialog<void>(
                               context: context,
                               builder: (dctx) => AlertDialog(
@@ -3193,7 +3855,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                 ],
                               ),
                             );
+                            // debugPrint('DEBUG: (Single) Reset dialog closed.');
                             if (!mounted) return;
+                            // debugPrint('DEBUG: (Single) Resetting workflow...');
                             _resetWorkflow();
                           }
                         } else {
@@ -3344,6 +4008,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                 child: EdgeNavHandle(
                   width: 28,
                   user: ApiService.instance?.currentUser,
+                  currentRoute: '/serials/change',
                 ),
               ),
             ),
@@ -3364,7 +4029,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                           gradient: LinearGradient(
                             colors: [
                               theme.colorScheme.surface.withOpacity(.98),
-                              theme.colorScheme.surfaceVariant.withOpacity(.98),
+                              theme.colorScheme.surfaceContainerHighest
+                                  .withOpacity(.98),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
@@ -3422,6 +4088,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                   child: TextFormField(
                                                     controller:
                                                         _orderController,
+                                                    focusNode: _orderFocus,
                                                     enabled: !_configLocked,
                                                     decoration:
                                                         _inputDecoration(
@@ -3447,12 +4114,13 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                       try {
                                                         await _checkOrderResume();
                                                       } finally {
-                                                        if (mounted)
+                                                        if (mounted) {
                                                           setState(
                                                             () =>
                                                                 _checkingOrder =
                                                                     false,
                                                           );
+                                                        }
                                                       }
                                                     },
                                                     validator: (value) {
@@ -3464,10 +4132,14 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                       final pattern = RegExp(
                                                         r'^[A-Z0-9]{2}-[A-Z0-9]{5}-[A-Z0-9]{2}$',
                                                       );
-                                                      if (v.isEmpty)
+                                                      if (v.isEmpty) {
                                                         return 'Introduce el número de orden';
-                                                      if (!pattern.hasMatch(v))
+                                                      }
+                                                      if (!pattern.hasMatch(
+                                                        v,
+                                                      )) {
                                                         return 'Formato requerido: XX-XXXXX-XX';
+                                                      }
                                                       return null;
                                                     },
                                                   ),
@@ -3506,11 +4178,12 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                                   try {
                                                                     await _checkOrderResume();
                                                                   } finally {
-                                                                    if (mounted)
+                                                                    if (mounted) {
                                                                       setState(
                                                                         () => _checkingOrder =
                                                                             false,
                                                                       );
+                                                                    }
                                                                   }
                                                                 },
                                                         ),
@@ -3556,8 +4229,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                   value ?? '',
                                                 );
                                                 if (parsed == null ||
-                                                    parsed <= 0)
+                                                    parsed <= 0) {
                                                   return 'Introduce un entero positivo';
+                                                }
                                                 return null;
                                               },
                                             ),
@@ -3720,7 +4394,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                               ),
                               const SizedBox(height: 12),
                               _buildProgressChips(),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
+
                               Form(
                                 key: _boxFormKey,
                                 child: Wrap(
@@ -3768,10 +4443,12 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                           final parsed = int.tryParse(
                                             value ?? '',
                                           );
-                                          if (parsed == null || parsed <= 0)
+                                          if (parsed == null || parsed <= 0) {
                                             return 'Introduce un número válido';
-                                          if (parsed > _plannedUnits)
+                                          }
+                                          if (parsed > _plannedUnits) {
                                             return 'No puede superar el total planificado';
+                                          }
                                           return null;
                                         },
                                       ),

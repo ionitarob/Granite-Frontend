@@ -1,0 +1,28 @@
+﻿Searching for SKUs in [datapass].[administracion].[cotizaciones] starting with: ['CQ', 'CP', 'CM', 'CL']
+
+--- Results for CQ% ---
+Config=CQ93312, HP=CR04729, Lenovo=CR04842, Desc=ETIQUETA Polopropileno (impresi¾n en Ribbon)
+Config=CQ93248, HP=CR04707, Lenovo=CR04815, Desc=INVENTRIADO de 11 a 50 unidades
+Config=CQ93283, HP=CR04724, Lenovo=CR04809, Desc=INVENTRIADO de 51 a 100 unidades
+Config=CQ93019, HP=CR04743, Lenovo=CR04816, Desc=INVENTRIADO  > 100 unidades
+Config=CQ93313, HP=CR04688, Lenovo=CR04792, Desc=RETRACTILADO FILM TRANSPARENTE de 0 a 5 unidades
+Config=CQ93330, HP=CR04727, Lenovo=CR04844, Desc=RETRACTILADO FILM TRANSPARENTE de 6 a 15 unidades
+Config=CQ93284, HP=CR04740, Lenovo=CR04843, Desc=RETRACTILADO FILM TRANSPARENTE de 16 a 50 unidades
+Config=CQ93321, HP=CR04766, Lenovo=CR04835, Desc=RETRACTILADO FILM TRANSPARENTE  > 101 unidades
+Config=CQ93311, HP=CR04696, Lenovo=CR04797, Desc=Bundelizado caja neutra -- de 11 a 20 unidades
+Config=CQ93314, HP=CR04780, Lenovo=CR04818, Desc=Bundelizado caja neutra -- de 21 a 50 unidades
+
+--- Results for CP% ---
+No matches.
+
+--- Results for CM% ---
+No matches.
+
+--- Results for CL% ---
+Config=CL17059, HP=CR04764, Lenovo=CR04841, Desc=ETIQUETA ESPECIAL Pro AV
+Config=CL51760, HP=CR04746, Lenovo=CR04817, Desc=DESCARGA X PALLET
+Config=CL51763, HP=CR04723, Lenovo=CR04845, Desc=DESCARGA X FULL CASE
+Config=CL51761, HP=CR04765, Lenovo=CR04833, Desc=DECARGA X UNIDAD
+Config=CL51762, HP=CR04742, Lenovo=CR04836, Desc=CARGA X PALLET
+Config=CL51764, HP=CR04697, Lenovo=CR04799, Desc=CARGA X FULL CASE
+Config=CL51765, HP=CR04728, Lenovo=CR04830, Desc=CARGA X UNIDAD

@@ -45,7 +45,7 @@ class ApiService extends ChangeNotifier {
   // Notifier set to true when refresh fails and session is considered expired.
   final ValueNotifier<bool> sessionExpired = ValueNotifier<bool>(false);
   // Seconds before expiry to warn the user and attempt refresh.
-  int _warningSeconds = 60;
+  final int _warningSeconds = 60;
 
   ApiService({String? baseUrl, List<String>? allowBadCertificateForHosts}) : client = ApiClient(baseUrl: baseUrl ?? kBackendBaseUrl, allowBadCertificateForHosts: allowBadCertificateForHosts) {
     client.onUnauthorized = _handleUnauthorizedResponse;

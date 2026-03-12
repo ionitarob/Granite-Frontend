@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:provider/provider.dart';
+
 import 'package:configtool_granite_frontend/config.dart';
 import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -43,7 +45,7 @@ class _ManualFieldConfig {
 }
 
 class IgualdadDashboard extends StatefulWidget {
-  const IgualdadDashboard({Key? key}) : super(key: key);
+  const IgualdadDashboard({super.key});
 
   @override
   State<IgualdadDashboard> createState() => _IgualdadDashboardState();
@@ -141,17 +143,17 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     final double bottomFontSize = compact ? 10 : 11;
 
     final decoration = BoxDecoration(
-      color: Theme.of(context).cardColor.withOpacity(0.9),
+      color: Theme.of(context).cardColor,
       borderRadius: borderRadius,
       border: Border.all(
-        color: Theme.of(context).dividerColor.withOpacity(0.1),
-        width: 1.4,
+        color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+        width: 1.0,
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.08),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
+          color: Theme.of(context).shadowColor.withOpacity(0.05),
+          blurRadius: 20,
+          offset: const Offset(0, 4),
         ),
       ],
     );
@@ -523,7 +525,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         selectedObs = null;
       } else if (selectedWeek.containsKey('observaciones')) {
         final dynamic rawObs = selectedWeek['observaciones'];
-        selectedObs = rawObs == null ? null : rawObs.toString();
+        selectedObs = rawObs?.toString();
       } else {
         selectedObs = _selectedWeekObservaciones;
       }
@@ -591,7 +593,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
       final String? resumenObs;
       if (hasObsKey) {
         final dynamic rawObs = data['observaciones'];
-        resumenObs = rawObs == null ? null : rawObs.toString();
+        resumenObs = rawObs?.toString();
       } else {
         resumenObs = null;
       }
@@ -657,7 +659,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
       obsSeleccionada = null;
     } else if (selectedWeek.containsKey('observaciones')) {
       final dynamic rawObs = selectedWeek['observaciones'];
-      obsSeleccionada = rawObs == null ? null : rawObs.toString();
+      obsSeleccionada = rawObs?.toString();
     } else {
       obsSeleccionada = _selectedWeekObservaciones;
     }
@@ -1156,14 +1158,17 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     ];
 
     final boxDecoration = BoxDecoration(
-      color: Colors.white.withOpacity(0.20),
+      color: Theme.of(context).cardColor,
       borderRadius: BorderRadius.circular(compact ? 22 : 26),
-      border: Border.all(color: Colors.white.withOpacity(0.16), width: 1.4),
+      border: Border.all(
+        color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+        width: 1.0,
+      ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.08),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
+          color: Theme.of(context).shadowColor.withOpacity(0.05),
+          blurRadius: 20,
+          offset: const Offset(0, 4),
         ),
       ],
     );
@@ -1193,14 +1198,16 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                       style: TextStyle(
                         fontSize: compact ? 20 : 22,
                         fontWeight: FontWeight.w800,
-                        color: Colors.black,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       '$fechaInicio  ·  $fechaFin',
                       style: TextStyle(
-                        color: Colors.grey[700],
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.6),
                         fontSize: compact ? 12 : 13,
                         fontWeight: FontWeight.w500,
                       ),
@@ -1426,9 +1433,12 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         constraints: const BoxConstraints(maxWidth: 420),
         padding: const EdgeInsets.all(36),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.28),
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withOpacity(0.18), width: 1.5),
+          border: Border.all(
+            color: Theme.of(context).dividerColor.withOpacity(0.1),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.10),
@@ -1439,6 +1449,45 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         ),
         child: child,
       ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(
+            Icons.equalizer_rounded,
+            size: 32,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Dashboard Igualdad',
+              style: theme.textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            Text(
+              'Gestión de stock, envíos y estadísticas',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1586,14 +1635,17 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     );
     final theme = Theme.of(context);
     final decoration = BoxDecoration(
-      color: Colors.white.withOpacity(0.20),
+      color: theme.cardColor,
       borderRadius: BorderRadius.circular(compact ? 22 : 26),
-      border: Border.all(color: Colors.white.withOpacity(0.16), width: 1.4),
+      border: Border.all(
+        color: theme.colorScheme.outline.withOpacity(0.1),
+        width: 1.0,
+      ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.08),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
+          color: theme.shadowColor.withOpacity(0.05),
+          blurRadius: 20,
+          offset: const Offset(0, 4),
         ),
       ],
     );
@@ -1648,7 +1700,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedManualId,
+              initialValue: _selectedManualId,
               decoration: InputDecoration(
                 labelText: 'Categoría',
                 filled: true,
@@ -1825,24 +1877,16 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     }
   }
 
-  Widget _buildDashboardLayout() {
+  Widget _buildContent() {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
         final bool isDesktop = width >= 1400;
-        final bool isTablet = width >= 960 && width < 1400;
         final bool isMobile = width < 960;
         final bool compact = isMobile || width < 1100;
 
         final double gap = isDesktop ? 40 : 24;
         final double maxContentWidth = width;
-        final EdgeInsets verticalPadding = EdgeInsets.symmetric(
-          vertical: isDesktop
-              ? 36
-              : isTablet
-              ? 28
-              : 20,
-        );
 
         Widget dashboard;
         final manualCard = _manualConfigs.isEmpty
@@ -1896,15 +1940,9 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
           );
         }
 
-        return Align(
-          alignment: Alignment.topCenter,
-          child: SingleChildScrollView(
-            padding: verticalPadding,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxContentWidth),
-              child: dashboard,
-            ),
-          ),
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxContentWidth),
+          child: dashboard,
         );
       },
     );
@@ -1920,83 +1958,66 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.of(context).size;
-    final bool compactSafeArea = screenSize.width < 720;
-    final EdgeInsets safePadding = EdgeInsets.symmetric(
-      horizontal: compactSafeArea ? 16 : 24,
-      vertical: compactSafeArea ? 16 : 24,
-    );
-    final List<List<Color>> _gradients = [
-      [Colors.deepPurple, Colors.purple],
-      [Colors.purple, Colors.indigo],
-      [Colors.indigo, Colors.blue],
-      [Colors.blue, Colors.teal],
-    ];
-    int _currentGradient = DateTime.now().second % _gradients.length;
-    final gradient = _gradients[_currentGradient];
+    final theme = Theme.of(context);
+    final backgroundColor = theme.scaffoldBackgroundColor;
+
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: const EdgeNavHandle(),
-        title: const Text(
-          'Dashboard Igualdad',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _fetchSemanas(refreshResumen: true);
-              _fetchDailyStats();
-            },
-            tooltip: 'Actualizar',
-          ),
-        ],
-      ),
+      backgroundColor: backgroundColor,
       body: Stack(
-        fit: StackFit.expand,
         children: [
-          AnimatedContainer(
-            duration: const Duration(seconds: 5),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  gradient[0].withOpacity(0.92),
-                  gradient[1].withOpacity(0.92),
-                  const Color(0xFFB388FF).withOpacity(0.8),
-                  const Color(0xFF80DEEA).withOpacity(0.8),
-                ],
-                stops: const [0.0, 0.5, 0.8, 1.0],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+          // Main Content
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 60.0, // More space for sidebar
+              top: 32,
+              right: 32,
+              bottom: 32,
             ),
-            child: Container(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 32),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 320),
+                      child: loading
+                          ? _buildStatusCard(
+                              child: const CircularProgressIndicator(),
+                            )
+                          : error != null
+                          ? _buildStatusCard(
+                              child: Text(
+                                'Error: $error',
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            )
+                          : _buildContent(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: safePadding,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 320),
-                child: loading
-                    ? _buildStatusCard(child: const CircularProgressIndicator())
-                    : error != null
-                    ? _buildStatusCard(
-                        child: Text(
-                          'Error: $error',
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      )
-                    : _buildDashboardLayout(),
+          // Sidebar Handle
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: EdgeNavHandle(
+                user: Provider.of<ApiService>(
+                  context,
+                  listen: false,
+                ).currentUser,
+                width: 28,
               ),
             ),
           ),

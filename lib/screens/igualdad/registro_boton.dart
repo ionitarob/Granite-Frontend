@@ -189,7 +189,7 @@ class _RegistroBotonScreenState extends State<RegistroBotonScreen> {
                                       ),
                                       const SizedBox(height: 12),
                                       DropdownButtonFormField<String>(
-                                        value: _registroSeleccionado,
+                                        initialValue: _registroSeleccionado,
                                         decoration: InputDecoration(
                                           labelText:
                                               "Seleccionar Registro Activo",

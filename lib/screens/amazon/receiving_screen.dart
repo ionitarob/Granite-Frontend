@@ -197,8 +197,9 @@ class _ReceivingScreenState extends State<ReceivingScreen>
     if (detail.isEmpty && result.error != null && result.error!.isNotEmpty) {
       detail = result.error!;
     }
-    if (detail.isEmpty)
+    if (detail.isEmpty) {
       detail = 'La impresora respondio con estado ${result.statusCode}';
+    }
     return detail;
   }
 
@@ -592,8 +593,9 @@ class _ReceivingScreenState extends State<ReceivingScreen>
         if (body is Map) {
           detail = (body['detail'] ?? body['message'] ?? body['error'] ?? '')
               .toString();
-          if (detail.isEmpty && body['errors'] != null)
+          if (detail.isEmpty && body['errors'] != null) {
             detail = body['errors'].toString();
+          }
         } else {
           detail = body.toString();
         }
@@ -602,7 +604,7 @@ class _ReceivingScreenState extends State<ReceivingScreen>
       }
     }
     if (detail.isEmpty) detail = 'Error desconocido';
-    if (detail.length > 220) detail = detail.substring(0, 217) + '...';
+    if (detail.length > 220) detail = '${detail.substring(0, 217)}...';
     _showSnack('Fallo (${resp.statusCode}) - $detail');
   }
 
@@ -1506,7 +1508,7 @@ class _DropdownField extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         items: items
             .map(
               (e) => DropdownMenuItem<String>(
@@ -1835,7 +1837,7 @@ class _DamageSubtypeSelector extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         decoration: const InputDecoration(labelText: 'Subtipo de danio'),
         items: const [
           DropdownMenuItem(value: 'Ungraded', child: Text('Sin clasificar')),

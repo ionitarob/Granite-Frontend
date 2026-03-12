@@ -135,15 +135,17 @@ class _ProductPickScreenState extends State<ProductPickScreen>
       );
       if (!res.ok) throw Exception('Open failed: ${res.statusCode}');
       await _load();
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Pallet opened')));
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Open failed: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -175,15 +177,17 @@ class _ProductPickScreenState extends State<ProductPickScreen>
           _qtyController.clear();
         });
       }
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Picked $qty from $part')));
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Pick failed: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -253,15 +257,17 @@ class _ProductPickScreenState extends State<ProductPickScreen>
       );
       if (!res.ok) throw Exception('Close failed: ${res.statusCode}');
       await _load();
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Pallet closed')));
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Close failed: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -372,7 +378,7 @@ class _ProductPickScreenState extends State<ProductPickScreen>
             final fields = [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _selectedPart,
+                  initialValue: _selectedPart,
                   items: p.parts
                       .map(
                         (part) => DropdownMenuItem(
@@ -666,8 +672,9 @@ class PalletPickInfo {
       }
     }
     PickSummary? picked;
-    if (m['picked'] is Map)
+    if (m['picked'] is Map) {
       picked = PickSummary.fromJson(Map<String, dynamic>.from(m['picked']));
+    }
     return PalletPickInfo(
       wplId: (m['wplId'] ?? m['wpl_id'] ?? m['id'] ?? '').toString(),
       isOpen: (m['isOpen'] ?? m['is_open'] ?? m['open'] ?? false) as bool,

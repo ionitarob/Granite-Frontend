@@ -19,10 +19,12 @@ class SerialLinkScreen extends StatefulWidget {
   State<SerialLinkScreen> createState() => _SerialLinkScreenState();
 }
 
-class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerProviderStateMixin {
+class _SerialLinkScreenState extends State<SerialLinkScreen>
+    with SingleTickerProviderStateMixin {
   static const String _basePath = '/serials';
 
   late final TabController _tabs;
+  OverlayEntry? _edgeOverlay;
 
   final TextEditingController _serialCtrl = TextEditingController();
   final FocusNode _serialFocus = FocusNode();
@@ -48,6 +50,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
   bool _uploading = false;
   bool _resetting = false;
   bool _exporting = false;
+  bool _exportingExcel = false;
   bool _templatesLoading = false;
   bool _templateUploading = false;
   List<Map<String, dynamic>> _templates = [];
@@ -64,10 +67,41 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     _serialFocus.addListener(() {
       if (_serialFocus.hasFocus) _fetchNextInventory();
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final routeName = ModalRoute.of(context)?.settings.name;
+      final overlay = Overlay.of(context, rootOverlay: true);
+      if (overlay == null) return;
+
+      _edgeOverlay = OverlayEntry(
+        builder: (ctx) {
+          return Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          );
+        },
+      );
+      overlay.insert(_edgeOverlay!);
+    });
   }
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     _tabs.dispose();
     _serialCtrl.dispose();
     _serialFocus.dispose();
@@ -92,7 +126,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _fetchNextInventory() async {
@@ -102,7 +138,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       final res = await client.get('$_basePath/next-available');
       if (!mounted) return;
       if (res.ok && res.body is Map) {
-        setState(() => _nextInventory = (res.body as Map)['inventory_code']?.toString());
+        setState(
+          () =>
+              _nextInventory = (res.body as Map)['inventory_code']?.toString(),
+        );
       }
     } catch (_) {}
   }
@@ -117,20 +156,19 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       if (res.ok && res.body is List) {
         final rawList = res.body as List;
         setState(() {
-          _recent = rawList
-              .map<Map<String, String?>>((item) {
-                if (item is Map) {
-                  return {
-                    'inventory_code': item['inventory_code']?.toString(),
-                    'serial': item['serial']?.toString(),
-                  };
-                }
-                return {'inventory_code': null, 'serial': null};
-              })
-              .toList();
+          _recent = rawList.map<Map<String, String?>>((item) {
+            if (item is Map) {
+              return {
+                'inventory_code': item['inventory_code']?.toString(),
+                'serial': item['serial']?.toString(),
+              };
+            }
+            return {'inventory_code': null, 'serial': null};
+          }).toList();
         });
       }
-    } catch (_) {} finally {
+    } catch (_) {
+    } finally {
       if (mounted) setState(() => _loadingRecent = false);
     }
   }
@@ -149,16 +187,26 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
         .where((s) => s.isNotEmpty)
         .take(3)
         .toList();
-    final detail = sample.isEmpty ? '' : '\nCoincidencias: ${sample.join(', ')}';
+    final detail = sample.isEmpty
+        ? ''
+        : '\nCoincidencias: ${sample.join(', ')}';
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Serial sospechoso'),
-        content: Text('El valor escaneado coincide con una máscara conocida.$detail'),
+        content: Text(
+          'El valor escaneado coincide con una máscara conocida.$detail',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Continuar')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Continuar'),
+          ),
         ],
       ),
     );
@@ -172,10 +220,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Serial duplicado'),
-        content: Text('"$serial" ya está vinculado a "$inventoryCode". ¿Continuar de todos modos?'),
+        content: Text(
+          '"$serial" ya está vinculado a "$inventoryCode". ¿Continuar de todos modos?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Continuar')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Continuar'),
+          ),
         ],
       ),
     );
@@ -197,7 +253,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
 
       // Duplicate pre-check
       try {
-        final dup = await client.get('$_basePath/serial-to-inventory?serial=$encoded');
+        final dup = await client.get(
+          '$_basePath/serial-to-inventory?serial=$encoded',
+        );
         if (dup.ok && dup.body is Map) {
           final code = (dup.body as Map)['inventory_code']?.toString() ?? '';
           if (code.isNotEmpty) {
@@ -212,11 +270,17 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
 
       // Mask check
       try {
-        final mask = await client.post('$_basePath/masks/check', jsonBody: {'serial': serial});
+        final mask = await client.post(
+          '$_basePath/masks/check',
+          jsonBody: {'serial': serial},
+        );
         if (mask.ok && mask.body is Map) {
           final body = mask.body as Map;
           if (body['suspicious'] == true) {
-            final proceed = await _confirmSuspicious(serial, body['matches'] as List<dynamic>?);
+            final proceed = await _confirmSuspicious(
+              serial,
+              body['matches'] as List<dynamic>?,
+            );
             if (!proceed) {
               if (mounted) setState(() => _assigning = false);
               return;
@@ -225,7 +289,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
         }
       } catch (_) {}
 
-      final ensure = await client.post('$_basePath/serial-to-inventory/ensure', jsonBody: {'serial': serial});
+      final ensure = await client.post(
+        '$_basePath/serial-to-inventory/ensure',
+        jsonBody: {'serial': serial},
+      );
       if (!mounted) return;
       if (ensure.ok && ensure.body is Map) {
         final map = ensure.body as Map;
@@ -238,7 +305,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
         await Future.wait([_fetchNextInventory(), _refreshRecent()]);
         _showSnack('Serial asignado');
       } else {
-        setState(() => _assignError = ensure.error ?? 'No se pudo asignar (${ensure.statusCode})');
+        setState(
+          () => _assignError =
+              ensure.error ?? 'No se pudo asignar (${ensure.statusCode})',
+        );
       }
     } catch (e) {
       if (mounted) setState(() => _assignError = e.toString());
@@ -251,7 +321,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     final client = _clientOrNull();
     if (client == null) return null;
     try {
-      final res = await client.post('$_basePath/masks/check', jsonBody: {'serial': serial});
+      final res = await client.post(
+        '$_basePath/masks/check',
+        jsonBody: {'serial': serial},
+      );
       if (res.ok && res.body is Map) return res.body as Map<String, dynamic>;
     } catch (_) {}
     return null;
@@ -259,11 +332,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
 
   List<_MatchRow> _resizeMatchRows(int target) {
     final removed = <_MatchRow>[];
-    final safeTarget = target < 0
-        ? 0
-        : (target > 1000 ? 1000 : target);
+    final safeTarget = target < 0 ? 0 : (target > 1000 ? 1000 : target);
     _rowEpoch++;
-    final reuseUntil = safeTarget < _matchRows.length ? safeTarget : _matchRows.length;
+    final reuseUntil = safeTarget < _matchRows.length
+        ? safeTarget
+        : _matchRows.length;
     for (var i = 0; i < reuseUntil; i++) {
       _matchRows[i].generation = _rowEpoch;
     }
@@ -273,8 +346,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     } else if (safeTarget > _matchRows.length) {
       final toCreate = safeTarget - _matchRows.length;
       for (var i = 0; i < toCreate; i++) {
-        final row = _MatchRow()
-          ..generation = _rowEpoch;
+        final row = _MatchRow()..generation = _rowEpoch;
         _matchRows.add(row);
       }
     }
@@ -298,13 +370,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
   }) {
     final normalized = Map<String, dynamic>.from(order);
     final numOrdenRaw = normalized['num_orden'];
-    normalized['num_orden'] = (numOrdenRaw == null || numOrdenRaw.toString().trim().isEmpty)
+    normalized['num_orden'] =
+        (numOrdenRaw == null || numOrdenRaw.toString().trim().isEmpty)
         ? _orderCtrl.text.trim()
         : numOrdenRaw.toString().trim();
-    final resolvedUnits = unitsOverride ?? int.tryParse(normalized['unidades']?.toString() ?? '') ?? serials.length;
+    final resolvedUnits =
+        unitsOverride ??
+        int.tryParse(normalized['unidades']?.toString() ?? '') ??
+        serials.length;
     normalized['unidades'] = resolvedUnits;
     normalized['manual'] = normalized['manual'] == true;
-    final bool manualDoubleFlag = manualDouble ?? (normalized['manual_double'] == true);
+    final bool manualDoubleFlag =
+        manualDouble ?? (normalized['manual_double'] == true);
     normalized['manual_double'] = manualDoubleFlag;
 
     final pendingRaw = resolvedUnits - serials.length;
@@ -330,7 +407,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     if (_orderInfo == null) return null;
     if (_orderInfo!['manual'] != true) return null;
     if (_orderInfo!['num_orden']?.toString() != numOrden) return null;
-  final Object? unitsValue = _orderInfo!['unidades'];
+    final Object? unitsValue = _orderInfo!['unidades'];
     final int? parsedUnits = unitsValue is int
         ? unitsValue
         : int.tryParse(unitsValue?.toString() ?? '');
@@ -339,9 +416,12 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     return (units: parsedUnits, doubleEntry: doubleEntry);
   }
 
-  bool get _isManualDouble => _orderInfo?['manual'] == true && _orderInfo?['manual_double'] == true;
+  bool get _isManualDouble =>
+      _orderInfo?['manual'] == true && _orderInfo?['manual_double'] == true;
 
-  Future<({int units, bool doubleEntry})?> _promptManualUnits(String numOrden) async {
+  Future<({int units, bool doubleEntry})?> _promptManualUnits(
+    String numOrden,
+  ) async {
     final result = await showDialog<_ManualOrderPromptResult>(
       context: context,
       barrierDismissible: false,
@@ -371,12 +451,16 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       _duplicateRows.clear();
     });
     try {
-      final res = await client.post('$_basePath/order-info', jsonBody: {'num_orden': numOrden});
+      final res = await client.post(
+        '$_basePath/order-info',
+        jsonBody: {'num_orden': numOrden},
+      );
       if (!mounted) return;
       if (res.statusCode == 404) {
         setState(() => _loadingOrder = false);
         final existingManual = _existingManualConfig(numOrden);
-        final manualConfig = existingManual ?? await _promptManualUnits(numOrden);
+        final manualConfig =
+            existingManual ?? await _promptManualUnits(numOrden);
         if (!mounted) return;
         if (manualConfig != null) {
           _applyOrderData(
@@ -392,7 +476,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
           );
           if (existingManual == null) {
             final mode = manualConfig.doubleEntry ? 'doble' : 'unitario';
-            _showSnack('Orden manual ($mode) preparada. Escanea ${manualConfig.units} unidades.');
+            _showSnack(
+              'Orden manual ($mode) preparada. Escanea ${manualConfig.units} unidades.',
+            );
           }
         }
         return;
@@ -409,7 +495,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       } else {
         setState(() => _loadingOrder = false);
         final existingManual = _existingManualConfig(numOrden);
-        final manualConfig = existingManual ?? await _promptManualUnits(numOrden);
+        final manualConfig =
+            existingManual ?? await _promptManualUnits(numOrden);
         if (!mounted) return;
         if (manualConfig != null) {
           _applyOrderData(
@@ -425,18 +512,22 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
           );
           if (existingManual == null) {
             final mode = manualConfig.doubleEntry ? 'doble' : 'unitario';
-            _showSnack('Orden manual ($mode) preparada. Escanea ${manualConfig.units} unidades.');
+            _showSnack(
+              'Orden manual ($mode) preparada. Escanea ${manualConfig.units} unidades.',
+            );
           }
         }
         return;
       }
-    final serials = (map['serials'] as List? ?? const [])
-      .whereType<Map>()
-      .map<Map<String, String>>((e) => {
-        'serial': e['serial']?.toString() ?? '',
-        'inventory_code': e['inventory_code']?.toString() ?? '',
-        })
-      .toList();
+      final serials = (map['serials'] as List? ?? const [])
+          .whereType<Map>()
+          .map<Map<String, String>>(
+            (e) => {
+              'serial': e['serial']?.toString() ?? '',
+              'inventory_code': e['inventory_code']?.toString() ?? '',
+            },
+          )
+          .toList();
       _applyOrderData(
         order: order,
         serials: serials,
@@ -460,7 +551,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     for (final entry in seen.entries) {
       if (entry.value.length > 1) _duplicateRows.addAll(entry.value);
     }
-    final registered = _orderSerials.map((e) => (e['serial'] ?? '').toLowerCase()).toSet();
+    final registered = _orderSerials
+        .map((e) => (e['serial'] ?? '').toLowerCase())
+        .toSet();
     for (var i = 0; i < _matchRows.length; i++) {
       final value = _matchRows[i].serial.text.trim().toLowerCase();
       if (value.isEmpty) continue;
@@ -474,7 +567,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     final manualDouble = _isManualDouble;
     return _matchRows.every((row) {
       final serialFilled = row.serial.text.trim().isNotEmpty;
-      final inventoryFilled = !manualDouble || row.inventory.text.trim().isNotEmpty;
+      final inventoryFilled =
+          !manualDouble || row.inventory.text.trim().isNotEmpty;
       return serialFilled && inventoryFilled;
     });
   }
@@ -490,9 +584,15 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     if (value.isEmpty) return;
     final mask = await _maskCheck(value);
     if (mask != null && mask['suspicious'] == true) {
-      final proceed = await _confirmSuspicious(value, mask['matches'] as List<dynamic>?);
+      final proceed = await _confirmSuspicious(
+        value,
+        mask['matches'] as List<dynamic>?,
+      );
       if (!proceed) {
-        if (row.disposed || row.generation != expectedEpoch || !_matchRows.contains(row)) return;
+        if (row.disposed ||
+            row.generation != expectedEpoch ||
+            !_matchRows.contains(row))
+          return;
         row.serial.clear();
         _validateRows();
         if (!row.disposed && row.generation == expectedEpoch) {
@@ -503,9 +603,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     }
     try {
       final encoded = Uri.encodeQueryComponent(value);
-      final res = await client.get('$_basePath/serial-to-inventory?serial=$encoded');
+      final res = await client.get(
+        '$_basePath/serial-to-inventory?serial=$encoded',
+      );
       if (!mounted) return;
-      if (row.disposed || row.generation != expectedEpoch || !_matchRows.contains(row)) return;
+      if (row.disposed ||
+          row.generation != expectedEpoch ||
+          !_matchRows.contains(row))
+        return;
       if (res.ok && res.body is Map) {
         final code = (res.body as Map)['inventory_code']?.toString() ?? '';
         row.inventory.text = code;
@@ -519,15 +624,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
   Future<bool> _saveRow(int index) async {
     final client = _clientOrNull();
     if (client == null || _orderInfo == null) return false;
-  if (index < 0 || index >= _matchRows.length) return false;
-  final row = _matchRows[index];
-  final expectedEpoch = row.generation;
-  final serial = row.serial.text.trim();
+    if (index < 0 || index >= _matchRows.length) return false;
+    final row = _matchRows[index];
+    final expectedEpoch = row.generation;
+    final serial = row.serial.text.trim();
     if (serial.isEmpty) return false;
     final manualDouble = _isManualDouble;
     final mask = await _maskCheck(serial);
     if (mask != null && mask['suspicious'] == true) {
-      final proceed = await _confirmSuspicious(serial, mask['matches'] as List<dynamic>?);
+      final proceed = await _confirmSuspicious(
+        serial,
+        mask['matches'] as List<dynamic>?,
+      );
       if (!proceed) return false;
     }
     if (manualDouble) {
@@ -537,7 +645,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       }
     } else if (row.inventory.text.trim().isEmpty) {
       await _lookupInventory(index);
-      if (row.disposed || row.generation != expectedEpoch || !_matchRows.contains(row)) return false;
+      if (row.disposed ||
+          row.generation != expectedEpoch ||
+          !_matchRows.contains(row))
+        return false;
     }
     setState(() => _savingRows = true);
     try {
@@ -549,7 +660,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       if (code.isNotEmpty) payload['inventory_code'] = code;
       final res = await client.post('$_basePath/match', jsonBody: payload);
       if (!mounted) return false;
-      if (row.disposed || row.generation != expectedEpoch || !_matchRows.contains(row)) return false;
+      if (row.disposed ||
+          row.generation != expectedEpoch ||
+          !_matchRows.contains(row))
+        return false;
       if (res.ok) {
         row.serial.clear();
         row.inventory.clear();
@@ -558,7 +672,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       if (res.statusCode == 409) {
         String msg = 'Serial ya asignado';
         if (res.body is Map && (res.body as Map)['num_orden'] != null) {
-          msg = 'Serial ya asignado a la orden ${(res.body as Map)['num_orden']}';
+          msg =
+              'Serial ya asignado a la orden ${(res.body as Map)['num_orden']}';
         }
         _showSnack(msg);
         return false;
@@ -576,8 +691,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
   Future<void> _saveAllRows() async {
     if (_orderInfo == null) return;
     if (!_allRowsFilled()) {
-      final remaining = _matchRows.where((row) => row.serial.text.trim().isEmpty).length;
-      _showSnack(remaining == 1 ? 'Falta un serial por rellenar' : 'Faltan $remaining seriales por rellenar');
+      final remaining = _matchRows
+          .where((row) => row.serial.text.trim().isEmpty)
+          .length;
+      _showSnack(
+        remaining == 1
+            ? 'Falta un serial por rellenar'
+            : 'Faltan $remaining seriales por rellenar',
+      );
       return;
     }
     _validateRows();
@@ -614,7 +735,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       _orderSerials = [];
       _orderCtrl.clear();
       setState(() {});
-      WidgetsBinding.instance.addPostFrameCallback((_) => _orderFocus.requestFocus());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _orderFocus.requestFocus(),
+      );
     }
   }
 
@@ -627,7 +750,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     final picked = await FilePicker.platform.pickFiles(withData: true);
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.first;
-    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+    final bytes =
+        file.bytes ??
+        (file.path != null ? await File(file.path!).readAsBytes() : null);
     if (bytes == null || bytes.isEmpty) {
       _showSnack('No se pudo leer el archivo seleccionado');
       return;
@@ -646,7 +771,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
           final inserted = body['inserted'] ?? 0;
           final skipped = body['skipped'] ?? 0;
           final errors = (body['errors'] as List?)?.length ?? 0;
-          _showSnack('Importado: $inserted • saltados: $skipped • errores: $errors');
+          _showSnack(
+            'Importado: $inserted • saltados: $skipped • errores: $errors',
+          );
         } else {
           _showSnack('Importado correctamente');
         }
@@ -671,10 +798,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Resetear registros'),
-        content: const Text('Esta acción eliminará todos los registros de órdenes. ¿Continuar?'),
+        content: const Text(
+          'Esta acción eliminará todos los registros de órdenes. ¿Continuar?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirmar'),
+          ),
         ],
       ),
     );
@@ -712,15 +847,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
         setState(() {
           _templates = list
               .whereType<Map>()
-              .map((e) => {
-                    'filename': e['filename']?.toString() ?? '',
-                    'size': e['size'],
-                    'modified': e['modified'],
-                  })
+              .map(
+                (e) => {
+                  'filename': e['filename']?.toString() ?? '',
+                  'size': e['size'],
+                  'modified': e['modified'],
+                },
+              )
               .toList();
         });
       }
-    } catch (_) {} finally {
+    } catch (_) {
+    } finally {
       if (mounted) setState(() => _templatesLoading = false);
     }
   }
@@ -738,7 +876,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     );
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.first;
-    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+    final bytes =
+        file.bytes ??
+        (file.path != null ? await File(file.path!).readAsBytes() : null);
     if (bytes == null || bytes.isEmpty) {
       _showSnack('No se pudo leer el archivo seleccionado');
       return;
@@ -768,7 +908,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     final num = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        final ctrl = TextEditingController(text: _orderInfo?['num_orden']?.toString() ?? '');
+        final ctrl = TextEditingController(
+          text: _orderInfo?['num_orden']?.toString() ?? '',
+        );
         return AlertDialog(
           title: const Text('Exportar acta'),
           content: TextField(
@@ -778,8 +920,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
             onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()), child: const Text('Exportar')),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+              child: const Text('Exportar'),
+            ),
           ],
         );
       },
@@ -821,6 +969,74 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
     }
   }
 
+  Future<void> _exportMatchesToExcel() async {
+    final num = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final ctrl = TextEditingController(
+          text: _orderInfo?['num_orden']?.toString() ?? '',
+        );
+        return AlertDialog(
+          title: const Text('Exportar Excel'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(labelText: 'Número de orden'),
+            autofocus: true,
+            onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+              child: const Text('Exportar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (num == null || num.isEmpty) return;
+
+    final client = _clientOrNull();
+    if (client == null) {
+      _showSnack('Servicio API no disponible');
+      return;
+    }
+    setState(() => _exportingExcel = true);
+    try {
+      final res = await client.getBytes(
+        '$_basePath/matches/export?num_orden=${Uri.encodeQueryComponent(num)}',
+      );
+      if (!mounted) return;
+      if (!res.ok || res.body is! List<int>) {
+        _showSnack('No se pudo exportar (${res.statusCode})');
+        return;
+      }
+      final headers = res.headers ?? const {};
+      final suggested =
+          _filenameFromHeaders(headers) ?? 'serial_matches_export.xlsx';
+      final path = await FilePicker.platform.saveFile(
+        fileName: suggested,
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+        dialogTitle: 'Guardar Excel',
+      );
+      if (path == null) {
+        _showSnack('Descarga cancelada');
+        return;
+      }
+      final file = File(path);
+      await file.writeAsBytes(res.body as List<int>, flush: true);
+      _showSnack('Archivo guardado en $path');
+    } catch (e) {
+      _showSnack('Error exportando Excel: $e');
+    } finally {
+      if (mounted) setState(() => _exportingExcel = false);
+    }
+  }
+
   String _defaultActaName(String numOrden) {
     final centro = _orderInfo?['codigo_centro']?.toString().trim();
     final suffix = (centro == null || centro.isEmpty) ? 'SINCC' : centro;
@@ -830,7 +1046,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
   String? _filenameFromHeaders(Map<String, String> headers) {
     final cd = headers['content-disposition'] ?? headers['Content-Disposition'];
     if (cd == null || cd.isEmpty) return null;
-    final star = RegExp(r"filename\*\s*=\s*(?:UTF-8''|utf-8'')?([^;]+)", caseSensitive: false);
+    final star = RegExp(
+      r"filename\*\s*=\s*(?:UTF-8''|utf-8'')?([^;]+)",
+      caseSensitive: false,
+    );
     final matchStar = star.firstMatch(cd);
     if (matchStar != null) {
       final raw = (matchStar.group(1) ?? '').replaceAll('"', '').trim();
@@ -840,7 +1059,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
         return raw;
       }
     }
-    final plain = RegExp(r'filename\s*=\s*("?)([^";]+)\1', caseSensitive: false);
+    final plain = RegExp(
+      r'filename\s*=\s*("?)([^";]+)\1',
+      caseSensitive: false,
+    );
     final matchPlain = plain.firstMatch(cd);
     if (matchPlain != null) return matchPlain.group(2)?.trim();
     return null;
@@ -855,7 +1077,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
         children: [
           Text('Registro Serial', style: theme.textTheme.titleLarge),
           const SizedBox(height: 12),
-          Text('Escanea el serial y el sistema asignará la siguiente etiqueta disponible.', style: theme.textTheme.bodyMedium),
+          Text(
+            'Escanea el serial y el sistema asignará la siguiente etiqueta disponible.',
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -866,7 +1091,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                   decoration: InputDecoration(
                     labelText: 'Serial',
                     hintText: 'Escanear o escribir serial',
-                    suffixText: _nextInventory != null ? 'Siguiente: $_nextInventory' : null,
+                    suffixText: _nextInventory != null
+                        ? 'Siguiente: $_nextInventory'
+                        : null,
                   ),
                   onSubmitted: (value) {
                     final trimmed = value.trim();
@@ -889,7 +1116,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                         _serialFocus.requestFocus();
                       },
                 icon: _assigning
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.done_all),
                 label: Text(_assigning ? 'Asignando...' : 'Asignar'),
               ),
@@ -905,34 +1136,47 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
               ),
               const SizedBox(width: 12),
               if (_lastInventory != null)
-                Text('Último inventario: $_lastInventory', style: theme.textTheme.bodyMedium),
+                Text(
+                  'Último inventario: $_lastInventory',
+                  style: theme.textTheme.bodyMedium,
+                ),
             ],
           ),
           if (_assignError != null) ...[
             const SizedBox(height: 8),
-            Text(_assignError!, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)),
+            Text(
+              _assignError!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
           ],
           const SizedBox(height: 24),
           Text('Asignaciones recientes', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           _loadingRecent
-              ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
               : _recent.isEmpty
-                  ? const Text('No hay asignaciones todavía.')
-                  : ListView.separated(
-                      physics: const NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      itemCount: _recent.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, index) {
-                        final row = _recent[index];
-                        return ListTile(
-                          leading: Text('#${index + 1}'),
-                          title: Text(row['inventory_code'] ?? '-'),
-                          subtitle: Text(row['serial'] ?? '-'),
-                        );
-                      },
-                    ),
+              ? const Text('No hay asignaciones todavía.')
+              : ListView.separated(
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  itemCount: _recent.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, index) {
+                    final row = _recent[index];
+                    return ListTile(
+                      leading: Text('#${index + 1}'),
+                      title: Text(row['inventory_code'] ?? '-'),
+                      subtitle: Text(row['serial'] ?? '-'),
+                    );
+                  },
+                ),
         ],
       ),
     );
@@ -954,7 +1198,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                 child: TextField(
                   controller: _orderCtrl,
                   focusNode: _orderFocus,
-                  decoration: const InputDecoration(labelText: 'Número de orden'),
+                  decoration: const InputDecoration(
+                    labelText: 'Número de orden',
+                  ),
                   onSubmitted: (_) => _fetchOrder(),
                 ),
               ),
@@ -962,7 +1208,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
               FilledButton.icon(
                 onPressed: _loadingOrder ? null : _fetchOrder,
                 icon: _loadingOrder
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.search),
                 label: Text(_loadingOrder ? 'Buscando...' : 'Buscar'),
               ),
@@ -976,9 +1226,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Orden ${_orderInfo!['num_orden'] ?? '-'}', style: theme.textTheme.titleMedium),
+                    Text(
+                      'Orden ${_orderInfo!['num_orden'] ?? '-'}',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 4),
-                    Text('Unidades esperadas: ${_orderInfo!['unidades'] ?? '-'}'),
+                    Text(
+                      'Unidades esperadas: ${_orderInfo!['unidades'] ?? '-'}',
+                    ),
                     if (_orderInfo?['manual'] == true) ...[
                       const SizedBox(height: 8),
                       Chip(
@@ -989,7 +1244,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                     ],
                     if (_orderSerials.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Text('Seriales registrados', style: theme.textTheme.titleSmall),
+                      Text(
+                        'Seriales registrados',
+                        style: theme.textTheme.titleSmall,
+                      ),
                       const SizedBox(height: 8),
                       ListView.builder(
                         shrinkWrap: true,
@@ -1010,7 +1268,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
               ),
             ),
             const SizedBox(height: 24),
-            Text('Añadir seriales pendientes', style: theme.textTheme.titleMedium),
+            Text(
+              'Añadir seriales pendientes',
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             if (_matchRows.isEmpty)
               const Text('No hay unidades pendientes.')
@@ -1032,7 +1293,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                             focusNode: row.focus,
                             decoration: InputDecoration(
                               labelText: 'Serial ${index + 1}',
-                              errorText: _duplicateRows.contains(index) ? 'Duplicado' : null,
+                              errorText: _duplicateRows.contains(index)
+                                  ? 'Duplicado'
+                                  : null,
                             ),
                             onChanged: (_) => _validateRows(),
                             onSubmitted: (_) {
@@ -1054,20 +1317,29 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                             controller: row.inventory,
                             focusNode: row.inventoryFocus,
                             readOnly: !manualDouble,
-                            decoration: const InputDecoration(labelText: 'Inventario/IMEI'),
-                            textInputAction: manualDouble ? TextInputAction.next : TextInputAction.none,
+                            decoration: const InputDecoration(
+                              labelText: 'Inventario/IMEI',
+                            ),
+                            textInputAction: manualDouble
+                                ? TextInputAction.next
+                                : TextInputAction.none,
                             onSubmitted: manualDouble
                                 ? (_) {
                                     if (index + 1 < _matchRows.length) {
-                                      _matchRows[index + 1].focus.requestFocus();
+                                      _matchRows[index + 1].focus
+                                          .requestFocus();
                                     }
                                   }
                                 : null,
                           ),
                         ),
                         IconButton(
-                          tooltip: manualDouble ? 'Inventario manual' : 'Buscar etiqueta',
-                          onPressed: manualDouble ? null : () => _lookupInventory(index),
+                          tooltip: manualDouble
+                              ? 'Inventario manual'
+                              : 'Buscar etiqueta',
+                          onPressed: manualDouble
+                              ? null
+                              : () => _lookupInventory(index),
                           icon: const Icon(Icons.search),
                         ),
                       ],
@@ -1081,12 +1353,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                 FilledButton.icon(
                   onPressed: _savingRows ? null : _saveAllRows,
                   icon: _savingRows
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.save_alt),
                   label: Text(_savingRows ? 'Guardando...' : 'Guardar todo'),
                 ),
                 const SizedBox(width: 12),
-                Text('${_matchRows.length - _duplicateRows.length} / ${_matchRows.length} sin duplicados'),
+                Text(
+                  '${_matchRows.length - _duplicateRows.length} / ${_matchRows.length} sin duplicados',
+                ),
               ],
             ),
           ] else if (!_loadingOrder) ...[
@@ -1113,24 +1391,60 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
               FilledButton.icon(
                 onPressed: _uploading ? null : _importOrders,
                 icon: _uploading
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.upload_file),
                 label: Text(_uploading ? 'Subiendo...' : 'Importar archivo'),
               ),
               FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error),
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.colorScheme.error,
+                ),
                 onPressed: _resetting ? null : _resetOrders,
                 icon: _resetting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
                     : const Icon(Icons.delete_sweep),
                 label: Text(_resetting ? 'Reseteando...' : 'Reset tabla'),
               ),
               FilledButton.icon(
                 onPressed: _exporting ? null : _exportActa,
                 icon: _exporting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.picture_as_pdf),
                 label: Text(_exporting ? 'Exportando...' : 'Exportar acta'),
+              ),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.green[700],
+                ),
+                onPressed: _exportingExcel ? null : _exportMatchesToExcel,
+                icon: _exportingExcel
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.table_view),
+                label: Text(
+                  _exportingExcel ? 'Exportando...' : 'Exportar Excel',
+                ),
               ),
             ],
           ),
@@ -1144,16 +1458,26 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
               FilledButton.icon(
                 onPressed: _templatesLoading ? null : _loadTemplates,
                 icon: _templatesLoading
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.refresh),
                 label: Text(_templatesLoading ? 'Cargando...' : 'Refrescar'),
               ),
               FilledButton.icon(
                 onPressed: _templateUploading ? null : _uploadTemplate,
                 icon: _templateUploading
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.upload),
-                label: Text(_templateUploading ? 'Subiendo...' : 'Añadir plantilla'),
+                label: Text(
+                  _templateUploading ? 'Subiendo...' : 'Añadir plantilla',
+                ),
               ),
             ],
           ),
@@ -1173,7 +1497,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
                 return ListTile(
                   leading: const Icon(Icons.article_outlined),
                   title: Text(item['filename']?.toString() ?? '-'),
-                  subtitle: Text('${size ?? '—'} bytes • ${modified ?? 'sin fecha'}'),
+                  subtitle: Text(
+                    '${size ?? '—'} bytes • ${modified ?? 'sin fecha'}',
+                  ),
                 );
               },
             ),
@@ -1189,37 +1515,38 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
       child: _loadingRecent
           ? const Center(child: CircularProgressIndicator())
           : _recent.isEmpty
-              ? const Center(child: Text('No hay asignaciones recientes.'))
-              : ListView.separated(
-                  itemCount: _recent.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, index) {
-                    final row = _recent[index];
-                    return ListTile(
-                      title: Text(row['inventory_code'] ?? '-', style: theme.textTheme.titleMedium),
-                      subtitle: Text(row['serial'] ?? '-'),
-                    );
-                  },
-                ),
+          ? const Center(child: Text('No hay asignaciones recientes.'))
+          : ListView.separated(
+              itemCount: _recent.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, index) {
+                final row = _recent[index];
+                return ListTile(
+                  title: Text(
+                    row['inventory_code'] ?? '-',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  subtitle: Text(row['serial'] ?? '-'),
+                );
+              },
+            ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final tabs = _SerialPanel.values
-        .map((panel) {
-          switch (panel) {
-            case _SerialPanel.assign:
-              return const Tab(icon: Icon(Icons.qr_code), text: 'Serial');
-            case _SerialPanel.match:
-              return const Tab(icon: Icon(Icons.link), text: 'Match');
-            case _SerialPanel.upload:
-              return const Tab(icon: Icon(Icons.upload_file), text: 'Carga');
-            case _SerialPanel.recent:
-              return const Tab(icon: Icon(Icons.history), text: 'Recientes');
-          }
-        })
-        .toList();
+    final tabs = _SerialPanel.values.map((panel) {
+      switch (panel) {
+        case _SerialPanel.assign:
+          return const Tab(icon: Icon(Icons.qr_code), text: 'Serial');
+        case _SerialPanel.match:
+          return const Tab(icon: Icon(Icons.link), text: 'Match');
+        case _SerialPanel.upload:
+          return const Tab(icon: Icon(Icons.upload_file), text: 'Carga');
+        case _SerialPanel.recent:
+          return const Tab(icon: Icon(Icons.history), text: 'Recientes');
+      }
+    }).toList();
 
     return DefaultTabController(
       length: tabs.length,
@@ -1248,7 +1575,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen> with SingleTickerPr
 }
 
 class _ManualOrderPromptResult {
-  const _ManualOrderPromptResult({required this.unitsText, required this.doubleEntry});
+  const _ManualOrderPromptResult({
+    required this.unitsText,
+    required this.doubleEntry,
+  });
 
   final String unitsText;
   final bool doubleEntry;
@@ -1281,7 +1611,10 @@ class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
 
   void _submit() {
     Navigator.of(context).pop(
-      _ManualOrderPromptResult(unitsText: _ctrl.text.trim(), doubleEntry: _doubleEntry),
+      _ManualOrderPromptResult(
+        unitsText: _ctrl.text.trim(),
+        doubleEntry: _doubleEntry,
+      ),
     );
   }
 
@@ -1293,7 +1626,9 @@ class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Introduce el número de unidades para la orden ${widget.numOrden}.'),
+          Text(
+            'Introduce el número de unidades para la orden ${widget.numOrden}.',
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _ctrl,
@@ -1323,13 +1658,18 @@ class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
           ),
           const SizedBox(height: 4),
           Text(
-            _doubleEntry ? 'Captura Serial y Inventario/IMEI' : 'Solo Serial (S/N)',
+            _doubleEntry
+                ? 'Captura Serial y Inventario/IMEI'
+                : 'Solo Serial (S/N)',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Confirmar')),
       ],
     );

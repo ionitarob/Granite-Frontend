@@ -39,6 +39,9 @@ class ApiClient {
   DateTime? _accessTokenExpiry;
   void Function(ApiResult result)? onUnauthorized;
 
+  bool get hasAccessToken => _accessToken != null && _accessToken!.isNotEmpty;
+  bool get hasSessionCookie => _cookies.isNotEmpty;
+
   static const _cookieStorageKey = 'session_cookies_v1';
 
   /// If [allowBadCertificateForHosts] is provided and the app is running in
@@ -64,8 +67,9 @@ class ApiClient {
           // In debug builds allow either any host (if list is null/empty) or the
           // specific hosts provided. This must NOT be enabled in production.
           if (allowBadCertificateForHosts == null ||
-              allowBadCertificateForHosts.isEmpty)
+              allowBadCertificateForHosts.isEmpty) {
             return true;
+          }
           return allowBadCertificateForHosts.contains(host);
         };
     return IOClient(inner);
@@ -321,16 +325,24 @@ class ApiClient {
             );
           } else if (exp is String) {
             final ei = int.tryParse(exp);
-            if (ei != null)
+            if (ei != null) {
               _accessTokenExpiry = DateTime.fromMillisecondsSinceEpoch(
                 ei * 1000,
               );
+            }
           }
         }
       }
     } catch (_) {
       // ignore any parse errors
     }
+  }
+
+  bool isTokenExpired({int bufferSeconds = 0}) {
+    if (_accessTokenExpiry == null) return true;
+    final now = DateTime.now().toUtc();
+    final expiry = _accessTokenExpiry!.toUtc();
+    return now.add(Duration(seconds: bufferSeconds)).isAfter(expiry);
   }
 
   /// Set the access token (in-memory) so other requests will include it.
@@ -348,9 +360,12 @@ class ApiClient {
   Future<bool> refreshAccessToken(String refreshToken) async {
     try {
       final uri = _uri('/api/auth/refresh/');
+      final headers = _authHeaders();
+      headers['Content-Type'] = 'application/json';
+
       final resp = await _client.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode({'refresh': refreshToken}),
       );
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -534,6 +549,27 @@ class ApiClient {
     } catch (e) {
       return ApiResult(false, -1, error: e.toString());
     }
+  }
+
+  /// Authenticated POST helper that returns a StreamedResponse (for SSE/NDJSON).
+  /// The caller is responsible for handling the stream.
+  Future<http.StreamedResponse> streamPost(
+    String path, {
+    dynamic jsonBody,
+    Map<String, String>? extraHeaders,
+  }) async {
+    final uri = _uri(path);
+    final headers = _authHeaders();
+    if (extraHeaders != null) headers.addAll(extraHeaders);
+    if (jsonBody != null) headers['Content-Type'] = 'application/json';
+
+    _logRequestHeaders('STREAM-POST', uri, headers);
+
+    final req = http.Request('POST', uri);
+    req.headers.addAll(headers);
+    if (jsonBody != null) req.body = jsonEncode(jsonBody);
+
+    return _client.send(req);
   }
 
   /// Authenticated PATCH helper.

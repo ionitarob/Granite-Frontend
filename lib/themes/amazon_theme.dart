@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 ///   so text and controls remain legible in night mode.
 class AmazonTheme extends StatelessWidget {
   final Widget child;
-  const AmazonTheme({required this.child, Key? key}) : super(key: key);
+  const AmazonTheme({required this.child, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +25,9 @@ class AmazonTheme extends StatelessWidget {
     final ThemeData theme = base.copyWith(
       colorScheme: cs,
       // Make the scaffold background dark in night mode so text is readable.
-      scaffoldBackgroundColor: isDark ? const Color(0xFF0B0B0D) : base.scaffoldBackgroundColor,
+      scaffoldBackgroundColor: isDark
+          ? const Color(0xFF0B0B0D)
+          : base.scaffoldBackgroundColor,
       // AppBar tint: use the amazonPrimary but keep elevation and other defaults.
       appBarTheme: base.appBarTheme.copyWith(backgroundColor: amazonPrimary),
       // Card color: keep contrast depending on brightness

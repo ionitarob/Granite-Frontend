@@ -46,7 +46,7 @@ class IgualdadApi {
 
   // GET /igualdad/resumen_semanal
   static Future<Map<String, dynamic>> getResumenSemanal({String? fecha}) async {
-    final path = '/igualdad/resumen_semanal' + (fecha != null ? '?fecha=$fecha' : '');
+    final path = '/igualdad/resumen_semanal${fecha != null ? '?fecha=$fecha' : ''}';
     final body = await _doGet(path);
     return Map<String, dynamic>.from(body as Map);
   }

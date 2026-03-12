@@ -1,0 +1,7 @@
+﻿Tables in schema [administracion]:
+  cotizaciones
+
+Tables in schema [dbo] (related to config/orders):
+  imaging_config
+  tbl_ConfigOrderHdr
+  tbl_ConfigOrderLine

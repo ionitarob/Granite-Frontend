@@ -72,9 +72,14 @@ class _AmzCloseBoxScreenState extends State<AmzCloseBoxScreen> {
 
     // Use shared ApiService client to send authenticated request
     final api = Provider.of<ApiService>(context, listen: false);
+    final payload = {'box_name': _boxController.text.trim()};
+    final username = _resolveCurrentUser(api);
+    if (username != null && username.isNotEmpty) {
+      payload['username'] = username;
+    }
     final res = await api.client.post(
-      '/amz/grading/sorting/close_box',
-      jsonBody: {'box_name': _boxController.text.trim()},
+      '/amz/grading/close_box',
+      jsonBody: payload,
     );
     if (res.ok) {
       setState(() {
@@ -96,6 +101,15 @@ class _AmzCloseBoxScreenState extends State<AmzCloseBoxScreen> {
 
     FocusScope.of(context).requestFocus(_boxFocus);
     setState(() => _submitting = false);
+  }
+
+  String? _resolveCurrentUser(ApiService api) {
+    final user = api.currentUser;
+    if (user == null) return null;
+    final username = user.username.trim();
+    if (username.isNotEmpty) return username;
+    final display = user.displayName().trim();
+    return display.isNotEmpty ? display : null;
   }
 
   @override

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../services/api_service.dart';
 import '../../services/analisis_service.dart';
 import '../../models/analisis_models.dart';
 
@@ -348,7 +350,99 @@ class _ProjectTransactionsDialogState extends State<ProjectTransactionsDialog> {
                         color: Colors.grey.shade600,
                       ),
                     ),
+                    const SizedBox(width: 16),
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 16,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${t.unit ?? 0} uds',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
                     const Spacer(),
+                    // Payment Toggle for Admin/Chief
+                    Builder(
+                      builder: (context) {
+                        final user = Provider.of<ApiService>(
+                          context,
+                          listen: false,
+                        ).currentUser;
+                        if (user != null &&
+                            (user.role == 'admin' || user.role == 'chief')) {
+                          return InkWell(
+                            onTap: () async {
+                              try {
+                                await _analisisService.togglePaymentStatus(
+                                  t.id!,
+                                  !(t.paid ?? false),
+                                );
+                                if (!context.mounted) return;
+                                _loadTransactions();
+                              } catch (e) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    (t.paid == true
+                                            ? Colors.green
+                                            : Colors.orange)
+                                        .withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color:
+                                      (t.paid == true
+                                              ? Colors.green
+                                              : Colors.orange)
+                                          .withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    t.paid == true
+                                        ? Icons.check_circle_rounded
+                                        : Icons.pending_rounded,
+                                    color: t.paid == true
+                                        ? Colors.green
+                                        : Colors.orange,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    t.paid == true ? 'PAGADO' : 'NO PAGADO',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: t.paid == true
+                                          ? Colors.green
+                                          : Colors.orange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,

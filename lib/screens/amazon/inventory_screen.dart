@@ -9,7 +9,7 @@ import '../../themes/amazon_theme.dart';
 import '../../services/api_service.dart';
 
 class AmazonInventoryScreen extends StatefulWidget {
-  const AmazonInventoryScreen({Key? key}) : super(key: key);
+  const AmazonInventoryScreen({super.key});
 
   @override
   _AmazonInventoryScreenState createState() => _AmazonInventoryScreenState();

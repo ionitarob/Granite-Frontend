@@ -8,7 +8,10 @@ import 'amz_find_dsn_screen.dart';
 
 import '../../themes/amazon_theme.dart';
 import '../../services/api_service.dart';
+import '../../api_client.dart';
 import '../../widgets/main_sidebar.dart';
+import '../../widgets/animated_background.dart';
+import 'package:flutter/cupertino.dart'; // For macOS controls
 
 class SortingScreen extends StatefulWidget {
   const SortingScreen({super.key});
@@ -63,8 +66,9 @@ class _SortingScreenState extends State<SortingScreen> {
                       ctx,
                       listen: false,
                     ).currentUser,
-                    width: 28,
+                    width: 32,
                     currentRoute: routeName,
+                    showIndicator: true,
                   ),
                 ),
               ),
@@ -99,7 +103,7 @@ class _SortingScreenState extends State<SortingScreen> {
     try {
       final api = Provider.of<ApiService>(context, listen: false);
       final res = await api.client.post(
-        '/amz/grading/sorting',
+        '/amz/grading/sorting_sp',
         jsonBody: {
           'Grading_Bucket': _selectedBucket,
           'DSN_Scan': _dsnController.text.trim(),
@@ -117,7 +121,7 @@ class _SortingScreenState extends State<SortingScreen> {
       } else {
         setState(() {
           _isError = true;
-          _message = res.error ?? 'Error servidor.';
+          _message = _extractErrorMessage(res) ?? 'Error servidor.';
         });
       }
     } catch (e) {
@@ -150,6 +154,17 @@ class _SortingScreenState extends State<SortingScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
+  String? _extractErrorMessage(ApiResult res) {
+    final body = res.body;
+    if (body is Map) {
+      for (final key in ['message', 'error', 'error_message', 'detail']) {
+        final value = body[key];
+        if (value is String && value.trim().isNotEmpty) return value;
+      }
+    }
+    return res.error;
+  }
+
   Color _bucketAccent(String? bucket) {
     // Use shades of orange to keep the Amazon theme consistent
     switch (bucket) {
@@ -176,6 +191,7 @@ class _SortingScreenState extends State<SortingScreen> {
       child: Builder(
         builder: (ctx) {
           final theme = Theme.of(ctx);
+          final colorScheme = theme.colorScheme;
           return Scaffold(
             extendBodyBehindAppBar: true,
             appBar: AppBar(
@@ -205,196 +221,275 @@ class _SortingScreenState extends State<SortingScreen> {
             ),
             body: Stack(
               children: [
-                const AnimatedLiquidBackground(),
+                const AnimatedBackgroundWidget(intensity: 1.0),
                 Center(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
                       vertical: 32,
                     ),
-                    child: LiquidGlassCard(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'AMZ Grading',
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 32,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            color: theme.brightness == Brightness.dark
+                                ? Colors.black.withOpacity(0.2)
+                                : Colors.white.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                              width: 1,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Sorting Production',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: Colors.white,
-                              fontSize: 20,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Form(
-                            key: _formKey,
-                            child: Column(
-                              children: [
-                                DropdownButtonFormField<String>(
-                                  focusNode: _bucketFocusNode,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  decoration: InputDecoration(
-                                    prefixIcon: Icon(
-                                      Icons.workspaces_outline,
-                                      color: Colors.orangeAccent[100],
-                                    ),
-                                    labelText: 'Grading Bucket',
-                                    labelStyle: const TextStyle(
-                                      color: Colors.white,
-                                    ),
-                                    filled: true,
-                                    fillColor: theme.cardColor.withAlpha(38),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: Colors.orangeAccent.shade700,
-                                        width: 2,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'AMZ Grading',
+                                style: theme.textTheme.headlineMedium?.copyWith(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 32,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Sorting Production',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: colorScheme.onSurface.withOpacity(0.7),
+                                  fontSize: 20,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+                              Form(
+                                key: _formKey,
+                                child: Column(
+                                  children: [
+                                    DropdownButtonFormField<String>(
+                                      focusNode: _bucketFocusNode,
+                                      style: TextStyle(
+                                        color: colorScheme.onSurface,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                    ),
-                                  ),
-                                  dropdownColor: theme.cardColor,
-                                  items: _buckets
-                                      .map(
-                                        (b) => DropdownMenuItem(
-                                          value: b,
-                                          child: Text(
-                                            b,
-                                            style: const TextStyle(
-                                              color: Colors.white,
+                                      icon: Icon(
+                                        Icons.unfold_more_rounded,
+                                        color: colorScheme.onSurface
+                                            .withOpacity(0.5),
+                                        size: 20,
+                                      ),
+                                      decoration: InputDecoration(
+                                        prefixIcon: Icon(
+                                          Icons.workspaces_outline,
+                                          color: colorScheme.primary,
+                                        ),
+                                        labelText: 'Grading Bucket',
+                                        labelStyle: TextStyle(
+                                          color: colorScheme.onSurface
+                                              .withOpacity(0.6),
+                                        ),
+                                        filled: true,
+                                        fillColor:
+                                            theme.brightness == Brightness.dark
+                                            ? Colors.black.withOpacity(0.1)
+                                            : Colors.white.withOpacity(0.5),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: 16,
+                                              horizontal: 16,
+                                            ),
+                                      ),
+                                      dropdownColor: theme.cardColor,
+                                      selectedItemBuilder: (context) {
+                                        return _buckets.map((String item) {
+                                          return Text(
+                                            item,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: colorScheme.onSurface,
                                               fontWeight: FontWeight.w600,
                                             ),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                  initialValue: _selectedBucket,
-                                  onChanged: (v) {
-                                    setState(() => _selectedBucket = v);
-                                    FocusScope.of(
-                                      context,
-                                    ).requestFocus(_dsnFocusNode);
-                                  },
-                                  validator: (v) =>
-                                      v == null ? 'Selecciona un bucket' : null,
-                                ),
-                                if (_selectedBucket != null) ...[
-                                  const SizedBox(height: 12),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Chip(
-                                      avatar: const Icon(
-                                        Icons.inventory_2_outlined,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                      backgroundColor: _bucketAccent(
-                                        _selectedBucket,
-                                      ).withAlpha(89),
-                                      label: Text(
-                                        _selectedBucket!,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 20),
-                                _buildTextField(
-                                  controller: _dsnController,
-                                  label: 'DSN Scan',
-                                  icon: Icons.qr_code_scanner,
-                                  focusNode: _dsnFocusNode,
-                                  onSubmitted: (_) => _submit(),
-                                ),
-                                const SizedBox(height: 28),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 56,
-                                  child: ElevatedButton(
-                                    onPressed: _isLoading ? null : _submit,
-                                    style: ElevatedButton.styleFrom(
-                                      elevation: 10,
-                                      backgroundColor:
-                                          Colors.orangeAccent.shade700,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                    ),
-                                    child: _isLoading
-                                        ? const CircularProgressIndicator(
-                                            valueColor: AlwaysStoppedAnimation(
-                                              Colors.white,
+                                          );
+                                        }).toList();
+                                      },
+                                      items: _buckets.map((b) {
+                                        final isLast = b == _buckets.last;
+                                        return DropdownMenuItem(
+                                          value: b,
+                                          child: Container(
+                                            width: double.infinity,
+                                            decoration: isLast
+                                                ? null
+                                                : BoxDecoration(
+                                                    border: Border(
+                                                      bottom: BorderSide(
+                                                        color: colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.1),
+                                                        width: 0.5,
+                                                      ),
+                                                    ),
+                                                  ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 8,
                                             ),
-                                          )
-                                        : const Text(
-                                            'Enviar',
-                                            style: TextStyle(
+                                            child: Text(
+                                              b,
+                                              style: TextStyle(
+                                                color: colorScheme.onSurface,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                      initialValue: _selectedBucket,
+                                      onChanged: (v) {
+                                        setState(() => _selectedBucket = v);
+                                        FocusScope.of(
+                                          context,
+                                        ).requestFocus(_dsnFocusNode);
+                                      },
+                                      validator: (v) => v == null
+                                          ? 'Selecciona un bucket'
+                                          : null,
+                                    ),
+                                    if (_selectedBucket != null) ...[
+                                      const SizedBox(height: 12),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Chip(
+                                          avatar: const Icon(
+                                            Icons.inventory_2_outlined,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
+                                          backgroundColor: _bucketAccent(
+                                            _selectedBucket,
+                                          ),
+                                          label: Text(
+                                            _selectedBucket!,
+                                            style: const TextStyle(
                                               color: Colors.white,
-                                              fontSize: 20,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 20),
+                                    _buildTextField(
+                                      controller: _dsnController,
+                                      label: 'DSN Scan',
+                                      icon: Icons.qr_code_scanner,
+                                      focusNode: _dsnFocusNode,
+                                      onSubmitted: (_) => _submit(),
+                                    ),
+                                    const SizedBox(height: 28),
+                                    Container(
+                                      width: double.infinity,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            colorScheme.primary,
+                                            colorScheme.primary.withOpacity(
+                                              0.8,
+                                            ),
+                                          ],
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: colorScheme.primary
+                                                .withOpacity(0.3),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: CupertinoButton(
+                                        padding: EdgeInsets.zero,
+                                        onPressed: _isLoading ? null : _submit,
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: _isLoading
+                                            ? const CupertinoActivityIndicator(
+                                                color: Colors.white,
+                                              )
+                                            : const Text(
+                                                'Enviar',
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_message != null) ...[
+                                const SizedBox(height: 28),
+                                SelectableText(
+                                  _message!,
+                                  style: TextStyle(
+                                    color: _isError
+                                        ? Colors.redAccent
+                                        : colorScheme.onSurface,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
                                   ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ],
-                            ),
+                              if (!_isError && _remainingUnits != null) ...[
+                                const SizedBox(height: 16),
+                                Text(
+                                  _remainingUnits!,
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface,
+                                    fontSize: 16,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                              if (!_isError && _boxesToClose != null) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  _boxesToClose!,
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface,
+                                    fontSize: 16,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ],
                           ),
-                          if (_message != null) ...[
-                            const SizedBox(height: 28),
-                            SelectableText(
-                              _message!,
-                              style: TextStyle(
-                                color: _isError
-                                    ? Colors.redAccent.shade100
-                                    : Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                          if (!_isError && _remainingUnits != null) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              _remainingUnits!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                          if (!_isError && _boxesToClose != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              _boxesToClose!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -414,76 +509,43 @@ class _SortingScreenState extends State<SortingScreen> {
     required FocusNode focusNode,
     Function(String)? onSubmitted,
   }) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: TextFormField(
-          controller: controller,
-          focusNode: focusNode,
-          onFieldSubmitted: onSubmitted,
-          style: const TextStyle(color: Colors.white, fontSize: 18),
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: Colors.orangeAccent[100]),
-            labelText: label,
-            labelStyle: const TextStyle(color: Colors.white),
-            filled: true,
-            fillColor: Colors.white.withAlpha(15),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Colors.orangeAccent.shade700,
-                width: 2,
-              ),
-            ),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return TextFormField(
+      controller: controller,
+      focusNode: focusNode,
+      onFieldSubmitted: onSubmitted,
+      style: TextStyle(color: colorScheme.onSurface, fontSize: 18),
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: colorScheme.primary),
+        labelText: label,
+        labelStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+        filled: true,
+        fillColor: theme.brightness == Brightness.dark
+            ? Colors.black.withOpacity(0.1)
+            : Colors.white.withOpacity(0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: colorScheme.primary.withOpacity(0.5),
+            width: 1.5,
           ),
-          validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-          textInputAction: TextInputAction.done,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 16,
+          horizontal: 16,
         ),
       ),
+      validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
+      textInputAction: TextInputAction.done,
     );
   }
-}
-
-// Small visual helpers used by the screen (kept local to avoid extra deps)
-class AnimatedLiquidBackground extends StatelessWidget {
-  const AnimatedLiquidBackground({super.key});
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Color(0xFFFFA726), Color(0xFFEF6C00)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    ),
-  );
-}
-
-class LiquidGlassCard extends StatelessWidget {
-  final Widget child;
-  const LiquidGlassCard({required this.child, super.key});
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(24),
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-      child: Container(
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor.withAlpha(15),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: Colors.orangeAccent.withAlpha(51),
-            width: 2,
-          ),
-        ),
-        child: child,
-      ),
-    ),
-  );
 }

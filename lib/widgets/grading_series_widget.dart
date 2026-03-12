@@ -10,7 +10,7 @@ class GradingSeriesWidget extends StatefulWidget {
   final String apiUrl;
   final int minutes;
 
-  GradingSeriesWidget({Key? key, String? apiUrl, this.minutes = 60}) : apiUrl = apiUrl ?? ('$kBackendBaseUrl/amz/grading/today_series'), super(key: key);
+  const GradingSeriesWidget({super.key, String? apiUrl, this.minutes = 60}) : apiUrl = apiUrl ?? ('$kBackendBaseUrl/amz/grading/today_series');
 
   @override
   State<GradingSeriesWidget> createState() => _GradingSeriesWidgetState();

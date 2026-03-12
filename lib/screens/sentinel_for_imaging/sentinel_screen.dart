@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'sentinel_provider.dart';
-import 'sentinel_chat.dart';
+
 import 'sentinel_dashboard.dart';
 import '../../services/api_service.dart';
+import 'active_imaging_panel.dart';
+import 'sentinel_theme.dart';
+import 'dart:ui'; // For BackdropFilter
 
 class SentinelScreen extends StatelessWidget {
-  const SentinelScreen({Key? key}) : super(key: key);
+  const SentinelScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -31,14 +34,55 @@ class SentinelScreen extends StatelessWidget {
           ),
         ),
         child: Scaffold(
-          body: Row(
-            children: [
-              // Chat Interface (Left Side - 30%)
-              const Expanded(flex: 3, child: SentinelChat()),
-              Container(width: 1, color: Colors.white10),
-              // Dashboard (Right Side - 70%)
-              const Expanded(flex: 7, child: SentinelDashboard()),
-            ],
+          extendBodyBehindAppBar: true,
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: SentinelTheme.backgroundGradient,
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    // Active Imaging Interface (Left Side - 30%)
+                    Expanded(
+                      flex: 3,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            decoration: SentinelTheme.glassDecoration(
+                              opacity: 0.05,
+                              borderRadius: 16,
+                            ),
+                            child: const ActiveImagingPanel(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12), // Spacing instead of divider
+                    // Dashboard (Right Side - 70%)
+                    Expanded(
+                      flex: 7,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            decoration: SentinelTheme.glassDecoration(
+                              opacity: 0.05,
+                              borderRadius: 16,
+                            ),
+                            child: const SentinelDashboard(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

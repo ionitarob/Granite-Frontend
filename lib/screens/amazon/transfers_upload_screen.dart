@@ -4,7 +4,7 @@ import '../../themes/amazon_theme.dart';
 import '../../services/api_service.dart';
 
 class TransfersUploadScreen extends StatefulWidget {
-  const TransfersUploadScreen({Key? key}) : super(key: key);
+  const TransfersUploadScreen({super.key});
 
   @override
   _TransfersUploadScreenState createState() => _TransfersUploadScreenState();

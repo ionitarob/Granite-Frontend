@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -416,7 +415,7 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 																),
 																const SizedBox(height: 12),
 																DropdownButtonFormField<String>(
-																	value: _selectedSource,
+																	initialValue: _selectedSource,
 																	decoration: InputDecoration(
 																		labelText: 'Selecciona origen',
 																		border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
@@ -524,7 +523,7 @@ class _CsvDropZone extends StatelessWidget {
 			: theme.colorScheme.outline.withOpacity(.6);
 
 		return DragTarget<Object>(
-			onWillAccept: (_) {
+			onWillAcceptWithDetails: (_) {
 				onDragChange(true);
 				return true;
 			},

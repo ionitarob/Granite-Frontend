@@ -17,11 +17,20 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'models/user_model.dart';
 import 'config.dart';
+import 'widgets/kit_digital_stats_table.dart';
+import 'widgets/amz_bucket_distribution_widget.dart';
+import 'widgets/amz_sorting_backlog_widget.dart';
+import 'widgets/amz_recent_inventory_widget.dart';
+import 'widgets/amz_quality_gauge_widget.dart';
+import 'widgets/amz_graded_vs_sorted_widget.dart';
+import 'widgets/amz_transfer_status_widget.dart';
+
+enum DashboardTab { amazon, kitDigital, ordenes }
 
 class DashboardScreen extends StatefulWidget {
   final User? user;
 
-  const DashboardScreen({Key? key, this.user}) : super(key: key);
+  const DashboardScreen({super.key, this.user});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -30,7 +39,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Animation<Color?> _graniteColor;
+  DashboardTab _currentTab = DashboardTab.amazon;
 
   @override
   void initState() {
@@ -39,10 +48,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     );
-    _graniteColor = ColorTween(
-      begin: Colors.red,
-      end: Colors.white,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
     _ctrl.repeat(reverse: true);
   }
 
@@ -89,6 +94,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       'total_grading': 'Total grading',
       'grading_hoy': 'Grading Hoy',
       'grading_series': 'Grading Series',
+      'amz_buckets': 'Distribución Buckets',
+      'amz_sorting': 'Sorting Backlog',
+      'amz_inventory_logs': 'Actividad Reciente',
+      'amz_quality': 'Índice Calidad',
+      'amz_performance': 'Rendimiento (G vs S)',
+      'amz_transfers': 'Estado Transferencias',
     };
 
     final prefs = await SharedPreferences.getInstance();
@@ -143,35 +154,447 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  String _greeting() {
+    final h = DateTime.now().hour;
+    if (h >= 6 && h < 12) return 'Buenos días';
+    if (h >= 12 && h < 20) return 'Buenas tardes';
+    return 'Buenas noches';
+  }
+
+  String _displayName(User u) {
+    if (u.nombre != null && u.nombre!.isNotEmpty) {
+      return u.nombre!;
+    }
+    return (u.username.isNotEmpty) ? u.username : 'Usuario';
+  }
+
+  bool _isOperario(User u) {
+    final r = (u.role).toLowerCase().trim().replaceAll(' ', '_');
+    return r == 'operario_básico' || r == 'operario_avanzado';
+  }
+
+  /// Placeholder: más adelante lo traerás del backend.
+  /// Por ahora puedes hardcodear o sacar de SharedPrefs cuando lo implementes.
+  String _assignedArea(User u) {
+    // ejemplos: "Amazon" / "Kit Digital"
+    // si no existe, default Amazon para operarios:
+    return 'Amazon';
+  }
+
+  int _currentPerformancePct(User u) {
+    // placeholder
+    return 0;
+  }
+
+  List<DashboardTab> _availableTabsFor(User u) {
+    if (_isOperario(u)) {
+      final area = _assignedArea(u).toLowerCase().trim();
+      if (area.contains('kit')) {
+        return [DashboardTab.kitDigital, DashboardTab.ordenes];
+      }
+      return [DashboardTab.amazon, DashboardTab.ordenes]; // default Amazon
+    }
+    // Otros roles ven todo
+    return [DashboardTab.amazon, DashboardTab.kitDigital, DashboardTab.ordenes];
+  }
+
+  /// Garantiza que el tab actual sea válido según el rol/asignación.
+  void _ensureValidTab(User u) {
+    final allowed = _availableTabsFor(u);
+    if (!allowed.contains(_currentTab)) {
+      setState(() => _currentTab = allowed.first);
+    }
+  }
+
+  Widget _buildMetricCard({
+    required String title,
+    required String value,
+    required List<Color> gradientColors,
+    required bool isDark,
+  }) {
+    return Expanded(
+      child: Container(
+        height: 100,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: isDark
+              ? const Color(0xFF1E1E2C).withOpacity(0.8)
+              : Colors.white.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.black.withOpacity(0.05),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // Bottom Gradient Line
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(16),
+                  ),
+                  gradient: LinearGradient(colors: gradientColors),
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Subtle Glow
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 40,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(16),
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      gradientColors.first.withOpacity(0.15),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopHeader(User u, ThemeData theme) {
+    final isOperario = _isOperario(u);
+    final isDark = theme.brightness == Brightness.dark;
+
+    Widget block;
+
+    if (isOperario) {
+      final area = _assignedArea(u);
+      final perf = _currentPerformancePct(u);
+
+      block = Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          // Glassmorphism subtle
+          color: isDark
+              ? const Color(0xFF1E1E2C).withOpacity(0.6)
+              : Colors.white.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : Colors.black.withOpacity(0.05),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.tertiary,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: const Icon(
+                Icons.person_outline_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Asignación Actual',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.textTheme.bodySmall?.color,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    area,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              height: 50,
+              width: 1,
+              color: theme.dividerColor.withOpacity(0.1),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rendimiento',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.textTheme.bodySmall?.color,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        '$perf%',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: perf >= 90
+                              ? Colors.greenAccent
+                              : (perf >= 70
+                                    ? Colors.orangeAccent
+                                    : Colors.redAccent),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        perf >= 0
+                            ? Icons.trending_up_rounded
+                            : Icons.trending_down_rounded, // Placeholder logic
+                        color: perf >= 90
+                            ? Colors.greenAccent
+                            : (perf >= 70
+                                  ? Colors.orangeAccent
+                                  : Colors.redAccent),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Admin / Supervisor View with Cards
+      // Using placeholders for values to match the requested look
+      block = SizedBox(
+        width: double.infinity,
+        child: Row(
+          children: [
+            _buildMetricCard(
+              title: 'Órdenes pendientes',
+              value: '0',
+              gradientColors: [
+                const Color(0xFFF12711),
+                const Color(0xFFF5AF19),
+              ], // Orange/Red
+              isDark: isDark,
+            ),
+            _buildMetricCard(
+              title: 'Tus órdenes asignadas',
+              value: '0',
+              gradientColors: [
+                const Color(0xFF2193b0),
+                const Color(0xFF6dd5ed),
+              ], // Blue
+              isDark: isDark,
+            ),
+            _buildMetricCard(
+              title: 'Incidencias',
+              value: '0',
+              gradientColors: [
+                const Color(0xFF833ab4),
+                const Color(0xFFfd1d1d),
+              ], // Pink/Red
+              isDark: isDark,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '${_greeting()}, ',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w400,
+                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+              ),
+            ),
+            Text(
+              _displayName(u),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        block,
+      ],
+    );
+  }
+
   // Central content area shared by desktop and mobile layouts.
-  Widget _buildMainContent(ThemeData theme, ColorScheme colorScheme) {
+  // Central content area shared by desktop and mobile layouts.
+  Widget _buildNavigationSelector(ThemeData theme, User u) {
+    final allowed = _availableTabsFor(u);
+
+    final segments = <ButtonSegment<DashboardTab>>[];
+    if (allowed.contains(DashboardTab.amazon)) {
+      segments.add(
+        const ButtonSegment(
+          value: DashboardTab.amazon,
+          label: Text('Amazon'),
+          icon: Icon(Icons.storefront),
+        ),
+      );
+    }
+    if (allowed.contains(DashboardTab.kitDigital)) {
+      segments.add(
+        const ButtonSegment(
+          value: DashboardTab.kitDigital,
+          label: Text('Kit Digital'),
+          icon: Icon(Icons.auto_graph_rounded),
+        ),
+      );
+    }
+    if (allowed.contains(DashboardTab.ordenes)) {
+      segments.add(
+        const ButtonSegment(
+          value: DashboardTab.ordenes,
+          label: Text('Órdenes'),
+          icon: Icon(Icons.receipt_long_rounded),
+        ),
+      );
+    }
+
+    return Center(
+      child: SegmentedButton<DashboardTab>(
+        segments: segments,
+        selected: {_currentTab},
+        onSelectionChanged: (s) => setState(() => _currentTab = s.first),
+        showSelectedIcon: false,
+        style: ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          padding: WidgetStateProperty.all(
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Central content area shared by desktop and mobile layouts.
+  Widget _buildMainContent(ThemeData theme, ColorScheme colorScheme, User u) {
+    // asegura tab válido (por rol/asignación)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureValidTab(u);
+    });
+
     return Padding(
       padding: const EdgeInsets.all(20.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 6),
-          const SizedBox(height: 8),
-          // Prominent "Dashboard" Title (macOS style header)
-          Text(
-            'Dashboard',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.5,
-              color: theme.textTheme.headlineLarge?.color,
+          // HEADER ARRIBA
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1200),
+              child: _buildTopHeader(u, theme),
             ),
           ),
-          const SizedBox(height: 20),
 
-          // Widgets area (replaces quick tiles) — build as a separate body so
-          // mobile can include it inside the page-level scroll.
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
+
+          // Tabs más abajo (como querías)
+          _buildNavigationSelector(theme, u),
+          const SizedBox(height: 24),
+
           Expanded(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 24.0),
-                child: _buildMainContentBody(theme, colorScheme),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1200),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  child: KeyedSubtree(
+                    key: ValueKey<DashboardTab>(_currentTab),
+                    child: _buildCurrentPage(theme, colorScheme, u),
+                  ),
+                ),
               ),
             ),
           ),
@@ -180,87 +603,88 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget _buildCurrentPage(ThemeData theme, ColorScheme colorScheme, User u) {
+    switch (_currentTab) {
+      case DashboardTab.amazon:
+        return _buildAmazonPage(theme, colorScheme);
+
+      case DashboardTab.kitDigital:
+        return DashboardSurface(
+          title: 'Kit Digital',
+          subtitle: 'Resumen de actividad y métricas',
+          child: const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: KitDigitalStatsTable(),
+          ),
+        );
+
+      case DashboardTab.ordenes:
+        return const DashboardSurface(
+          title: 'Órdenes',
+          subtitle: 'Vista general (pendiente)',
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(40.0),
+              child: Text("Ordenes Page (Empty)"),
+            ),
+          ),
+        );
+    }
+  }
+
   // The inner content block that holds widgets; reused by desktop and mobile
-  Widget _buildMainContentBody(ThemeData theme, ColorScheme colorScheme) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: theme.brightness == Brightness.dark
-                ? Colors.black.withOpacity(0.2)
-                : Colors.white.withOpacity(
-                    0.15,
-                  ), // Reduced from 0.3 for better visibility
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Widgets Bar',
-                    style: TextStyle(
-                      color: theme.textTheme.bodyLarge?.color?.withOpacity(0.8),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  // + button for adding widgets
-                  Container(
-                    decoration: BoxDecoration(
-                      color: theme.brightness == Brightness.dark
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.black.withOpacity(0.05),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      onPressed: () => _onAddWidgetPressed(context),
-                      icon: const Icon(Icons.add_rounded),
-                      color: theme.textTheme.bodyLarge?.color,
-                      tooltip: 'Add widget',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // WidgetGrid: provides responsive slots, drag/drop and persistence per-user
-              Builder(
-                builder: (ctx) {
-                  final u =
-                      widget.user ??
-                      Provider.of<ApiService>(ctx, listen: false).currentUser ??
-                      User(username: 'demo', role: 'admin');
-                  final available = <String, Widget>{
-                    'total_grading': TotalGradingWidget(),
-                    'grading_hoy': GradingHoyWidget(),
-                    'grading_series': GradingSeriesWidget(),
-                  };
-                  final spans = <String, int>{'grading_series': 2};
-                  return WidgetGrid(
-                    key: ValueKey(_widgetGridRevision),
-                    availableWidgets: available,
-                    storageKey: 'widget_layout_${u.username}',
-                    spanColumns: spans,
-                  );
-                },
-              ),
-            ],
-          ),
+  Widget _buildAmazonPage(ThemeData theme, ColorScheme colorScheme) {
+    // Reusing the DashboardSurface for Amazon to ensure consistency
+    return DashboardSurface(
+      title: 'Amazon',
+      subtitle: 'Grading y Sorting Metricas',
+      // We can leave title null if we want to rely on the widgets themselves,
+      // but providing a container establishes the glass look.
+      // Amazon tab has a dynamic grid, so we might not want a fixed title here
+      // or we can add one for consistency.
+      headerRight: Container(
+        decoration: BoxDecoration(
+          color: theme.brightness == Brightness.dark
+              ? Colors.white.withOpacity(0.1)
+              : Colors.black.withOpacity(0.05),
+          shape: BoxShape.circle,
         ),
+        child: IconButton(
+          onPressed: () => _onAddWidgetPressed(context),
+          icon: const Icon(Icons.add_rounded),
+          color: theme.textTheme.bodyLarge?.color,
+          tooltip: 'Add widget',
+        ),
+      ),
+      child: Builder(
+        builder: (ctx) {
+          final u =
+              widget.user ??
+              Provider.of<ApiService>(ctx, listen: false).currentUser ??
+              User(username: 'demo', role: 'admin');
+          final available = <String, Widget>{
+            'total_grading': TotalGradingWidget(),
+            'grading_hoy': GradingHoyWidget(),
+            'grading_series': GradingSeriesWidget(),
+            'amz_buckets': AmzBucketDistributionWidget(),
+            'amz_sorting': AmzSortingBacklogWidget(),
+            'amz_inventory_logs': AmzRecentInventoryWidget(),
+            'amz_quality': AmzQualityGaugeWidget(),
+            'amz_performance': AmzGradedVsSortedWidget(),
+            'amz_transfers': AmzTransferStatusWidget(),
+          };
+          final spans = <String, int>{
+            'grading_series': 2,
+            'amz_performance': 2,
+            'amz_transfers': 2,
+          };
+          return WidgetGrid(
+            key: ValueKey(_widgetGridRevision),
+            availableWidgets: available,
+            storageKey: 'widget_layout_${u.username}',
+            spanColumns: spans,
+          );
+        },
       ),
     );
   }
@@ -306,7 +730,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                           permanent: true,
                           currentRoute: routeName,
                         ),
-                        Expanded(child: _buildMainContent(theme, colorScheme)),
+                        Expanded(
+                          child: _buildMainContent(theme, colorScheme, u),
+                        ),
                       ],
                     );
                   }
@@ -328,7 +754,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 left: 0,
                                 top: 0,
                                 bottom: 0,
-                                child: EdgeNavHandle(user: u),
+                                child: EdgeNavHandle(
+                                  user: u,
+                                  width: 32,
+                                  showIndicator: true,
+                                ),
                               ),
                             ],
                           ),
@@ -348,16 +778,30 @@ class _DashboardScreenState extends State<DashboardScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 6),
-                                Text(
-                                  'Dashboard',
-                                  style: TextStyle(
-                                    color: colorScheme.primary,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w900,
+                                // Removed Dashboard Title
+                                const SizedBox(height: 12),
+                                // Replaced _buildMainContentBody with _buildMainContent which now handles tabs
+                                // Actually _buildMainContent handles the structure, but here we are in mobile layout
+                                // We should reuse _buildMainContent's logic or just call _buildMainContent directly if possible?
+                                // _buildMainContent returns a Column with Expanded. That might conflict with SingleChildScrollView here.
+                                // Let's simplify mobile layout to just use _buildMainContent but ensuring it fits.
+                                // Actually, let's just render the tabs and content here too.
+                                // But _buildMainContent has Expanded.
+                                // Let's reimplement similar logic or extract widgets.
+                                // To avoid duplication, let's just allow _buildMainContent to be the body.
+                                // Mobile View - Use Dropdown as well
+                                _buildTopHeader(u, theme),
+                                const SizedBox(height: 14),
+                                _buildNavigationSelector(theme, u),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: MediaQuery.of(ctx).size.height * 0.7,
+                                  child: _buildCurrentPage(
+                                    theme,
+                                    colorScheme,
+                                    u,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                _buildMainContentBody(theme, colorScheme),
                                 const SizedBox(height: 40),
                               ],
                             ),
@@ -382,7 +826,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 // It plays the provided Lottie animation and reacts to mouse hover by growing
 // slightly and adding a glow.
 class _AispherePosition extends StatelessWidget {
-  const _AispherePosition({Key? key}) : super(key: key);
+  const _AispherePosition();
 
   @override
   Widget build(BuildContext context) {
@@ -401,7 +845,7 @@ class _AispherePosition extends StatelessWidget {
 }
 
 class _Aisphere extends StatefulWidget {
-  const _Aisphere({Key? key}) : super(key: key);
+  const _Aisphere();
 
   @override
   State<_Aisphere> createState() => _AisphereState();
@@ -518,9 +962,98 @@ class _AisphereState extends State<_Aisphere> {
   }
 }
 
+class DashboardSurface extends StatelessWidget {
+  final Widget child;
+  final Widget? headerRight;
+  final String? title;
+  final String? subtitle;
+
+  const DashboardSurface({
+    super.key,
+    required this.child,
+    this.headerRight,
+    this.title,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.black.withOpacity(0.22)
+                : Colors.white.withOpacity(0.16),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title != null || headerRight != null) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (title != null)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title!,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (subtitle != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                subtitle!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.65),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    if (headerRight != null) headerRight!,
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Divider(color: Colors.white.withOpacity(0.08), height: 1),
+                const SizedBox(height: 14),
+              ],
+              Expanded(child: child),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ChatPanel extends StatefulWidget {
   final VoidCallback? onClose;
-  const ChatPanel({Key? key, this.onClose}) : super(key: key);
+  const ChatPanel({super.key, this.onClose});
 
   @override
   State<ChatPanel> createState() => _ChatPanelState();
@@ -842,7 +1375,7 @@ class _ChatPanelState extends State<ChatPanel> {
                                     final textAfter = _controller.text
                                         .substring(sel.end);
                                     final newText = '$textBefore\n$textAfter';
-                                    final newPos = (textBefore + '\n').length;
+                                    final newPos = ('$textBefore\n').length;
                                     _controller.text = newText;
                                     _controller.selection =
                                         TextSelection.collapsed(offset: newPos);

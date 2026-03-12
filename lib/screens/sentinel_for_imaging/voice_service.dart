@@ -3,6 +3,8 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'package:audioplayers/audioplayers.dart';
+
 class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _flutterTts = FlutterTts();
@@ -31,7 +33,7 @@ class VoiceService {
     }
 
     // Initialize TTS
-    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setLanguage("es-ES");
     await _flutterTts.setPitch(1.0);
     await _flutterTts.setSpeechRate(0.5);
 
@@ -89,7 +91,7 @@ class VoiceService {
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 3),
       partialResults: partialResults,
-      localeId: "en_US",
+      localeId: "es_ES",
       cancelOnError: false,
       listenMode: stt.ListenMode.dictation,
     );
@@ -99,6 +101,35 @@ class VoiceService {
     if (_isListening) {
       _speech.stop();
       _isListening = false;
+    }
+  }
+
+  final AudioPlayer _player = AudioPlayer();
+
+  Future<void> playTriggerSound() async {
+    try {
+      if (_player.state == PlayerState.playing) {
+        await _player.stop();
+      }
+
+      final completer = Completer<void>();
+      final subscription = _player.onPlayerComplete.listen((_) {
+        if (!completer.isCompleted) completer.complete();
+      });
+
+      await _player.play(AssetSource('sounds/port_trigger.MP3'));
+
+      // Wait for finish or timeout (safety)
+      await completer.future.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+      );
+
+      await subscription.cancel();
+    } catch (e) {
+      print('Error playing trigger sound: $e');
     }
   }
 

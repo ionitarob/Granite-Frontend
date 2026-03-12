@@ -1,0 +1,10 @@
+﻿Running makemigrations...
+Migrations for 'orderops':
+  c:\Users\rmaglan\Documents\CTool Granite\Granite-Backend\django_backend\apps\orderops\migrations\0012_agentordermanualservice.py
+    + Create model AgentOrderManualService
+Running migrate...
+Operations to perform:
+  Apply all migrations: orderops
+Running migrations:
+  Applying orderops.0012_agentordermanualservice... OK
+Success!

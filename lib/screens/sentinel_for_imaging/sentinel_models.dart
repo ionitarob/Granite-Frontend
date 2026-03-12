@@ -15,6 +15,7 @@ class SentinelDevice {
   final double? speedMbps;
   final int? downloadedBytes;
   final int? totalBytes;
+  final DateTime? completedAt;
 
   SentinelDevice({
     required this.mac,
@@ -33,6 +34,7 @@ class SentinelDevice {
     this.speedMbps,
     this.downloadedBytes,
     this.totalBytes,
+    this.completedAt,
   });
 
   factory SentinelDevice.fromJson(Map<String, dynamic> json) {
@@ -57,13 +59,16 @@ class SentinelDevice {
           '${map['switch_name'] ?? '??'} Port ${map['port_number'] ?? '??'}',
       status: map['status']?.toString() ?? 'Alive',
       imagingProgress: map['imaging_progress'] is num
-          ? (map['imaging_progress'] as num).toInt()
-          : null,
+          ? (map['imaging_progress'] as num)
+                .toInt() // Handle num
+          : int.tryParse(
+              map['imaging_progress']?.toString() ?? '',
+            ), // Handle String
       logs: (map['logs'] as List?)?.map((e) => e.toString()).toList() ?? [],
       switchName: map['switch_name']?.toString(),
       portNumber: map['port_number'] is num
           ? (map['port_number'] as num).toInt()
-          : null,
+          : int.tryParse(map['port_number']?.toString() ?? ''),
       dhcp: dhcp,
       activeRunId:
           map['active_run_id']?.toString() ??
@@ -72,12 +77,15 @@ class SentinelDevice {
       stage: map['stage']?.toString(),
       speedMbps: map['speed_mbps'] is num
           ? (map['speed_mbps'] as num).toDouble()
-          : null,
+          : double.tryParse(map['speed_mbps']?.toString() ?? ''),
       downloadedBytes: map['downloaded_bytes'] is num
           ? (map['downloaded_bytes'] as num).toInt()
-          : null,
+          : int.tryParse(map['downloaded_bytes']?.toString() ?? ''),
       totalBytes: map['total_bytes'] is num
           ? (map['total_bytes'] as num).toInt()
+          : int.tryParse(map['total_bytes']?.toString() ?? ''),
+      completedAt: map['completed_at'] != null
+          ? DateTime.tryParse(map['completed_at'].toString())
           : null,
     );
   }
@@ -100,6 +108,7 @@ class SentinelDevice {
       'speed_mbps': speedMbps,
       'downloaded_bytes': downloadedBytes,
       'total_bytes': totalBytes,
+      'completed_at': completedAt?.toIso8601String(),
     };
   }
 
@@ -107,11 +116,38 @@ class SentinelDevice {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is SentinelDevice &&
-          runtimeType == other.runtimeType &&
-          mac == other.mac;
+          mac == other.mac &&
+          ip == other.ip &&
+          hostname == other.hostname &&
+          vendor == other.vendor &&
+          status == other.status &&
+          imagingProgress == other.imagingProgress &&
+          activeRunId == other.activeRunId &&
+          stage == other.stage &&
+          speedMbps == other.speedMbps &&
+          downloadedBytes == other.downloadedBytes &&
+          totalBytes == other.totalBytes &&
+          switchName == other.switchName &&
+          portNumber == other.portNumber &&
+          completedAt == other.completedAt;
 
   @override
-  int get hashCode => mac.hashCode;
+  int get hashCode => Object.hash(
+    mac,
+    ip,
+    hostname,
+    vendor,
+    status,
+    imagingProgress,
+    activeRunId,
+    stage,
+    speedMbps,
+    downloadedBytes,
+    totalBytes,
+    switchName,
+    portNumber,
+    completedAt,
+  );
 
   SentinelDevice copyWith({
     String? mac,
@@ -130,6 +166,7 @@ class SentinelDevice {
     double? speedMbps,
     int? downloadedBytes,
     int? totalBytes,
+    DateTime? completedAt,
   }) {
     return SentinelDevice(
       mac: mac ?? this.mac,
@@ -148,6 +185,7 @@ class SentinelDevice {
       speedMbps: speedMbps ?? this.speedMbps,
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
       totalBytes: totalBytes ?? this.totalBytes,
+      completedAt: completedAt ?? this.completedAt,
     );
   }
 }
@@ -255,6 +293,10 @@ class SentinelPort {
   final bool enabled;
   final String status; // "up", "down", "imaging", "anomaly"
   final SentinelDevice? connectedDevice;
+  final String? connectedMac;
+  final bool imageEnabled;
+  final String? imageEnabledAt;
+  final String? selectedImage;
 
   SentinelPort({
     required this.portId,
@@ -264,9 +306,21 @@ class SentinelPort {
     required this.enabled,
     this.status = 'down',
     this.connectedDevice,
+    this.connectedMac,
+    this.imageEnabled = false,
+    this.imageEnabledAt,
+    this.selectedImage,
   });
 
   factory SentinelPort.fromJson(Map<String, dynamic> json) {
+    bool parseBool(dynamic v) {
+      if (v == true) return true;
+      if (v == 1 || v == '1') return true;
+      return false;
+    }
+
+    final isEnabled = parseBool(json['enabled']);
+
     return SentinelPort(
       portId: json['port_id'] is num ? (json['port_id'] as num).toInt() : 0,
       portNumber: json['port_number'] is num
@@ -274,8 +328,16 @@ class SentinelPort {
           : 0,
       label: json['label']?.toString() ?? '',
       role: json['role']?.toString() ?? 'access',
-      enabled: json['enabled'] == true,
-      status: json['enabled'] == true ? 'down' : 'disabled',
+      enabled: isEnabled,
+      status: isEnabled ? 'down' : 'disabled',
+      imageEnabled: parseBool(json['image_enabled']),
+      imageEnabledAt: json['image_enabled_at']?.toString(),
+      connectedMac:
+          json['connected_mac']?.toString() ?? json['mac']?.toString(),
+      selectedImage:
+          json['selected_image']?.toString() ??
+          json['image']?.toString() ??
+          json['current_image']?.toString(),
     );
   }
 
@@ -287,6 +349,10 @@ class SentinelPort {
     bool? enabled,
     String? status,
     SentinelDevice? Function()? connectedDevice,
+    String? connectedMac,
+    bool? imageEnabled,
+    String? imageEnabledAt,
+    String? selectedImage,
   }) {
     return SentinelPort(
       portId: portId ?? this.portId,
@@ -298,8 +364,55 @@ class SentinelPort {
       connectedDevice: connectedDevice != null
           ? connectedDevice()
           : this.connectedDevice,
+      connectedMac: connectedMac ?? this.connectedMac,
+      imageEnabled: imageEnabled ?? this.imageEnabled,
+      imageEnabledAt: imageEnabledAt ?? this.imageEnabledAt,
+      selectedImage: selectedImage ?? this.selectedImage,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SentinelPort &&
+          portId == other.portId &&
+          portNumber == other.portNumber &&
+          label == other.label &&
+          role == other.role &&
+          enabled == other.enabled &&
+          status == other.status &&
+          imageEnabled == other.imageEnabled &&
+          selectedImage == other.selectedImage &&
+          // device identity
+          connectedMac == other.connectedMac &&
+          connectedDevice?.mac == other.connectedDevice?.mac &&
+          // device UI telemetry
+          connectedDevice?.imagingProgress ==
+              other.connectedDevice?.imagingProgress &&
+          connectedDevice?.stage == other.connectedDevice?.stage &&
+          connectedDevice?.speedMbps == other.connectedDevice?.speedMbps &&
+          connectedDevice?.downloadedBytes ==
+              other.connectedDevice?.downloadedBytes &&
+          connectedDevice?.totalBytes == other.connectedDevice?.totalBytes;
+
+  @override
+  int get hashCode => Object.hash(
+    portId,
+    portNumber,
+    label,
+    role,
+    enabled,
+    status,
+    imageEnabled,
+    selectedImage,
+    connectedMac,
+    connectedDevice?.mac,
+    connectedDevice?.imagingProgress,
+    connectedDevice?.stage,
+    connectedDevice?.speedMbps,
+    connectedDevice?.downloadedBytes,
+    connectedDevice?.totalBytes,
+  );
 }
 
 class SentinelSwitch {
@@ -322,6 +435,12 @@ class SentinelSwitch {
   });
 
   factory SentinelSwitch.fromJson(Map<String, dynamic> json) {
+    bool parseBool(dynamic v) {
+      if (v == true) return true;
+      if (v == 1 || v == '1') return true;
+      return false;
+    }
+
     return SentinelSwitch(
       switchId: json['switch_id'] is num
           ? (json['switch_id'] as num).toInt()
@@ -330,7 +449,7 @@ class SentinelSwitch {
       ip: json['ip']?.toString() ?? '',
       vendor: json['vendor']?.toString() ?? '',
       location: json['location']?.toString(),
-      enabled: json['enabled'] == true,
+      enabled: parseBool(json['enabled']),
       ports:
           (json['ports'] as List?)
               ?.map((p) => SentinelPort.fromJson(p))
@@ -348,4 +467,21 @@ class SentinelSwitch {
 
   @override
   int get hashCode => switchId.hashCode;
+}
+
+class VirtualTableGroup {
+  final String tableName; // e.g., "A-18" or "M3-Table"
+  final String switchName;
+  final List<SentinelPort> ports;
+  final dynamic
+  packColor; // Using dynamic for Color to avoid dart:ui import in models if needed, but usually fine in Flutter
+  final int? packId; // 1, 2, or 3
+
+  VirtualTableGroup({
+    required this.tableName,
+    required this.switchName,
+    required this.ports,
+    this.packColor,
+    this.packId,
+  });
 }

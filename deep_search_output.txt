@@ -1,0 +1,16 @@
+﻿Searching for SKUs in [datapass].[administracion].[cotizaciones]: ['CP46088', 'CM58712', 'CL67637', 'CQ20331', '291910811']
+
+--- Results for CP46088 ---
+No matches.
+
+--- Results for CM58712 ---
+No matches.
+
+--- Results for CL67637 ---
+No matches.
+
+--- Results for CQ20331 ---
+No matches.
+
+--- Results for 291910811 ---
+No matches.

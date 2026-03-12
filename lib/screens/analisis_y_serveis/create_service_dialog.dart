@@ -36,7 +36,7 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
   List<ProjectFund> _funds = [];
   List<String> _fabricantes = [];
   List<String> _clientes = [];
-  List<String> _servicios = [];
+  List<MasterService> _masterServicios = [];
   List<String> _internals = [];
 
   bool _loadingData = true;
@@ -55,7 +55,7 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
         _analisisService.getFunds(),
         _analisisService.getClientes(),
         _analisisService.getFabricantes(),
-        _analisisService.getServicios(),
+        _analisisService.getMasterServicios(),
         _analisisService.getInternals(),
       ]);
 
@@ -64,7 +64,7 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
           _funds = results[0] as List<ProjectFund>;
           _clientes = results[1] as List<String>;
           _fabricantes = results[2] as List<String>;
-          _servicios = results[3] as List<String>;
+          _masterServicios = results[3] as List<MasterService>;
           _internals = results[4] as List<String>;
           _loadingData = false;
         });
@@ -109,18 +109,48 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
         'estado': 'Open',
         'cost': double.tryParse(_costController.text.trim()) ?? 0.0,
         'cliente': _cliente,
-        'fabricante': _fabricante, // Assuming backend accepts this
+        'fabricante': _fabricante,
         'descripcion': _descController.text.trim(),
         'servicio': _serviceController.text.trim(),
-        'orden': _orderController.text.trim(), // Assuming backend field names
-        'sku': _skuController.text.trim(),
+        'previ': _orderController.text.trim(), // Mapped to 'previ'
+        'csku': _skuController.text.trim(),
         'unit': int.tryParse(_unitsController.text.trim()) ?? 0,
-        'observaciones': _obsController.text.trim(),
-        'sap_vdf': _sapController.text.trim(),
-        'palets': int.tryParse(_palletsController.text.trim()) ?? 0,
-        'account_claim': _accountController.text.trim(),
-        'internal_im': _internalIm,
+        'observacion': _obsController.text.trim(), // Mapped to 'observacion'
+        'numsap': _sapController.text.trim(), // Mapped to 'numsap'
+        'palets':
+            int.tryParse(_palletsController.text.trim())?.toString() ??
+            '0', // Backend expects string? No, 'palets' is allowed, likely int or string. Let's send string if controller is text.
+        'claimacc': _accountController.text.trim(), // Mapped to 'claimacc'
+        'internal': _internalIm, // Mapped to 'internal'
       };
+
+      // Check local funds before submitting
+      if (_idXiaomi != null && _idXiaomi != 'No Aplica') {
+        final fund = _funds.firstWhere(
+          (f) => f.idxiaomi == _idXiaomi,
+          orElse: () => ProjectFund(totalSpent: 0, transactions: 0),
+        );
+        if ((fund.remaining ?? 0) <= 0) {
+          setState(() {
+            _error =
+                "No hay fondos disponibles para realizar este servicio en este ID XIAOMI";
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      // Check if service exists in master list
+      final serviceName = _serviceController.text.trim();
+      final master = _masterServicios.where((m) => m.servicio == serviceName);
+      if (master.isEmpty) {
+        setState(() {
+          _error =
+              "El servicio '$serviceName' no existe en la lista maestra. Por favor, selecciona uno de la lista.";
+          _isLoading = false;
+        });
+        return;
+      }
 
       await _analisisService.createAnalisis(payload);
 
@@ -130,7 +160,7 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = e.toString().replaceFirst('Exception: ', '');
           _isLoading = false;
         });
       }
@@ -139,10 +169,13 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
+      backgroundColor: theme.cardColor,
+      surfaceTintColor: Colors.transparent,
       child: Container(
         width: 900,
         padding: const EdgeInsets.all(32),
@@ -161,12 +194,14 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Registro de servicio',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF2C3E50),
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF2C3E50),
                         ),
                       ),
                       const SizedBox(height: 32),
@@ -251,10 +286,12 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
                                   'Ingrese unidades',
                                   isNumber: true,
                                   validator: (v) {
-                                    if (v == null || v.isEmpty)
+                                    if (v == null || v.isEmpty) {
                                       return 'Requerido';
-                                    if (int.tryParse(v) == null)
+                                    }
+                                    if (int.tryParse(v) == null) {
                                       return 'Debe ser un número';
+                                    }
                                     return null;
                                   },
                                 ),
@@ -286,7 +323,11 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
                                   'Ingrese numero SAP VDF',
                                   enabled:
                                       _idXiaomi == null ||
-                                      _idXiaomi == 'No Aplica',
+                                      _idXiaomi == 'No Aplica' ||
+                                      (_idXiaomi?.toUpperCase().contains(
+                                            'VODAFONE',
+                                          ) ??
+                                          false),
                                 ),
                                 const SizedBox(height: 16),
                                 _buildTextField(
@@ -322,21 +363,62 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
                                   width: double.infinity,
                                   height: 50,
                                   child: ElevatedButton(
-                                    onPressed: _isLoading ? null : _submit,
+                                    onPressed:
+                                        _isLoading ||
+                                            (_idXiaomi != null &&
+                                                _idXiaomi != 'No Aplica' &&
+                                                (_funds
+                                                            .firstWhere(
+                                                              (f) =>
+                                                                  f.idxiaomi ==
+                                                                  _idXiaomi,
+                                                              orElse: () =>
+                                                                  ProjectFund(
+                                                                    totalSpent:
+                                                                        0,
+                                                                    transactions:
+                                                                        0,
+                                                                  ),
+                                                            )
+                                                            .remaining ??
+                                                        0) <=
+                                                    0)
+                                        ? null
+                                        : _submit,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF2980B9),
                                       foregroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(4),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
+                                      elevation: 0,
                                     ),
                                     child: _isLoading
                                         ? const CircularProgressIndicator(
                                             color: Colors.white,
                                           )
-                                        : const Text(
-                                            'REGISTRA EL SERVICIO',
-                                            style: TextStyle(
+                                        : Text(
+                                            (_idXiaomi != null &&
+                                                    _idXiaomi != 'No Aplica' &&
+                                                    (_funds
+                                                                .firstWhere(
+                                                                  (f) =>
+                                                                      f.idxiaomi ==
+                                                                      _idXiaomi,
+                                                                  orElse: () =>
+                                                                      ProjectFund(
+                                                                        totalSpent:
+                                                                            0,
+                                                                        transactions:
+                                                                            0,
+                                                                      ),
+                                                                )
+                                                                .remaining ??
+                                                            0) <=
+                                                        0)
+                                                ? 'ID SIN FONDOS'
+                                                : 'REGISTRA EL SERVICIO',
+                                            style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -364,37 +446,64 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
     String? Function(String?)? validator,
     bool enabled = true,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label + ':',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          '$label:',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           enabled: enabled,
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+            fontSize: 14,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey.shade400),
-            filled: !enabled,
-            fillColor: !enabled ? Colors.grey.shade100 : null,
+            hintStyle: TextStyle(
+              color: theme.hintColor.withOpacity(0.5),
+              fontSize: 13,
+            ),
+            filled: true,
+            fillColor: !enabled
+                ? (isDark ? Colors.white10 : Colors.grey.shade100)
+                : (isDark
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.grey.shade50),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF2980B9),
+                width: 1.5,
+              ),
             ),
             disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade200),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey.shade100,
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
+              horizontal: 16,
               vertical: 14,
             ),
           ),
@@ -410,33 +519,62 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
     String? value,
     ValueChanged<String?> onChanged,
   ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label + ':',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          '$label:',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: value,
           items: items
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(
+                    e,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              )
               .toList(),
           onChanged: onChanged,
+          dropdownColor: isDark ? const Color(0xFF1B2631) : Colors.white,
           decoration: InputDecoration(
             hintText: 'Selecciona un valor',
-            hintStyle: TextStyle(color: Colors.grey.shade400),
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.grey.shade50,
+            hintStyle: TextStyle(
+              color: theme.hintColor.withOpacity(0.5),
+              fontSize: 13,
+            ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
+              horizontal: 16,
               vertical: 14,
             ),
           ),
@@ -446,12 +584,15 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
   }
 
   Widget _buildServiceAutocomplete() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
           'Servicio CF:',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
         Autocomplete<String>(
@@ -459,97 +600,153 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
             if (textEditingValue.text == '') {
               return const Iterable<String>.empty();
             }
-            return _servicios.where((String option) {
+            return _masterServicios.map((m) => m.servicio).where((
+              String option,
+            ) {
               return option.toLowerCase().contains(
                 textEditingValue.text.toLowerCase(),
               );
             });
           },
           onSelected: (String selection) {
-            _serviceController.text = selection;
-          },
-          fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
-            // Sync the internal controller with this one if needed, or just use this one
-            // Here we use the passed controller but we need to ensure _serviceController is updated
-            // We can just use _serviceController as the controller for this field if we attach it properly
-            // But Autocomplete creates its own unless we pass one.
-            // Actually, let's just use the fieldViewBuilder's controller to drive the UI,
-            // and sync changes to _serviceController, or just use _serviceController directly if possible.
-            // Simpler: Use a LayoutBuilder or just assign the controller.
-
-            // Hack: we want to use _serviceController, but Autocomplete manages its own state.
-            // We'll just listen to the controller provided by Autocomplete and update ours.
-            controller.addListener(() {
-              _serviceController.text = controller.text;
-            });
-
-            return TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              onEditingComplete: onEditingComplete,
-              decoration: InputDecoration(
-                hintText: 'Selecciona o escribe un valor',
-                hintStyle: TextStyle(color: Colors.grey.shade400),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 14,
-                ),
-              ),
+            final master = _masterServicios.firstWhere(
+              (m) => m.servicio == selection,
             );
+            _serviceController.text = selection;
+            if (master.pvd != null) {
+              _costController.text = master.pvd!.toStringAsFixed(2);
+            }
           },
+          fieldViewBuilder:
+              (context, controller, focusNode, onEditingComplete) {
+                controller.addListener(() {
+                  if (_serviceController.text != controller.text) {
+                    _serviceController.text = controller.text;
+                  }
+                });
+
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  onEditingComplete: onEditingComplete,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 14,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Selecciona o escribe un valor',
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withOpacity(0.05)
+                        : Colors.grey.shade50,
+                    hintStyle: TextStyle(
+                      color: theme.hintColor.withOpacity(0.5),
+                      fontSize: 13,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: isDark ? Colors.white12 : Colors.grey.shade200,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(
+                        color: isDark ? Colors.white12 : Colors.grey.shade200,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF2980B9),
+                        width: 1.5,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                );
+              },
         ),
       ],
     );
   }
 
   Widget _buildIdXiaomiDropdown() {
-    final items = [
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final items = {
       'No Aplica',
       ..._funds.map((e) => e.idxiaomi ?? ''),
-    ].toSet().toList();
+    }.toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
           'Id Xiaomi:',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _idXiaomi,
+          dropdownColor: isDark ? const Color(0xFF1B2631) : Colors.white,
           items: items
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(
+                    e,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              )
               .toList(),
           onChanged: (v) {
             setState(() {
               _idXiaomi = v;
               if (v != null && v != 'No Aplica') {
-                _sapController.clear();
+                // If it's not VODAFONE, clear SAP
+                bool isVodafone = v.toUpperCase().contains('VODAFONE');
+                if (!isVodafone) {
+                  _sapController.clear();
+                }
               }
             });
           },
           decoration: InputDecoration(
             hintText: 'Selecciona un valor',
-            hintStyle: TextStyle(color: Colors.grey.shade400),
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.grey.shade50,
+            hintStyle: TextStyle(
+              color: theme.hintColor.withOpacity(0.5),
+              fontSize: 13,
+            ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(4),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
+              horizontal: 16,
               vertical: 14,
             ),
           ),

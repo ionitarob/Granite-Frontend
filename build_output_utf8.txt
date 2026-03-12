@@ -1,0 +1,185 @@
+﻿Building Windows application...                                 
+flutter : CMake 
+Warning (dev) at flutt
+er/ephemeral/.plugin_s
+ymlinks/flutter_tts/wi
+ndows/CMakeLists.txt:1
+2 (exec_program):
+En línea: 1 Carácter: 
+1
++ flutter build 
+windows > 
+build_output.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (CMake Warn   
+ ing (...(exec_pro    
+gram)::String) []    
+, RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+  Policy CMP0153 is 
+not set: The 
+exec_program command 
+should not be called.
+  Run "cmake 
+--help-policy 
+CMP0153" for policy 
+details.  Use the 
+cmake_policy
+  command to set the 
+policy and suppress 
+this warning.
+
+  Use 
+execute_process() 
+instead.
+This warning is for 
+project developers.  
+Use -Wno-dev to 
+suppress it.
+
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: El 
+comando "setlocal [C:\
+Users\rmaglan\Document
+s\CTool Granite\Granit
+e-Frontend\build\windo
+ws\x64\INSTALL.vcxproj
+]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+"C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\Common7\IDE\Com
+monExtensions\Microsof
+t\CMake\CMake\bin\cmak
+e.exe" 
+-DBUILD_TYPE=Release 
+-P 
+cmake_install.cmake [C
+:\Users\rmaglan\Docume
+nts\CTool Granite\Gran
+ite-Frontend\build\win
+dows\x64\INSTALL.vcxpr
+oj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: if 
+%errorlevel% neq 0 
+goto :cmEnd [C:\Users\
+rmaglan\Documents\CToo
+l Granite\Granite-Fron
+tend\build\windows\x64
+\INSTALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+:cmEnd [C:\Users\rmagl
+an\Documents\CTool Gra
+nite\Granite-Frontend\
+build\windows\x64\INST
+ALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+endlocal & call 
+:cmErrorLevel 
+%errorlevel% & goto 
+:cmDone [C:\Users\rmag
+lan\Documents\CTool Gr
+anite\Granite-Frontend
+\build\windows\x64\INS
+TALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+:cmErrorLevel [C:\User
+s\rmaglan\Documents\CT
+ool Granite\Granite-Fr
+ontend\build\windows\x
+64\INSTALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+exit /b %1 [C:\Users\r
+maglan\Documents\CTool
+ Granite\Granite-Front
+end\build\windows\x64\
+INSTALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+:cmDone [C:\Users\rmag
+lan\Documents\CTool Gr
+anite\Granite-Frontend
+\build\windows\x64\INS
+TALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: if 
+%errorlevel% neq 0 
+goto :VCEnd [C:\Users\
+rmaglan\Documents\CToo
+l Granite\Granite-Fron
+tend\build\windows\x64
+\INSTALL.vcxproj]
+C:\Program 
+Files\Microsoft 
+Visual Studio\2022\Com
+munity\MSBuild\Microso
+ft\VC\v170\Microsoft.C
+ppCommon.targets(166,5
+): error MSB3073: 
+:VCEnd" sali├│ con el 
+c├│digo 1. [C:\Users\r
+maglan\Documents\CTool
+ Granite\Granite-Front
+end\build\windows\x64\
+INSTALL.vcxproj]
+Building Windows application...                                    19,7s
+Build process failed.

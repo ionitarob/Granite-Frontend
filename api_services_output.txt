@@ -1,0 +1,2 @@
+﻿Found 1 rows for order 43771
+(44, 'MANIPULACIËN Y ETIQUETADO', 'ETIQUETADO ---- de 11 a 50 unidades', 'CREACIËN ETIQUETA+ETIQUETAR', 'CE06603', 'CR04737', 'CR04786', '0.55', '1.1', '50', '70', Decimal('1.110000'), Decimal('0.550000'), Decimal('1.000000'))

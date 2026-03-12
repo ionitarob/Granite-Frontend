@@ -171,8 +171,9 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                               LengthLimitingTextInputFormatter(3),
                             ],
                             validator: (value) {
-                              if (value == null || value.trim().isEmpty)
+                              if (value == null || value.trim().isEmpty) {
                                 return null; // optional
+                              }
                               final parsed = int.tryParse(value);
                               if (parsed == null ||
                                   parsed < 0 ||
@@ -485,7 +486,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             : _NoLegibleNotice(palette: palette);
 
         final Widget tipoDropdown = DropdownButtonFormField<String>(
-          value: widget.tipoSmartphone,
+          initialValue: widget.tipoSmartphone,
           decoration: _inputDecoration(
             theme,
             palette,
@@ -631,22 +632,22 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
         SegmentedButton<String>(
           style: ButtonStyle(
             visualDensity: VisualDensity.standard,
-            backgroundColor: MaterialStateProperty.resolveWith((states) {
-              if (states.contains(MaterialState.selected)) {
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
                 return palette.segmentedSelectedBackground;
               }
               return palette.segmentedUnselectedBackground;
             }),
-            foregroundColor: MaterialStateProperty.resolveWith((states) {
-              if (states.contains(MaterialState.selected)) {
+            foregroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
                 return palette.segmentedSelectedForeground;
               }
               return palette.segmentedUnselectedForeground;
             }),
-            side: MaterialStateProperty.all(
+            side: WidgetStateProperty.all(
               BorderSide(color: palette.segmentedBorder),
             ),
-            shape: MaterialStateProperty.all(
+            shape: WidgetStateProperty.all(
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
           ),

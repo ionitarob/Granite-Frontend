@@ -23,8 +23,11 @@ class HistorialCambiosSerialScreen extends StatefulWidget {
 class _HistorialCambiosSerialScreenState
     extends State<HistorialCambiosSerialScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
-  final TextEditingController _limitCtrl = TextEditingController(text: '1000');
+  final TextEditingController _limitCtrl = TextEditingController(
+    text: '1000000',
+  );
   bool _loading = false;
+  String _searchFilter = 'serial'; // 'serial', 'nr_orden', 'nr_box'
   List<Map<String, dynamic>> _rows = [];
 
   ApiClient? _clientOrNull() {
@@ -42,9 +45,19 @@ class _HistorialCambiosSerialScreenState
     try {
       final client = _clientOrNull();
       if (client == null) throw Exception('Servicio API no disponible');
-      final q = Uri.encodeQueryComponent(_searchCtrl.text.trim());
-      final limit = int.tryParse(_limitCtrl.text.trim()) ?? 1000;
-      final res = await client.get('/serials/serial-changes?q=$q&limit=$limit');
+      final term = _searchCtrl.text.trim();
+      final limit = int.tryParse(_limitCtrl.text.trim()) ?? 1000000;
+
+      String url;
+      if (term.isEmpty) {
+        url = '/serials/serial-changes?limit=$limit';
+      } else {
+        final enc = Uri.encodeQueryComponent(term);
+        // "search" endpoint expects filtering params
+        url = '/serials/serial-changes/search?$_searchFilter=$enc&limit=$limit';
+      }
+
+      final res = await client.get(url);
       if (!mounted) return;
       if (!res.ok) throw Exception('Error fetching (${res.statusCode})');
       final body = res.body;
@@ -62,10 +75,11 @@ class _HistorialCambiosSerialScreenState
       }
       setState(() => _rows = list);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -103,10 +117,11 @@ class _HistorialCambiosSerialScreenState
       ).showSnackBar(const SnackBar(content: Text('Registro eliminado')));
       await _refresh();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -200,10 +215,11 @@ class _HistorialCambiosSerialScreenState
       ).showSnackBar(const SnackBar(content: Text('Registro actualizado')));
       await _refresh();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -245,8 +261,9 @@ class _HistorialCambiosSerialScreenState
 
       // Expect raw bytes in res.body
       final body = res.body;
-      if (body is! List<int>)
+      if (body is! List<int>) {
         throw Exception('Respuesta de exportación inesperada (no-binaria)');
+      }
 
       // Prefer filename from Content-Disposition if provided
       String fileName;
@@ -305,10 +322,11 @@ class _HistorialCambiosSerialScreenState
         ),
       );
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error exportando: $e')));
+      }
     }
   }
 
@@ -333,10 +351,11 @@ class _HistorialCambiosSerialScreenState
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error SFTP: $e')));
+      }
     }
   }
 
@@ -437,9 +456,9 @@ class _HistorialCambiosSerialScreenState
       } else if (printers.isNotEmpty) {
         // if user didn't explicitly select but printers exist, pick first
         final first = printers.first;
-        if (first['id_printer'] != null)
+        if (first['id_printer'] != null) {
           payload['printer_id'] = first['id_printer'];
-        else if (first['ip_address'] != null)
+        } else if (first['ip_address'] != null)
           payload['printer_ip'] = first['ip_address'];
       } else {
         throw Exception('No printer selected or provided');
@@ -486,10 +505,11 @@ class _HistorialCambiosSerialScreenState
         ).showSnackBar(SnackBar(content: Text('Error imprimiendo: $error')));
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -582,15 +602,15 @@ class _HistorialCambiosSerialScreenState
       if (manualIp != null) {
         payload['printer_ip'] = manualIp;
       } else if (selectedPrinter != null) {
-        if (selectedPrinter!['id_printer'] != null)
+        if (selectedPrinter!['id_printer'] != null) {
           payload['printer_id'] = selectedPrinter!['id_printer'];
-        else if (selectedPrinter!['ip_address'] != null)
+        } else if (selectedPrinter!['ip_address'] != null)
           payload['printer_ip'] = selectedPrinter!['ip_address'];
       } else if (printers.isNotEmpty) {
         final first = printers.first;
-        if (first['id_printer'] != null)
+        if (first['id_printer'] != null) {
           payload['printer_id'] = first['id_printer'];
-        else if (first['ip_address'] != null)
+        } else if (first['ip_address'] != null)
           payload['printer_ip'] = first['ip_address'];
       } else {
         throw Exception('No printer selected or provided');
@@ -626,8 +646,9 @@ class _HistorialCambiosSerialScreenState
       if (res.ok) {
         final body = res.body;
         String msg = 'Impresión enviada';
-        if (body is Map && body['printed'] != null)
+        if (body is Map && body['printed'] != null) {
           msg = 'Impresos: ${body['printed']}';
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(msg)));
@@ -640,10 +661,11 @@ class _HistorialCambiosSerialScreenState
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -712,56 +734,29 @@ class _HistorialCambiosSerialScreenState
       }
       await _refresh();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error borrando orden: $e')));
+      }
     }
   }
 
-  OverlayEntry? _edgeOverlay;
+  // OverlayEntry? _edgeOverlay; // REMOVED: Causing navigation leaks
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
-      if (mounted) {
-        final routeName = ModalRoute.of(context)?.settings.name;
-        final overlay = Overlay.of(context, rootOverlay: true);
-        _edgeOverlay = OverlayEntry(
-          builder: (ctx) {
-            return Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: SafeArea(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: EdgeNavHandle(
-                    user: _clientOrNull() != null
-                        ? Provider.of<ApiService>(
-                            context,
-                            listen: false,
-                          ).currentUser
-                        : null,
-                    width: 28,
-                    currentRoute: routeName,
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-        overlay.insert(_edgeOverlay!);
-      }
+      // Overlay logic removed to prevent sidebar state leaks
     });
   }
 
   @override
   void dispose() {
-    _edgeOverlay?.remove();
-    _edgeOverlay = null;
+    // _edgeOverlay?.remove(); // REMOVED
+    // _edgeOverlay = null; // REMOVED
     _searchCtrl.dispose();
     _limitCtrl.dispose();
     super.dispose();
@@ -782,218 +777,537 @@ class _HistorialCambiosSerialScreenState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Historial - Cambio de serial'),
-        backgroundColor: theme.appBarTheme.backgroundColor,
-        automaticallyImplyLeading: false,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Buscar nr_orden o nr_sku',
-                      ),
-                      onSubmitted: (_) => _refresh(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 120,
-                    child: TextField(
-                      controller: _limitCtrl,
-                      decoration: const InputDecoration(labelText: 'Límite'),
-                      keyboardType: TextInputType.number,
-                      onSubmitted: (_) => _refresh(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: _loading ? null : _refresh,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh),
-                    label: const Text('Refrescar'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: _rows.isEmpty
-                        ? Center(
-                            child: _loading
-                                ? const CircularProgressIndicator()
-                                : const Text('Sin registros'),
-                          )
-                        : ListView(
-                            children: () {
-                              // Group rows by order -> box
-                              final Map<
-                                String,
-                                Map<String, List<Map<String, dynamic>>>
-                              >
-                              grouped = {};
-                              for (final r in _rows) {
-                                final ord = (r['nr_orden'] ?? '').toString();
-                                final box = (r['nr_box'] ?? '').toString();
-                                grouped.putIfAbsent(ord, () => {});
-                                grouped[ord]!.putIfAbsent(box, () => []);
-                                grouped[ord]![box]!.add(r);
-                              }
+    // Premium Dark Theme Colors
+    const kBgDark = Color(0xFF0F172A); // Slate 900
+    const kBgLight = Color(0xFF1E293B); // Slate 800
+    const kAccent = Color(0xFF06B6D4); // Cyan 500
+    const kSurface = Color(0xFF334155); // Slate 700
 
-                              return grouped.entries.map((ordEntry) {
-                                final ordKey = ordEntry.key;
-                                final ord = ordKey.isEmpty
-                                    ? '<sin orden>'
-                                    : ordKey;
-                                final boxes = ordEntry.value;
-                                final totalRegs = boxes.values.fold<int>(
-                                  0,
-                                  (s, l) => s + l.length,
-                                );
-                                return ExpansionTile(
-                                  key: PageStorageKey('order-$ordKey'),
-                                  title: Row(
-                                    children: [
-                                      Expanded(child: Text('Orden: $ord')),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.download_outlined,
-                                        ),
-                                        tooltip: 'Exportar orden',
-                                        onPressed: () => _exportOrder(ordKey),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.cloud_upload_outlined,
-                                        ),
-                                        tooltip: 'Reenviar SFTP',
-                                        onPressed: () =>
-                                            _uploadOrderToSftp(ordKey),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          color: Colors.redAccent,
-                                        ),
-                                        tooltip: 'Borrar orden',
-                                        onPressed: () => _deleteOrder(
-                                          ordKey,
-                                          boxes.values
-                                              .expand((e) => e)
-                                              .toList(),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  subtitle: Text(
-                                    '${boxes.length} cajas · $totalRegs registros',
-                                  ),
-                                  children: boxes.entries.map((boxEntry) {
-                                    final boxNum = boxEntry.key.isEmpty
-                                        ? '<sin caja>'
-                                        : boxEntry.key;
-                                    final regs = boxEntry.value;
-                                    return Card(
-                                      margin: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 6,
-                                      ),
-                                      child: ExpansionTile(
-                                        key: PageStorageKey(
-                                          'order-$ordKey-box-$boxNum',
-                                        ),
-                                        title: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text('Box: $boxNum'),
-                                            ),
-                                            Text('${regs.length} regs'),
-                                          ],
-                                        ),
-                                        trailing: IconButton(
-                                          icon: const Icon(
-                                            Icons.print_outlined,
-                                          ),
-                                          tooltip: 'Imprimir etiqueta de caja',
-                                          onPressed: () =>
-                                              _printBox(ordKey, boxNum, regs),
-                                        ),
-                                        children: regs.map((r) {
-                                          return ListTile(
-                                            title: Text(
-                                              r['nr_orden']?.toString() ??
-                                                  r['nr_sku']?.toString() ??
-                                                  'ID ${r['id'] ?? ''}',
-                                            ),
-                                            subtitle: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'SKU: ${r['nr_sku'] ?? ''}  Box: ${r['nr_box'] ?? ''}',
-                                                ),
-                                                Text(
-                                                  'Old: ${r['serial_old'] ?? ''} → New: ${r['serial_new'] ?? ''}',
-                                                ),
-                                                Text(
-                                                  'Fecha: ${_formatDate(r['fecha'])}  Fin: ${_formatDate(r['fecha_finalizacion'])}',
-                                                ),
-                                              ],
-                                            ),
-                                            isThreeLine: true,
-                                            trailing: Wrap(
-                                              spacing: 4,
-                                              children: [
-                                                IconButton(
-                                                  icon: const Icon(Icons.print),
-                                                  onPressed: () => _printRow(r),
-                                                  tooltip: 'Imprimir registro',
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.edit),
-                                                  onPressed: () => _editRow(r),
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(
-                                                    Icons.delete_outline,
-                                                  ),
-                                                  onPressed: () => _deleteRow(
-                                                    (r['id'] as num).toInt(),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              }).toList();
-                            }(),
-                          ),
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text(
+          'HISTORIAL DE SERIALES',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            fontSize: 18,
+            color: Colors.white,
+          ),
+        ),
+        elevation: 0,
+        backgroundColor: kBgDark.withOpacity(0.8),
+        iconTheme: const IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [kBgDark.withOpacity(0.9), Colors.transparent],
+            ),
+          ),
+        ),
+      ),
+      backgroundColor: kBgDark, // Fallback
+      body: Stack(
+        children: [
+          // 1) Background Gradient
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [kBgDark, Color(0xFF111827), Color(0xFF000000)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+          ),
+          // 2) Content
+          SafeArea(
+            child: Column(
+              children: [
+                _buildPremiumFilterBar(kSurface, kAccent),
+                Expanded(
+                  child: _rows.isEmpty && !_loading
+                      ? _buildEmptyState(kSurface)
+                      : _loading && _rows.isEmpty
+                      ? const Center(
+                          child: CircularProgressIndicator(color: kAccent),
+                        )
+                      : _buildPremiumList(kBgLight, kSurface, kAccent),
+                ),
+              ],
+            ),
+          ),
+          // 3) Sidebar Handle
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: _clientOrNull() != null
+                      ? Provider.of<ApiService>(
+                          context,
+                          listen: false,
+                        ).currentUser
+                      : null,
+                  width: 28,
+                  currentRoute: HistorialCambiosSerialScreen.routeName,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumFilterBar(Color surfaceColor, Color accentColor) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: surfaceColor.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Filter Dropdown
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _searchFilter,
+                dropdownColor: surfaceColor,
+                icon: Icon(Icons.tune, color: accentColor.withOpacity(0.8)),
+                style: const TextStyle(color: Colors.white),
+                items: const [
+                  DropdownMenuItem(value: 'serial', child: Text('Serial')),
+                  DropdownMenuItem(value: 'nr_orden', child: Text('Orden')),
+                  DropdownMenuItem(value: 'nr_box', child: Text('Caja')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _searchFilter = val);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Search Field
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Buscar...',
+                hintStyle: TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: Colors.black26,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.search, color: Colors.white54),
+                  onPressed: _refresh,
+                  splashRadius: 20,
+                ),
+              ),
+              onSubmitted: (_) => _refresh(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Limit
+          SizedBox(
+            width: 80,
+            child: TextField(
+              controller: _limitCtrl,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: 'Limit',
+                labelStyle: TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: Colors.black26,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onSubmitted: (_) => _refresh(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Refresh Button
+          IconButton(
+            onPressed: _loading ? null : _refresh,
+            icon: _loading
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: accentColor,
+                    ),
+                  )
+                : Icon(Icons.refresh, color: accentColor),
+            tooltip: 'Refrescar',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.black26,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(Color surfaceColor) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.history_toggle_off, size: 60, color: Colors.white12),
+          const SizedBox(height: 16),
+          Text(
+            'Sin registros encontrados',
+            style: TextStyle(color: Colors.white38, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumList(
+    Color cardColor,
+    Color surfaceColor,
+    Color accentColor,
+  ) {
+    final grouped = <String, Map<String, List<Map<String, dynamic>>>>{};
+    for (final r in _rows) {
+      final ord = (r['nr_orden'] ?? '').toString();
+      final box = (r['nr_box'] ?? '').toString();
+      grouped.putIfAbsent(ord, () => {});
+      grouped[ord]!.putIfAbsent(box, () => []);
+      grouped[ord]![box]!.add(r);
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: grouped.length,
+      itemBuilder: (ctx, i) {
+        final ordKey = grouped.keys.elementAt(i);
+        final boxes = grouped[ordKey]!;
+        final totalRegs = boxes.values.fold<int>(0, (s, l) => s + l.length);
+        final displayOrd = ordKey.isEmpty ? 'Sin Orden' : ordKey;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: surfaceColor.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ExpansionTile(
+            key: PageStorageKey('order-$ordKey'),
+            collapsedBackgroundColor: Colors.transparent,
+            backgroundColor: Colors.black12,
+            iconColor: accentColor,
+            collapsedIconColor: Colors.white70,
+            textColor: accentColor,
+            collapsedTextColor: Colors.white,
+            shape: const Border(), // Removes internal borders
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.inventory_2_outlined,
+                    size: 20,
+                    color: Colors.blueAccent,
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayOrd,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        '$totalRegs registros en ${boxes.length} cajas',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildActionIcon(
+                  Icons.download_rounded,
+                  'Exportar',
+                  () => _exportOrder(ordKey),
+                ),
+                _buildActionIcon(
+                  Icons.cloud_upload_rounded,
+                  'SFTP',
+                  () => _uploadOrderToSftp(ordKey),
+                ),
+                const SizedBox(width: 4),
+                _buildActionIcon(
+                  Icons.delete_forever_rounded,
+                  'Borrar',
+                  () => _deleteOrder(
+                    ordKey,
+                    boxes.values.expand((e) => e).toList(),
+                  ),
+                  color: Colors.redAccent,
+                ),
+              ],
+            ),
+            children: boxes.entries.map((boxEntry) {
+              final boxNum = boxEntry.key.isEmpty ? 'N/A' : boxEntry.key;
+              final regs = boxEntry.value;
+              return _buildBoxTile(
+                ordKey,
+                boxNum,
+                regs,
+                surfaceColor,
+                accentColor,
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionIcon(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap, {
+    Color? color,
+  }) {
+    return IconButton(
+      icon: Icon(icon, size: 20),
+      color: color ?? Colors.white70,
+      tooltip: tooltip,
+      onPressed: onTap,
+      splashRadius: 24,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  Widget _buildBoxTile(
+    String ordKey,
+    String boxNum,
+    List<Map<String, dynamic>> regs,
+    Color surfaceColor,
+    Color accentColor,
+  ) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withOpacity(0.5), // Darker inner
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: accentColor, width: 3)),
+      ),
+      child: ExpansionTile(
+        key: PageStorageKey('order-$ordKey-box-$boxNum'),
+        shape: const Border(),
+        iconColor: Colors.white70,
+        collapsedIconColor: Colors.white38,
+        title: Row(
+          children: [
+            const Icon(Icons.inbox, size: 16, color: Colors.white54),
+            const SizedBox(width: 8),
+            Text(
+              'Box $boxNum',
+              style: const TextStyle(fontSize: 14, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${regs.length}',
+                style: const TextStyle(fontSize: 10, color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.print, size: 18),
+          color: Colors.white70,
+          onPressed: () => _printBox(ordKey, boxNum, regs),
+          tooltip: 'Imprimir Caja',
+        ),
+        children: regs.map((r) => _buildRecordRow(r)).toList(),
+      ),
+    );
+  }
+
+  Widget _buildRecordRow(Map<String, dynamic> r) {
+    final oldS = r['serial_old']?.toString() ?? '-';
+    final newS = r['serial_new']?.toString() ?? '-';
+    // Style differently if null or changes
+    final bool changed = oldS != newS;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.02))),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // SKU / ID
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  r['nr_sku'] ?? 'NO-SKU',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatDate(r['fecha']),
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          // Serials
+          Expanded(
+            flex: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        oldS,
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Icon(
+                        Icons.arrow_forward,
+                        size: 10,
+                        color: Colors.white24,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        newS,
+                        style: TextStyle(
+                          color: changed ? Colors.greenAccent : Colors.white,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                if (r['usuario'] != null)
+                  Text(
+                    'User: ${r['usuario']}',
+                    style: const TextStyle(color: Colors.white24, fontSize: 10),
+                  ),
+              ],
+            ),
+          ),
+          // Actions
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildSmallAction(
+                Icons.print,
+                Colors.white38,
+                () => _printRow(r),
+              ),
+              const SizedBox(width: 8),
+              _buildSmallAction(Icons.edit, Colors.white38, () => _editRow(r)),
+              const SizedBox(width: 8),
+              _buildSmallAction(
+                Icons.close,
+                Colors.redAccent.withOpacity(0.5),
+                () => _deleteRow((r['id'] as num).toInt()),
               ),
             ],
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmallAction(IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(icon, size: 16, color: color),
       ),
     );
   }

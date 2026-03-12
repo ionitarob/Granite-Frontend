@@ -8,8 +8,7 @@ import 'package:flutter/material.dart';
 /// Supports both dark and light themes with configurable intensity.
 class AnimatedBackgroundWidget extends StatefulWidget {
   final double intensity;
-  const AnimatedBackgroundWidget({Key? key, this.intensity = 1.0})
-    : super(key: key);
+  const AnimatedBackgroundWidget({super.key, this.intensity = 1.0});
 
   @override
   State<AnimatedBackgroundWidget> createState() =>

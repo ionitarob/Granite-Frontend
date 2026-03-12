@@ -47,8 +47,15 @@ import 'screens/rrhh/registro_fichaje_screen.dart';
 import 'screens/xiaomi/xiaomi_historial.dart';
 import 'screens/xiaomi/xiaomi_registro_orden.dart';
 import 'screens/xiaomi/cerrar_cesb.dart';
+import 'screens/xiaomi/xiaomi_estadisticas.dart';
 import 'screens/analisis_y_serveis/ays_dashboard.dart';
-import 'screens/sentinel_for_imaging/sentinel_screen.dart';
+import 'screens/analisis_y_serveis/ays_management_screen.dart';
+import 'screens/sentinel_for_imaging/active_images_screen.dart';
+import 'screens/sentinel_for_imaging/physical_tables_screen.dart';
+import 'screens/orderops/order_queue_screen.dart';
+import 'screens/orderops/work_items_screen.dart';
+import 'screens/orderops/agent_activity_screen.dart';
+import 'screens/orderops/agent_memory_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -152,6 +159,7 @@ class MainApp extends StatelessWidget {
                 '/dashboard': (_) => const DashboardScreen(),
                 '/dashboard/redesigned': (_) => const DashboardScreen(),
                 '/analisis/dashboard': (_) => const AysDashboard(),
+                '/analisis/management': (_) => const AysManagementScreen(),
                 // Quality forms
                 '/amazon/quality': (_) => const QualityIndex(),
                 '/amazon/quality/au_laser': (_) => const AuLaserForm(),
@@ -186,6 +194,7 @@ class MainApp extends StatelessWidget {
                 '/xiaomi/registro/unidades': (_) =>
                     const XiaomiRegistroOrdenScreen(),
                 '/xiaomi/cerrar_cesb': (_) => const CerrarCesbScreen(),
+                '/xiaomi/estadisticas': (_) => const XiaomiEstadisticasPage(),
                 // Recursos Humanos
                 '/hr/fichaje': (_) => const FichajeScreen(),
                 '/hr/alta_empleado': (_) => const AltaEmpleadoScreen(),
@@ -193,7 +202,13 @@ class MainApp extends StatelessWidget {
                 '/hr/asignacion_trabajo': (_) => const JobSelectorScreen(),
                 '/hr/gestion_empleado': (_) => const GestionEmpleadosScreen(),
                 // Sentinel
-                '/sentinel': (_) => const SentinelScreen(),
+                '/sentinel/active': (_) => const ActiveImagesScreen(),
+                '/sentinel/tables': (_) => const PhysicalTablesScreen(),
+                // OrderOps AI
+                '/orderops/queue': (_) => const OrderQueueScreen(),
+                '/orderops/work-items': (_) => const WorkItemsScreen(),
+                '/orderops/activity': (_) => const AgentActivityScreen(),
+                '/orderops/memory': (_) => const AgentMemoryScreen(),
               },
             ),
           );
