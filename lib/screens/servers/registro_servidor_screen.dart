@@ -12,11 +12,24 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../models/server_models.dart';
 import '../../services/api_service.dart';
+import '../../services/order_input_formatter.dart';
+import '../../services/orderops_service.dart';
 import '../../services/server_registro_service.dart';
 import '../../widgets/main_sidebar.dart';
 
 class RegistroServidorScreen extends StatefulWidget {
-  const RegistroServidorScreen({super.key});
+  final bool isEmbedded;
+  final String? initialPrevi;
+  final String? initialCliente;
+  final int? orderId;
+
+  const RegistroServidorScreen({
+    super.key,
+    this.isEmbedded = false,
+    this.initialPrevi,
+    this.initialCliente,
+    this.orderId,
+  });
 
   @override
   State<RegistroServidorScreen> createState() => _RegistroServidorScreenState();
@@ -35,6 +48,9 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
   final FocusNode _pnFocus = FocusNode();
   final FocusNode _snFocus = FocusNode();
   final ServerRegistroService _registroService = const ServerRegistroService();
+  final OrderOpsService? _orderOpsService = ApiService.instance == null
+      ? null
+      : OrderOpsService(ApiService.instance!.client);
   bool _uploading = false;
   final String? _currentUserOperario = _resolveCurrentUser();
 
@@ -61,6 +77,82 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
   void initState() {
     super.initState();
     _operarioCtrl.text = _currentUserOperario ?? '';
+    if ((widget.initialPrevi ?? '').trim().isNotEmpty) {
+      _previCtrl.text = OrderInputFormatter.normalize(widget.initialPrevi!.trim());
+    }
+    if ((widget.initialCliente ?? '').trim().isNotEmpty) {
+      _clienteCtrl.text = widget.initialCliente!.trim();
+    }
+  }
+
+  Future<void> _registrarLogAccion(String message) async {
+    if (widget.orderId == null || _orderOpsService == null) return;
+    try {
+      await _orderOpsService.updateAgentOrder(widget.orderId!, reason: message);
+    } catch (_) {
+      // Non-blocking logging.
+    }
+  }
+
+  Future<bool> _subirPdfAArchivos(File file) async {
+    if (widget.orderId == null || _orderOpsService == null) return false;
+    final bytes = await file.readAsBytes();
+    return await _orderOpsService.uploadPhoto(
+      widget.orderId!,
+      file.uri.pathSegments.isNotEmpty
+          ? file.uri.pathSegments.last
+          : 'registro_servidor.pdf',
+      bytes,
+    );
+  }
+
+  Future<void> _preguntarFinalizarOrden() async {
+    if (widget.orderId == null || _orderOpsService == null) return;
+    final shouldFinish = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Finalizar orden'),
+        content: const Text('Deseas finalizar la orden ahora?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Si, finalizar'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldFinish != true) {
+      await _registrarLogAccion('Orden no finalizada despues de exportar PDF.');
+      return;
+    }
+
+    final author = _operarioCtrl.text.trim().isNotEmpty
+        ? _operarioCtrl.text.trim()
+        : (_currentUserOperario ?? 'Sistema');
+    final ok = await _orderOpsService.updateAgentOrder(
+      widget.orderId!,
+      estado: '5',
+      reason: 'Orden finalizada desde Registro Servidor.',
+      markCompleted: true,
+      completionSummary: 'Se exporto PDF, se adjunto en Archivos y se finalizo la orden.',
+      completionAuthor: author,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Orden finalizada correctamente.'
+              : 'No se pudo finalizar la orden.',
+        ),
+      ),
+    );
   }
 
   static String? _resolveCurrentUser() {
@@ -220,7 +312,11 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
       return false;
     }
     FocusScope.of(context).unfocus();
-    final previ = _previCtrl.text.trim();
+    final previ = OrderInputFormatter.normalize(_previCtrl.text.trim());
+    _previCtrl.value = TextEditingValue(
+      text: previ,
+      selection: TextSelection.collapsed(offset: previ.length),
+    );
     final cliente = _clienteCtrl.text.trim();
     final descripcion = _descCtrl.text.trim();
     final operario = _operarioCtrl.text.trim();
@@ -319,9 +415,25 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
       );
       await file.writeAsBytes(bytes, flush: true);
       await OpenFilex.open(file.path);
+
+      final uploaded = await _subirPdfAArchivos(file);
+      if (uploaded) {
+        await _registrarLogAccion('Archivo PDF agregado en Archivos: ${file.uri.pathSegments.last}');
+      } else if (widget.orderId != null) {
+        await _registrarLogAccion('No se pudo adjuntar el PDF en Archivos para la orden.');
+      }
+
+      await _preguntarFinalizarOrden();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registros guardados y PDF generado.')),
+          SnackBar(
+            content: Text(
+              uploaded
+                  ? 'Registros guardados, PDF generado y adjuntado en Archivos.'
+                  : 'Registros guardados y PDF generado.',
+            ),
+          ),
         );
       }
     } finally {
@@ -436,32 +548,34 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
       (s) => s.serverSerial.trim().isNotEmpty && s.piezas.isNotEmpty,
     );
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'Registro Servidor',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            tooltip: 'Exportar PDF y registrar',
-            onPressed: (_uploading || !_puedeSubir) ? null : _exportarPdf,
-            icon: _uploading
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  )
-                : const Icon(Icons.picture_as_pdf),
-          ),
-        ],
-      ),
+      extendBodyBehindAppBar: !widget.isEmbedded,
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              title: const Text(
+                'Registro Servidor',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
+              ),
+              centerTitle: true,
+              actions: [
+                IconButton(
+                  tooltip: 'Exportar PDF y registrar',
+                  onPressed: (_uploading || !_puedeSubir) ? null : _exportarPdf,
+                  icon: _uploading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        )
+                      : const Icon(Icons.picture_as_pdf),
+                ),
+              ],
+            ),
       body: Stack(
         children: [
           Container(
@@ -519,6 +633,9 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                           Expanded(
                                             child: TextFormField(
                                               controller: _previCtrl,
+                                              inputFormatters: [
+                                                OrderInputFormatter(),
+                                              ],
                                               style: TextStyle(
                                                 color: Theme.of(
                                                   context,
@@ -530,7 +647,10 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                               validator: (v) =>
                                                   v == null || v.trim().isEmpty
                                                   ? 'Requerido'
-                                                  : null,
+                                                  : RegExp(r'^[A-Z0-9]{2}-[A-Z0-9]{5}-[A-Z0-9]{2}$')
+                                                            .hasMatch(OrderInputFormatter.normalize(v))
+                                                        ? null
+                                                        : 'Formato invalido (XX-XXXXX-XX)',
                                               onChanged: (_) => setState(() {}),
                                             ),
                                           ),
@@ -560,6 +680,9 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                         children: [
                                           TextFormField(
                                             controller: _previCtrl,
+                                            inputFormatters: [
+                                              OrderInputFormatter(),
+                                            ],
                                             style: TextStyle(
                                               color: Theme.of(
                                                 context,
@@ -571,7 +694,10 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                             validator: (v) =>
                                                 v == null || v.trim().isEmpty
                                                 ? 'Requerido'
-                                                : null,
+                                                : RegExp(r'^[A-Z0-9]{2}-[A-Z0-9]{5}-[A-Z0-9]{2}$')
+                                                          .hasMatch(OrderInputFormatter.normalize(v))
+                                                      ? null
+                                                      : 'Formato invalido (XX-XXXXX-XX)',
                                             onChanged: (_) => setState(() {}),
                                           ),
                                           const SizedBox(height: 8),
@@ -840,6 +966,39 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                 ),
                               ),
                             ],
+                            if (widget.isEmbedded) ...[
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: _uploading
+                                      ? null
+                                      : hayRegistrosConPiezas
+                                      ? _exportarPdf
+                                      : _scanServerSerial,
+                                  icon: _uploading
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Icon(
+                                          hayRegistrosConPiezas
+                                              ? Icons.picture_as_pdf
+                                              : Icons.qr_code_scanner,
+                                        ),
+                                  label: Text(
+                                    _uploading
+                                        ? 'Procesando...'
+                                        : hayRegistrosConPiezas
+                                        ? 'Exportar PDF y Registrar'
+                                        : 'Escanear Servidor',
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -894,37 +1053,45 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
               ),
             ),
           ),
-          const Positioned(left: 0, top: 0, bottom: 0, child: EdgeNavHandle()),
+          if (!widget.isEmbedded)
+            const Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: EdgeNavHandle(openOnHover: false),
+            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _uploading
-            ? null
-            : hayRegistrosConPiezas
-            ? _exportarPdf
-            : _scanServerSerial,
-        icon: _uploading
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                ),
-              )
-            : Icon(
-                hayRegistrosConPiezas
-                    ? Icons.picture_as_pdf
-                    : Icons.qr_code_scanner,
+      floatingActionButton: widget.isEmbedded
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _uploading
+                  ? null
+                  : hayRegistrosConPiezas
+                  ? _exportarPdf
+                  : _scanServerSerial,
+              icon: _uploading
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
+                    )
+                  : Icon(
+                      hayRegistrosConPiezas
+                          ? Icons.picture_as_pdf
+                          : Icons.qr_code_scanner,
+                    ),
+              label: Text(
+                _uploading
+                    ? 'Procesando...'
+                    : hayRegistrosConPiezas
+                    ? 'Exportar PDF y Registrar'
+                    : 'Escanear Servidor',
               ),
-        label: Text(
-          _uploading
-              ? 'Procesando...'
-              : hayRegistrosConPiezas
-              ? 'Exportar PDF y Registrar'
-              : 'Escanear Servidor',
-        ),
-      ),
+            ),
     );
   }
 

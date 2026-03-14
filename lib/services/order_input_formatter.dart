@@ -5,15 +5,15 @@ import 'package:flutter/services.dart';
 class OrderInputFormatter extends TextInputFormatter {
   static final _allowed = RegExp(r'[A-Za-z0-9]');
 
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    final raw = newValue.text;
-    final buffer = StringBuffer();
-    // Keep only allowed characters and uppercase them
-    final cleaned = raw.split('').where((c) => _allowed.hasMatch(c)).map((c) => c.toUpperCase()).join();
-    if (cleaned.isEmpty) return TextEditingValue.empty;
+  static String normalize(String raw) {
+    final cleaned = raw
+        .split('')
+        .where((c) => _allowed.hasMatch(c))
+        .map((c) => c.toUpperCase())
+        .join();
+    if (cleaned.isEmpty) return '';
 
-    // Build with hyphens: 2-5-2
+    final buffer = StringBuffer();
     int idx = 0;
     for (; idx < cleaned.length && idx < 2; idx++) {
       buffer.write(cleaned[idx]);
@@ -26,8 +26,13 @@ class OrderInputFormatter extends TextInputFormatter {
     for (; idx < cleaned.length && idx < 9; idx++) {
       buffer.write(cleaned[idx]);
     }
+    return buffer.toString();
+  }
 
-    final formatted = buffer.toString();
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final formatted = normalize(newValue.text);
+    if (formatted.isEmpty) return TextEditingValue.empty;
     // Place caret at end of formatted
     return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
   }

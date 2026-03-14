@@ -52,10 +52,14 @@ import 'screens/analisis_y_serveis/ays_dashboard.dart';
 import 'screens/analisis_y_serveis/ays_management_screen.dart';
 import 'screens/sentinel_for_imaging/active_images_screen.dart';
 import 'screens/sentinel_for_imaging/physical_tables_screen.dart';
+import 'screens/sentinel_for_imaging/sentinel_provider.dart';
 import 'screens/orderops/order_queue_screen.dart';
 import 'screens/orderops/work_items_screen.dart';
 import 'screens/orderops/agent_activity_screen.dart';
 import 'screens/orderops/agent_memory_screen.dart';
+import 'screens/orderops/cotizaciones_management_screen.dart';
+import 'widgets/main_sidebar.dart';
+import 'services/navigation_tracker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -100,6 +104,9 @@ class MainApp extends StatelessWidget {
                 : null,
           ),
         ),
+        ChangeNotifierProvider<SentinelProvider>(
+          create: (_) => SentinelProvider(),
+        ),
       ],
       child: Consumer<ThemeController>(
         builder: (context, themeCtrl, _) {
@@ -117,6 +124,16 @@ class MainApp extends StatelessWidget {
               foregroundColor: Colors.black87,
               elevation: 0,
             ),
+            pageTransitionsTheme: const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: _FadePageTransitionsBuilder(),
+                TargetPlatform.iOS: _FadePageTransitionsBuilder(),
+                TargetPlatform.macOS: _FadePageTransitionsBuilder(),
+                TargetPlatform.windows: _FadePageTransitionsBuilder(),
+                TargetPlatform.linux: _FadePageTransitionsBuilder(),
+                TargetPlatform.fuchsia: _FadePageTransitionsBuilder(),
+              },
+            ),
           );
 
           final darkTheme = ThemeData(
@@ -131,6 +148,16 @@ class MainApp extends StatelessWidget {
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
               elevation: 0,
+            ),
+            pageTransitionsTheme: const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: _FadePageTransitionsBuilder(),
+                TargetPlatform.iOS: _FadePageTransitionsBuilder(),
+                TargetPlatform.macOS: _FadePageTransitionsBuilder(),
+                TargetPlatform.windows: _FadePageTransitionsBuilder(),
+                TargetPlatform.linux: _FadePageTransitionsBuilder(),
+                TargetPlatform.fuchsia: _FadePageTransitionsBuilder(),
+              },
             ),
           );
 
@@ -203,12 +230,22 @@ class MainApp extends StatelessWidget {
                 '/hr/gestion_empleado': (_) => const GestionEmpleadosScreen(),
                 // Sentinel
                 '/sentinel/active': (_) => const ActiveImagesScreen(),
-                '/sentinel/tables': (_) => const PhysicalTablesScreen(),
+                '/sentinel/tables': (context) {
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  if (args is int) {
+                    return PhysicalTablesScreen(orderId: args);
+                  }
+                  if (args is Map<String, dynamic> && args.containsKey('orderId')) {
+                    return PhysicalTablesScreen(orderId: args['orderId']);
+                  }
+                  return const PhysicalTablesScreen();
+                },
                 // OrderOps AI
                 '/orderops/queue': (_) => const OrderQueueScreen(),
                 '/orderops/work-items': (_) => const WorkItemsScreen(),
                 '/orderops/activity': (_) => const AgentActivityScreen(),
                 '/orderops/memory': (_) => const AgentMemoryScreen(),
+                '/orderops/cotizaciones': (_) => const CotizacionesManagementScreen(),
               },
             ),
           );
@@ -315,6 +352,7 @@ class _SessionWatcherState extends State<SessionWatcher> {
       builder: (ctx) {
         if (widget.child is MaterialApp) {
           final app = widget.child as MaterialApp;
+          final routeBuilders = app.routes ?? <String, WidgetBuilder>{};
           return MaterialApp(
             key: app.key,
             scaffoldMessengerKey: globalScaffoldMessengerKey,
@@ -325,7 +363,35 @@ class _SessionWatcherState extends State<SessionWatcher> {
             themeMode: app.themeMode,
             debugShowCheckedModeBanner: app.debugShowCheckedModeBanner,
             home: app.home,
-            routes: app.routes ?? {},
+            routes: routeBuilders,
+            onGenerateRoute: (settings) {
+              final args = settings.arguments;
+              final noTransition =
+                  args is Map && (args['noTransition'] == true);
+              if (!noTransition) return null;
+
+              final builder = routeBuilders[settings.name];
+              if (builder == null) return null;
+
+              return PageRouteBuilder(
+                settings: settings,
+                pageBuilder: (ctx, _, __) => builder(ctx),
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              );
+            },
+            navigatorObservers: [appRouteTracker],
+            builder: (context, child) {
+              final builtChild = app.builder != null
+                  ? app.builder!(context, child)
+                  : child ?? const SizedBox.shrink();
+              return Stack(
+                children: [
+                  builtChild,
+                  GlobalMobileSidebarDock(rootNavigatorKey: globalNavigatorKey),
+                ],
+              );
+            },
           );
         }
         return widget.child;
@@ -342,6 +408,25 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('ConfigTool Granite')),
       body: const Center(child: Text('Hello World!')),
+    );
+  }
+}
+
+class _FadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _FadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: child,
     );
   }
 }

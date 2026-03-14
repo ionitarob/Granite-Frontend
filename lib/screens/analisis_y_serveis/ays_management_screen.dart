@@ -59,6 +59,8 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
   void _setupSidebar() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final isMobile = MediaQuery.of(context).size.width < 980;
+      if (isMobile) return;
       final overlay = Overlay.of(context, rootOverlay: true);
       _edgeOverlay = OverlayEntry(
         builder: (ctx) => Positioned(
@@ -160,6 +162,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     }
 
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 980;
     return Scaffold(
       extendBody: true,
       body: Stack(
@@ -190,13 +193,18 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
           SafeArea(
             child: Column(
               children: [
-                _buildHeader(theme),
+                _buildHeader(theme, isMobile: isMobile),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth > 900;
                       return ReorderableListView(
-                        padding: const EdgeInsets.all(24),
+                        padding: EdgeInsets.fromLTRB(
+                          isWide ? 24 : 12,
+                          isWide ? 24 : 10,
+                          isWide ? 24 : 12,
+                          isWide ? 120 : 140,
+                        ),
                         onReorder: (oldIndex, newIndex) {
                           setState(() {
                             if (newIndex > oldIndex) newIndex -= 1;
@@ -214,11 +222,68 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
           ),
         ],
       ),
-      floatingActionButton: _buildFab(),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: isMobile ? 84 : 0),
+        child: _buildFab(isMobile: isMobile),
+      ),
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(ThemeData theme, {required bool isMobile}) {
+    if (isMobile) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AYS Management Dashboard',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      Text(
+                        'Gestión consolidada y analítica avanzada',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.hintColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildViewDataAction(theme, isMobile: true),
+                _buildExportAction(theme, isMobile: true),
+                _buildGlobalFilterAction(theme),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
@@ -251,9 +316,9 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
             ],
           ),
           const Spacer(),
-          _buildViewDataAction(theme),
+          _buildViewDataAction(theme, isMobile: false),
           const SizedBox(width: 8),
-          _buildExportAction(theme),
+          _buildExportAction(theme, isMobile: false),
           const SizedBox(width: 8),
           _buildGlobalFilterAction(theme),
         ],
@@ -261,7 +326,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     );
   }
 
-  Widget _buildViewDataAction(ThemeData theme) {
+  Widget _buildViewDataAction(ThemeData theme, {required bool isMobile}) {
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor.withOpacity(0.5),
@@ -270,16 +335,16 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
       ),
       child: TextButton.icon(
         icon: const Icon(Icons.table_view_rounded, color: Colors.blue),
-        label: const Text(
-          'Ver Datos',
-          style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+        label: Text(
+          isMobile ? 'Datos' : 'Ver Datos',
+          style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
         ),
         onPressed: _showExportModal, // Both use same dialog now
       ),
     );
   }
 
-  Widget _buildExportAction(ThemeData theme) {
+  Widget _buildExportAction(ThemeData theme, {required bool isMobile}) {
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor.withOpacity(0.5),
@@ -288,20 +353,25 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
       ),
       child: TextButton.icon(
         icon: const Icon(Icons.file_download_rounded, color: Colors.orange),
-        label: const Text(
-          'Exportar',
-          style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+        label: Text(
+          isMobile ? 'Excel' : 'Exportar',
+          style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
         ),
         onPressed: _showExportModal,
       ),
     );
   }
 
-  Widget _buildFab() {
+  Widget _buildFab({required bool isMobile}) {
+    if (isMobile) {
+      return FloatingActionButton(
+        onPressed: _showQuickActionMenu,
+        child: const Icon(Icons.bolt_rounded),
+      );
+    }
+
     return FloatingActionButton.extended(
-      onPressed: () {
-        _showQuickActionMenu();
-      },
+      onPressed: _showQuickActionMenu,
       label: const Text('Acciones'),
       icon: const Icon(Icons.bolt_rounded),
     );
@@ -757,40 +827,54 @@ class _DashboardKpis extends StatelessWidget {
       mom = ((total - previousTotal) / previousTotal) * 100;
     }
 
-    return Row(
-      children: [
-        Expanded(
-          child: _KpiCard(
-            title: 'Gasto Total',
-            value: '${total.toStringAsFixed(0)}€',
-            icon: Icons.account_balance_wallet_rounded,
-            color: const Color(0xFF2E7D32), // Emerald
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _KpiCard(
-            title: 'Tendencia MoM',
-            value: '${mom > 0 ? "+" : ""}${mom.toStringAsFixed(1)}%',
-            icon: mom > 0
-                ? Icons.trending_up_rounded
-                : Icons.trending_down_rounded,
-            color: mom > 10
-                ? Colors.red
-                : (mom < 0 ? Colors.blue : Colors.orange),
-            subtitle: 'Vs mes anterior',
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _KpiCard(
-            title: 'Pendiente',
-            value: '${(total - paid).toStringAsFixed(0)}€',
-            icon: Icons.pending_actions_rounded,
-            color: Colors.orange,
-          ),
-        ),
-      ],
+    final cards = [
+      _KpiCard(
+        title: 'Gasto Total',
+        value: '${total.toStringAsFixed(0)}€',
+        icon: Icons.account_balance_wallet_rounded,
+        color: const Color(0xFF2E7D32),
+      ),
+      _KpiCard(
+        title: 'Tendencia MoM',
+        value: '${mom > 0 ? "+" : ""}${mom.toStringAsFixed(1)}%',
+        icon: mom > 0
+            ? Icons.trending_up_rounded
+            : Icons.trending_down_rounded,
+        color: mom > 10 ? Colors.red : (mom < 0 ? Colors.blue : Colors.orange),
+        subtitle: 'Vs mes anterior',
+      ),
+      _KpiCard(
+        title: 'Pendiente',
+        value: '${(total - paid).toStringAsFixed(0)}€',
+        icon: Icons.pending_actions_rounded,
+        color: Colors.orange,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 760;
+        if (isCompact) {
+          return Column(
+            children: [
+              for (int i = 0; i < cards.length; i++) ...[
+                cards[i],
+                if (i < cards.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: cards[0]),
+            const SizedBox(width: 16),
+            Expanded(child: cards[1]),
+            const SizedBox(width: 16),
+            Expanded(child: cards[2]),
+          ],
+        );
+      },
     );
   }
 }
@@ -967,68 +1051,80 @@ class _DashboardDistribution extends StatelessWidget {
 
     return _ChartContainer(
       title: title,
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: PieChart(
-              PieChartData(
-                sectionsSpace: 4,
-                centerSpaceRadius: isWide ? 40 : 50,
-                sections: top.asMap().entries.map((e) {
-                  return PieChartSectionData(
-                    value: e.value.value,
-                    title: '', // Titles in legend, not on chart for clarity
-                    radius: isWide ? 25 : 30,
-                    color: colors[e.key % colors.length],
-                    badgeWidget: null,
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 2,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: top.asMap().entries.map((e) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: colors[e.key % colors.length],
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          e.value.key,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white70 : Colors.black87,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Text(
-                        '${(e.value.value / 1000).toStringAsFixed(1)}k',
-                        style: TextStyle(fontSize: 10, color: theme.hintColor),
-                      ),
-                    ],
-                  ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 420;
+          final chart = PieChart(
+            PieChartData(
+              sectionsSpace: 4,
+              centerSpaceRadius: isWide ? 40 : 50,
+              sections: top.asMap().entries.map((e) {
+                return PieChartSectionData(
+                  value: e.value.value,
+                  title: '',
+                  radius: isWide ? 25 : 30,
+                  color: colors[e.key % colors.length],
+                  badgeWidget: null,
                 );
               }).toList(),
             ),
-          ),
-        ],
+          );
+
+          final legend = ListView(
+            padding: EdgeInsets.zero,
+            children: top.asMap().entries.map((e) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: colors[e.key % colors.length],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        e.value.key,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '${(e.value.value / 1000).toStringAsFixed(1)}k',
+                      style: TextStyle(fontSize: 10, color: theme.hintColor),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          );
+
+          if (compact) {
+            return Column(
+              children: [
+                Expanded(child: chart),
+                const SizedBox(height: 10),
+                Expanded(child: legend),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(flex: 3, child: chart),
+              const SizedBox(width: 16),
+              Expanded(flex: 2, child: legend),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1565,21 +1661,49 @@ class _BentoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 16, color: theme.colorScheme.primary),
-              ),
-              const SizedBox(width: 12),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              const Spacer(),
-              if (action != null) action!,
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 430;
+              final titleRow = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, size: 16, color: theme.colorScheme.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              );
+
+              if (compact && action != null) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleRow,
+                    const SizedBox(height: 6),
+                    Align(alignment: Alignment.centerRight, child: action!),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: titleRow),
+                  if (action != null) action!,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
           child,

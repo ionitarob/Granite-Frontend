@@ -515,11 +515,16 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildUpdatesCard(ThemeData theme, ColorScheme colorScheme) {
+    final width = MediaQuery.of(context).size.width;
+    final isCompact = width < 520;
     // Compact UI: small chip + version. Tap to open full details dialog.
     return InkWell(
       onTap: () => _showUpdatesDialog(context),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 6,
         children: [
           Chip(
             label: Text(
@@ -537,17 +542,19 @@ class _LoginScreenState extends State<LoginScreen>
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(width: 8),
           if (_serverVersion != null)
             Text(
               'v${_serverVersion!}',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-          const SizedBox(width: 8),
           IconButton(
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tight(
+              Size(isCompact ? 30 : 36, isCompact ? 30 : 36),
+            ),
             icon: Icon(
               Icons.info_outline,
-              size: 20,
+              size: isCompact ? 18 : 20,
               color: _updatesHover ? colorScheme.primary : null,
             ),
             onPressed: () => _showUpdatesDialog(context),
@@ -839,6 +846,15 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final size = MediaQuery.of(context).size;
+    final isPhone = size.width < 600;
+    final isSmallPhone = size.width < 420;
+    final horizontalPadding = isSmallPhone ? 16.0 : (isPhone ? 20.0 : 28.0);
+    final verticalPadding = isPhone ? 20.0 : 40.0;
+    final cardHorizontalPadding = isSmallPhone ? 16.0 : (isPhone ? 22.0 : 40.0);
+    final cardVerticalPadding = isSmallPhone ? 18.0 : (isPhone ? 24.0 : 40.0);
+    final titleSize = isSmallPhone ? 34.0 : (isPhone ? 40.0 : 48.0);
+    final brandLetterSpacing = isSmallPhone ? 5.0 : (isPhone ? 6.5 : 8.0);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -857,16 +873,16 @@ class _LoginScreenState extends State<LoginScreen>
             child: SafeArea(
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 28,
-                    vertical: 40,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: verticalPadding,
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // Lottie header (optional)
                       SizedBox(
-                        height: 84,
+                        height: isPhone ? 56 : 84,
                         child: Center(
                           child: Builder(
                             builder: (context) {
@@ -878,26 +894,31 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                       const SizedBox(height: 6),
                       // Title
-                      const _GraniteProfessionalTitle(text: 'ConfigTool'),
+                      _GraniteProfessionalTitle(
+                        text: 'ConfigTool',
+                        fontSize: titleSize,
+                      ),
                       const SizedBox(height: 8),
                       // Subtext with wide tracking for premium feel
                       Text(
                         'GRANITE',
                         style: TextStyle(
-                          color: colorScheme.primary.withOpacity(0.9),
-                          fontSize: 14,
+                          color: colorScheme.primary.withValues(alpha: 0.9),
+                          fontSize: isPhone ? 12 : 14,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 8.0, // Wide spacing
+                          letterSpacing: brandLetterSpacing, // Wide spacing
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      SizedBox(height: isPhone ? 18 : 28),
 
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 760),
+                        constraints: BoxConstraints(
+                          maxWidth: isPhone ? 520 : 760,
+                        ),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 40,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: cardHorizontalPadding,
+                            vertical: cardVerticalPadding,
                           ),
                           decoration: BoxDecoration(
                             color: theme.brightness == Brightness.dark
@@ -1089,67 +1110,76 @@ class _LoginScreenState extends State<LoginScreen>
                                   ],
                                   const SizedBox(height: 12),
 
-                                  Row(
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
-                                      Checkbox(
-                                        value: _remember,
-                                        onChanged: (v) => setState(
-                                          () => _remember = v ?? false,
-                                        ),
-                                        activeColor: colorScheme.primary,
+                                      Row(
+                                        children: [
+                                          Checkbox(
+                                            value: _remember,
+                                            onChanged: (v) => setState(
+                                              () => _remember = v ?? false,
+                                            ),
+                                            activeColor: colorScheme.primary,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: GestureDetector(
+                                              onTap: () => setState(
+                                                () => _remember = !_remember,
+                                              ),
+                                              child: Text(
+                                                'Recordar usuario',
+                                                style: TextStyle(
+                                                  color: theme
+                                                      .textTheme
+                                                      .bodyMedium
+                                                      ?.color
+                                                      ?.withOpacity(0.9),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: GestureDetector(
-                                          onTap: () => setState(
-                                            () => _remember = !_remember,
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: TextButton(
+                                          onPressed: () => showDialog<void>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              backgroundColor: theme.cardColor,
+                                              title: Text(
+                                                '¿Olvidaste tu contraseña?',
+                                                style: TextStyle(
+                                                  color: theme
+                                                      .textTheme
+                                                      .titleLarge
+                                                      ?.color,
+                                                ),
+                                              ),
+                                              content: const Text(
+                                                'El restablecimiento de contraseña se gestiona en el servidor.',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.of(ctx).pop(),
+                                                  child: const Text('Cerrar'),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                           child: Text(
-                                            'Recordar usuario',
+                                            '¿Olvidaste tu contraseña?',
                                             style: TextStyle(
+                                              fontSize: isPhone ? 12 : null,
                                               color: theme
                                                   .textTheme
                                                   .bodyMedium
                                                   ?.color
                                                   ?.withOpacity(0.9),
                                             ),
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => showDialog<void>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            backgroundColor: theme.cardColor,
-                                            title: Text(
-                                              '¿Olvidaste tu contraseña?',
-                                              style: TextStyle(
-                                                color: theme
-                                                    .textTheme
-                                                    .titleLarge
-                                                    ?.color,
-                                              ),
-                                            ),
-                                            content: const Text(
-                                              'El restablecimiento de contraseña se gestiona en el servidor.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.of(ctx).pop(),
-                                                child: const Text('Cerrar'),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '¿Olvidaste tu contraseña?',
-                                          style: TextStyle(
-                                            color: theme
-                                                .textTheme
-                                                .bodyMedium
-                                                ?.color
-                                                ?.withOpacity(0.9),
                                           ),
                                         ),
                                       ),
@@ -1165,8 +1195,9 @@ class _LoginScreenState extends State<LoginScreen>
                                         maxWidth: 420,
                                       ),
                                       child: Container(
-                                        height:
-                                            38, // Standard macOS button height
+                                        height: isPhone
+                                            ? 42
+                                            : 38, // Standard macOS button height
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(
                                             8,
@@ -1255,7 +1286,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
 
-                      const SizedBox(height: 18),
+                      SizedBox(height: isPhone ? 12 : 18),
                       // Updates area integrated into main view logic now
                       if (_updateError) _buildUpdatesCard(theme, colorScheme),
                     ],
@@ -1273,8 +1304,12 @@ class _LoginScreenState extends State<LoginScreen>
 /// A professional, clean gradient title with subtle glow.
 class _GraniteProfessionalTitle extends StatelessWidget {
   final String text;
+  final double fontSize;
 
-  const _GraniteProfessionalTitle({required this.text});
+  const _GraniteProfessionalTitle({
+    required this.text,
+    this.fontSize = 48,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1282,7 +1317,7 @@ class _GraniteProfessionalTitle extends StatelessWidget {
       text,
       textAlign: TextAlign.center,
       style: TextStyle(
-        fontSize: 48,
+        fontSize: fontSize,
         fontWeight: FontWeight.w900,
         letterSpacing: -1.0, // Tight, modern tracking
         // Metallic/Silver Gradient

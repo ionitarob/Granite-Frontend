@@ -5,7 +5,13 @@ import '../../services/api_service.dart';
 import '../../widgets/main_sidebar.dart';
 
 class CerrarCesbScreen extends StatefulWidget {
-  const CerrarCesbScreen({super.key});
+  final String? initialCesb;
+  final bool isEmbedded;
+  const CerrarCesbScreen({
+    super.key,
+    this.initialCesb,
+    this.isEmbedded = false,
+  });
 
   @override
   State<CerrarCesbScreen> createState() => _CerrarCesbScreenState();
@@ -36,6 +42,9 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialCesb != null) {
+      _cesbController.text = widget.initialCesb!;
+    }
     _cargarEmpleados();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;

@@ -209,7 +209,7 @@ class SentinelService {
     _lastPongAt = DateTime.now();
 
     _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (_channel == null || _channel!.sink == null) return;
+      if (_channel == null) return;
 
       // Check timeout
       if (DateTime.now().difference(_lastPongAt).inSeconds > 60) {
@@ -542,18 +542,24 @@ class SentinelService {
     required int scopeId,
     required String image,
     required bool enabled,
+    int? orderId,
   }) async {
     final api = ApiService.instance;
     if (api == null) throw Exception('ApiService not initialized');
 
+    final Map<String, dynamic> body = {
+      'scope': scope,
+      'scope_id': scopeId,
+      'image': image,
+      'enabled': enabled,
+    };
+    if (orderId != null) {
+      body['order_id'] = orderId;
+    }
+
     final res = await api.client.post(
       '/sentinel/api/image-selection/',
-      jsonBody: {
-        'scope': scope,
-        'scope_id': scopeId,
-        'image': image,
-        'enabled': enabled,
-      },
+      jsonBody: body,
     );
 
     if (!res.ok) {

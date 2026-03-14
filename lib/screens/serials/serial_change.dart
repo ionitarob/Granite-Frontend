@@ -25,7 +25,9 @@ import '../../widgets/main_sidebar.dart';
 // ignore_for_file: use_build_context_synchronously
 
 class SerialChangeScreen extends StatefulWidget {
-  const SerialChangeScreen({super.key});
+  final String? initialOrderNumber;
+
+  const SerialChangeScreen({super.key, this.initialOrderNumber});
 
   @override
   State<SerialChangeScreen> createState() => _SerialChangeScreenState();
@@ -90,16 +92,49 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   int? _originalSerialMaskLength;
   Map<String, dynamic>? _cachedPrinter;
 
+  String _normalizedInitialOrder() {
+    final initial = widget.initialOrderNumber?.trim() ?? '';
+    if (initial.isEmpty) return '';
+    final normalized = initial
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (normalized.length == 9) {
+      return '${normalized.substring(0, 2)}-${normalized.substring(2, 7)}-${normalized.substring(7, 9)}';
+    }
+    return initial.toUpperCase();
+  }
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOperators());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final initialOrder = _normalizedInitialOrder();
+      if (initialOrder.isNotEmpty) {
+        _orderController.text = initialOrder;
+      }
+      await _loadOperators();
+      if (initialOrder.isNotEmpty && !_configLocked) {
+        await _triggerOrderResumeSearch(order: initialOrder);
+      }
+    });
   }
 
   Future<void> _confirmAndStartBox() async {
     // Validate form first
     if (!_boxFormKey.currentState!.validate()) return;
     await _startBox();
+  }
+
+  Future<void> _triggerOrderResumeSearch({String? order}) async {
+    if (_configLocked || _checkingOrder) return;
+    setState(() => _checkingOrder = true);
+    try {
+      await _checkOrderResume(order);
+    } finally {
+      if (mounted) {
+        setState(() => _checkingOrder = false);
+      }
+    }
   }
 
   @override
@@ -1948,6 +1983,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
 
   void _resetWorkflow() {
     setState(() {
+      final initialOrder = _normalizedInitialOrder();
       _configLocked = false;
       _pendingLabels = const [];
       _consumedLabels.clear();
@@ -1960,7 +1996,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       _boxError = null;
 
       // Clear order inputs for fresh start
-      _orderController.clear();
+      _orderController.text = initialOrder;
       _skuController.clear();
       _unitsController.clear();
       _startSeqController.text = '1';
@@ -1981,6 +2017,85 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  void _markEntryInvalid(_BoxEntryField entry, String message) {
+    SoundPlayer.playError();
+    setState(() {
+      entry.isValid = false;
+      entry.isInvalid = true;
+      entry.errorMessage = message;
+      _boxError = message;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(entry.focusNode);
+    });
+  }
+
+  Future<bool> _validateEntryForSubmit(
+    _BoxEntryField entry,
+    _BoxSession box,
+  ) async {
+    final text = entry.controller.text.trim();
+    if (text.isEmpty) {
+      _markEntryInvalid(entry, 'El S/N no puede estar vacío.');
+      return false;
+    }
+
+    if (_originalSerialMaskLength != null &&
+        text.length != _originalSerialMaskLength) {
+      _markEntryInvalid(
+        entry,
+        'Longitud inválida: se esperan $_originalSerialMaskLength caracteres.',
+      );
+      return false;
+    }
+
+    final existingOlds = _registeredMappings
+        .map((m) => m['old'])
+        .whereType<String>()
+        .toSet();
+    for (final other in box.entries) {
+      if (other != entry) {
+        final v = other.controller.text.trim();
+        if (v.isNotEmpty && v == text) {
+          _markEntryInvalid(entry, 'S/N duplicado dentro de la caja.');
+          return false;
+        }
+      }
+    }
+    if (existingOlds.contains(text)) {
+      _markEntryInvalid(entry, 'Este S/N ya fue registrado previamente.');
+      return false;
+    }
+
+    try {
+      final check = await MaskService.checkSerial(text);
+      if (check.suspicious == true) {
+        final sample = check.matches.isNotEmpty
+            ? (check.matches.first['mask'] ?? '').toString()
+            : '';
+        final suffix = sample.isNotEmpty ? ' ($sample)' : '';
+        _markEntryInvalid(
+          entry,
+          'Entrada sospechosa: parece máscara y no S/N$suffix.',
+        );
+        return false;
+      }
+    } catch (_) {
+      // If mask check fails, allow the operator to continue.
+    }
+
+    setState(() {
+      entry.isValid = true;
+      entry.isInvalid = false;
+      entry.errorMessage = null;
+      if (_boxError != null) {
+        _boxError = null;
+      }
+    });
+    return true;
+  }
+
   // Validate a serial entry and update its UI state (sync+async checks)
   void _onSerialChanged(_BoxEntryField entry) {
     final text = entry.controller.text.trim();
@@ -1989,6 +2104,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       setState(() {
         entry.isValid = false;
         entry.isInvalid = false;
+        entry.errorMessage = null;
       });
       return;
     }
@@ -2006,6 +2122,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
           setState(() {
             entry.isValid = false;
             entry.isInvalid = true;
+            entry.errorMessage = 'S/N duplicado dentro de la caja.';
           });
           return;
         }
@@ -2015,6 +2132,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       setState(() {
         entry.isValid = false;
         entry.isInvalid = true;
+        entry.errorMessage = 'Este S/N ya fue registrado previamente.';
       });
       return;
     }
@@ -2025,6 +2143,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       setState(() {
         entry.isValid = false;
         entry.isInvalid = true;
+        entry.errorMessage =
+            'Longitud inválida: se esperan $_originalSerialMaskLength caracteres.';
       });
       return;
     }
@@ -2034,6 +2154,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     setState(() {
       entry.isValid = false;
       entry.isInvalid = false;
+      entry.errorMessage = null;
     });
     () async {
       try {
@@ -2043,11 +2164,14 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
           setState(() {
             entry.isValid = false;
             entry.isInvalid = true;
+            entry.errorMessage =
+                'Entrada sospechosa: parece máscara y no S/N.';
           });
         } else {
           setState(() {
             entry.isValid = true;
             entry.isInvalid = false;
+            entry.errorMessage = null;
           });
         }
       } catch (_) {
@@ -2056,6 +2180,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         setState(() {
           entry.isValid = true;
           entry.isInvalid = false;
+          entry.errorMessage = null;
         });
       }
     }();
@@ -3023,12 +3148,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             IconButton(
-              tooltip: 'Añadir tipo',
               icon: const Icon(Icons.add),
               onPressed: _showAddLabelTypeDialog,
             ),
             IconButton(
-              tooltip: 'Borrar tipo seleccionado',
               icon: const Icon(Icons.delete_outline),
               onPressed: _confirmEraseLabelType,
             ),
@@ -3401,268 +3524,146 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                 color: _entryBackgroundColor(entry, Theme.of(context)),
                 borderRadius: BorderRadius.circular(10),
               ),
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-              child: ListTile(
-                leading: Text('#${index + 1}'.padLeft(3, '0')),
-                title: Text(
-                  entry.label,
-                  style: const TextStyle(
-                    fontFeatures: [FontFeature.tabularFigures()],
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '#${index + 1}'.padLeft(3, '0'),
+                        style: const TextStyle(
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const Spacer(),
+                      if (entry.registered)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () => _showEditRegisteredDialog(entry),
+                        ),
+                    ],
                   ),
-                ),
-                trailing: entry.registered
-                    ? IconButton(
-                        tooltip: 'Editar S/N registrado',
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _showEditRegisteredDialog(entry),
-                      )
-                    : null,
-                subtitle: TextField(
-                  controller: entry.controller,
-                  focusNode: entry.focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Serial / S/N',
-                    isDense: true,
-                  ),
-                  // Allow letters, digits, underscore, hyphen and slash for S/N inputs
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'[A-Za-z0-9_\/\-#]'),
-                    ),
-                  ],
-                  textInputAction: index == box.entries.length - 1
-                      ? TextInputAction.done
-                      : TextInputAction.next,
-                  onChanged: (_) => _onSerialChanged(entry),
-                  onSubmitted: (_) async {
-                    final text = entry.controller.text.trim();
-                    if (text.isEmpty) return;
-                    try {
-                      final check = await MaskService.checkSerial(text);
-                      if (check.suspicious) {
-                        // play error sound immediately so the operator hears feedback
-                        // before the dialog appears
-                        SoundPlayer.playError();
-                        // Build a short message from matches
-                        final lines = check.matches
-                            .map((m) {
-                              final mask = m['mask'] ?? '';
-                              final reason = m['reason'] ?? '';
-                              final score = m['score'] != null
-                                  ? ' (${m['score']})'
-                                  : '';
-                              return '$mask - $reason$score';
-                            })
-                            .join('\n');
-                        final accept = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Entrada sospechosa'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'La entrada parece coincidir con una máscara (no un S/N).',
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  lines,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  '¿Deseas usarla igual o corregirla?',
-                                ),
-                              ],
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(false),
-                                child: const Text('Corregir'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.of(ctx).pop(true),
-                                child: const Text('Usar'),
-                              ),
-                            ],
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: entry.controller,
+                          focusNode: entry.focusNode,
+                          decoration: InputDecoration(
+                            labelText: 'Nuevo Serial',
+                            hintText: 'Ingresa el S/N actual',
+                            isDense: true,
+                            errorText: entry.errorMessage,
                           ),
-                        );
-                        if (accept != true) {
-                          // keep focus on same field for correction
-                          if (!mounted) return;
-                          FocusScope.of(context).requestFocus(entry.focusNode);
-                          return;
-                        }
-                      }
-                    } catch (e, st) {
-                      // Log errors from MaskService so we can see why mask checks are skipped
-                      developer.log(
-                        'MaskService.checkSerial failed: $e',
-                        name: 'SerialChange',
-                      );
-                      developer.log('$st', name: 'SerialChange');
-                      // ignore mask check errors and proceed
-                    }
-
-                    // Enforce original S/N mask length if provided
-                    if (_originalSerialMaskLength != null &&
-                        text.length != _originalSerialMaskLength) {
-                      // play error sound immediately before showing the alert
-                      SoundPlayer.playError();
-                      await showDialog<void>(
-                        context: context,
-                        builder: (c) => AlertDialog(
-                          title: const Text('Longitud inválida'),
-                          content: Text(
-                            'La longitud del S/N debe ser $_originalSerialMaskLength caracteres.',
-                          ),
-                          actions: [
-                            FilledButton(
-                              onPressed: () => Navigator.of(c).pop(),
-                              child: const Text('Aceptar'),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[A-Za-z0-9_\/\-#]'),
                             ),
                           ],
-                        ),
-                      );
-                      if (!mounted) return;
-                      FocusScope.of(context).requestFocus(entry.focusNode);
-                      return;
-                    }
+                          textInputAction: index == box.entries.length - 1
+                              ? TextInputAction.done
+                              : TextInputAction.next,
+                          onChanged: (_) => _onSerialChanged(entry),
+                          onSubmitted: (_) async {
+                            final isValid = await _validateEntryForSubmit(
+                              entry,
+                              box,
+                            );
+                            if (!isValid) return;
 
-                    // Prevent duplicate original S/Ns (within current box and across previously registered mappings)
-                    final existingOlds = _registeredMappings
-                        .map((m) => m['old'])
-                        .whereType<String>()
-                        .toSet();
-                    for (final other in box.entries) {
-                      if (other != entry) {
-                        final v = other.controller.text.trim();
-                        if (v.isNotEmpty && v == text) {
-                          // play error sound immediately before showing the alert
-                          SoundPlayer.playError();
-                          await showDialog<void>(
-                            context: context,
-                            builder: (c) => AlertDialog(
-                              title: const Text('S/N duplicado'),
-                              content: const Text(
-                                'Este S/N ya ha sido ingresado en la caja.',
-                              ),
-                              actions: [
-                                FilledButton(
-                                  onPressed: () => Navigator.of(c).pop(),
-                                  child: const Text('Aceptar'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (!mounted) return;
-                          FocusScope.of(context).requestFocus(entry.focusNode);
-                          return;
-                        }
-                      }
-                    }
-                    if (existingOlds.contains(text)) {
-                      // play error sound immediately before showing the alert
-                      SoundPlayer.playError();
-                      await showDialog<void>(
-                        context: context,
-                        builder: (c) => AlertDialog(
-                          title: const Text('S/N duplicado'),
-                          content: const Text(
-                            'Este S/N ya fue registrado previamente.',
-                          ),
-                          actions: [
-                            FilledButton(
-                              onPressed: () => Navigator.of(c).pop(),
-                              child: const Text('Aceptar'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (!mounted) return;
-                      FocusScope.of(context).requestFocus(entry.focusNode);
-                      return;
-                    }
+                            // success: play success sound then register this S/N immediately
+                            SoundPlayer.playSuccess();
 
-                    // success: play success sound then register this S/N immediately
-                    SoundPlayer.playSuccess();
-
-                    // Check if we are updating an existing registry or creating a new one
-                    if (entry.registered && entry.registryId != null) {
+                            // Check if we are updating an existing registry or creating a new one
+                            if (entry.registered && entry.registryId != null) {
                       // UPDATE EXISTING REGISTRY
-                      try {
-                        final client2 = _clientOrNull();
-                        if (client2 == null) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Servicio API no disponible'),
-                            ),
-                          );
-                          if (!mounted) return;
-                          FocusScope.of(context).requestFocus(entry.focusNode);
-                          return;
-                        }
+                              try {
+                                final client2 = _clientOrNull();
+                                if (client2 == null) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Servicio API no disponible',
+                                      ),
+                                    ),
+                                  );
+                                  if (!mounted) return;
+                                  FocusScope.of(
+                                    context,
+                                  ).requestFocus(entry.focusNode);
+                                  return;
+                                }
 
-                        final id = entry.registryId!;
-                        final payload = <String, dynamic>{
-                          'serial_old': entry.controller.text.trim(),
-                        };
+                                final id = entry.registryId!;
+                                final payload = <String, dynamic>{
+                                  'serial_old': entry.controller.text.trim(),
+                                };
 
-                        final resp = await client2.put(
-                          '/serials/serial-changes/$id',
-                          jsonBody: payload,
-                        );
+                                final resp = await client2.put(
+                                  '/serials/serial-changes/$id',
+                                  jsonBody: payload,
+                                );
 
-                        if (resp.ok) {
-                          // update registeredMappings
-                          final newVal = entry.controller.text.trim();
-                          for (final m in _registeredMappings) {
-                            if (m['id'] == id) {
-                              m['old'] = newVal;
+                                if (resp.ok) {
+                                  // update registeredMappings
+                                  final newVal = entry.controller.text.trim();
+                                  for (final m in _registeredMappings) {
+                                    if (m['id'] == id) {
+                                      m['old'] = newVal;
+                                    }
+                                  }
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('S/N actualizado'),
+                                    ),
+                                  );
+                                  // Do not auto-advance focus on edit; stay here or let user move
+                                } else {
+                                  final err = resp.body is Map
+                                      ? (resp.body['error']?.toString() ??
+                                            resp.error ??
+                                            'Error')
+                                      : (resp.error ?? 'Error');
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error actualizando: $err'),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Error actualizando S/N: $e',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                              return;
                             }
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('S/N actualizado')),
-                          );
-                          // Do not auto-advance focus on edit; stay here or let user move
-                        } else {
-                          final err = resp.body is Map
-                              ? (resp.body['error']?.toString() ??
-                                    resp.error ??
-                                    'Error')
-                              : (resp.error ?? 'Error');
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error actualizando: $err')),
-                          );
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error actualizando S/N: $e'),
-                            ),
-                          );
-                        }
-                      }
-                      return;
-                    }
 
-                    // Attempt to register this single S/N immediately so data is persisted even if the app closes
-                    try {
-                      final client2 = _clientOrNull();
-                      if (client2 == null) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Servicio API no disponible'),
-                          ),
-                        );
-                        if (!mounted) return;
-                        FocusScope.of(context).requestFocus(entry.focusNode);
-                        return;
-                      }
+                            // Attempt to register this single S/N immediately so data is persisted even if the app closes
+                            try {
+                              final client2 = _clientOrNull();
+                              if (client2 == null) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Servicio API no disponible',
+                                    ),
+                                  ),
+                                );
+                                if (!mounted) return;
+                                FocusScope.of(
+                                  context,
+                                ).requestFocus(entry.focusNode);
+                                return;
+                              }
 
                       final currentUser = ApiService.instance?.currentUser;
                       final usuario = currentUser != null
@@ -3877,16 +3878,63 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                         if (!mounted) return;
                         FocusScope.of(context).requestFocus(entry.focusNode);
                       }
-                    } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error registrando S/N: $e')),
-                      );
-                      if (!mounted) return;
-                      FocusScope.of(context).requestFocus(entry.focusNode);
-                    }
-                  },
-                ),
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error registrando S/N: $e'),
+                                ),
+                              );
+                              if (!mounted) return;
+                              FocusScope.of(
+                                context,
+                              ).requestFocus(entry.focusNode);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest.withOpacity(
+                                  .25,
+                                ),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant.withOpacity(.5),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Serial Anterior',
+                                style: Theme.of(context).textTheme.labelMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              SelectableText(
+                                entry.label,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             );
           },
@@ -3945,7 +3993,6 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
             ),
             trailing: IconButton(
               icon: const Icon(Icons.print_outlined),
-              tooltip: 'Imprimir etiqueta de caja',
               onPressed: () async {
                 final newSerials = entry.records
                     .map((r) => (r['serial_new'] ?? '').toString())
@@ -3967,9 +4014,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
               final oldS = (r['serial_old'] ?? '').toString();
               final newS = (r['serial_new'] ?? '').toString();
               final date = (r['fecha'] ?? '').toString();
+              final sku = (r['nr_sku'] ?? '').toString();
+              final order = (r['nr_orden'] ?? '').toString();
               return ListTile(
-                title: Text(newS),
-                subtitle: Text('Old: $oldS\nFecha: $date'),
+                title: Text('Antiguo: $oldS    ->    Nuevo: $newS'),
+                subtitle: Text('Orden: $order  SKU: $sku\nFecha: $date'),
                 isThreeLine: true,
                 dense: true,
               );
@@ -4106,22 +4155,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                     textInputAction:
                                                         TextInputAction.done,
                                                     onFieldSubmitted: (_) async {
-                                                      if (_configLocked) return;
-                                                      setState(
-                                                        () => _checkingOrder =
-                                                            true,
-                                                      );
-                                                      try {
-                                                        await _checkOrderResume();
-                                                      } finally {
-                                                        if (mounted) {
-                                                          setState(
-                                                            () =>
-                                                                _checkingOrder =
-                                                                    false,
-                                                          );
-                                                        }
-                                                      }
+                                                      await _triggerOrderResumeSearch();
                                                     },
                                                     validator: (value) {
                                                       final v =
@@ -4161,31 +4195,14 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                               ),
                                                         )
                                                       : IconButton(
-                                                          tooltip:
-                                                              'Comprobar orden',
                                                           icon: const Icon(
                                                             Icons.search,
                                                           ),
                                                           onPressed:
                                                               _configLocked
                                                               ? null
-                                                              : () async {
-                                                                  setState(
-                                                                    () =>
-                                                                        _checkingOrder =
-                                                                            true,
-                                                                  );
-                                                                  try {
-                                                                    await _checkOrderResume();
-                                                                  } finally {
-                                                                    if (mounted) {
-                                                                      setState(
-                                                                        () => _checkingOrder =
-                                                                            false,
-                                                                      );
-                                                                    }
-                                                                  }
-                                                                },
+                                                              : () async =>
+                                                                    _triggerOrderResumeSearch(),
                                                         ),
                                                 ),
                                               ],
@@ -4634,6 +4651,7 @@ class _BoxEntryField {
   // Validation UI state
   bool isValid = false;
   bool isInvalid = false;
+  String? errorMessage;
 
   void dispose() {
     controller.dispose();

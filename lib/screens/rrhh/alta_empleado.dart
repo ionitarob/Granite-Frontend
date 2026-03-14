@@ -41,6 +41,8 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
     _cargarRoles();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final isMobile = MediaQuery.of(context).size.width < 980;
+      if (isMobile) return;
       final routeName = ModalRoute.of(context)?.settings.name;
       final overlay = Overlay.of(context, rootOverlay: true);
       _edgeOverlay = OverlayEntry(
@@ -257,6 +259,9 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 980;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final contentBottomPadding = bottomInset + (isMobile ? 108 : 24);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -272,12 +277,17 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
           const AnimatedBackgroundWidget(intensity: 1.1),
 
           SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: _buildGlassCard(theme),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 12 : 20,
+                isMobile ? 12 : 20,
+                isMobile ? 12 : 20,
+                contentBottomPadding,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: isMobile ? 560 : 900),
+                  child: _buildGlassCard(theme, isMobile: isMobile),
                 ),
               ),
             ),
@@ -287,16 +297,16 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
     );
   }
 
-  Widget _buildGlassCard(ThemeData theme) {
+  Widget _buildGlassCard(ThemeData theme, {required bool isMobile}) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
+      borderRadius: BorderRadius.circular(isMobile ? 22 : 30),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          padding: const EdgeInsets.all(28),
+          padding: EdgeInsets.all(isMobile ? 16 : 28),
           decoration: BoxDecoration(
             color: theme.cardColor.withValues(alpha: .65),
-            borderRadius: BorderRadius.circular(30),
+            borderRadius: BorderRadius.circular(isMobile ? 22 : 30),
             border: Border.all(color: Colors.white.withValues(alpha: .25)),
             boxShadow: [
               BoxShadow(
@@ -308,20 +318,50 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final double fieldWidth = constraints.maxWidth > 640
+              final double fieldWidth = isMobile
+                  ? constraints.maxWidth
+                  : constraints.maxWidth > 760
                   ? (constraints.maxWidth - 32) / 2
                   : constraints.maxWidth;
+
+              final submitButton = FilledButton.icon(
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                      )
+                    : const Icon(Icons.save_alt_outlined),
+                label: Text(_isLoading ? 'Guardando...' : 'Registrar empleado'),
+                onPressed: _isLoading ? null : _registrarEmpleado,
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 16 : 32,
+                    vertical: isMobile ? 16 : 20,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  elevation: 0,
+                  textStyle: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: isMobile ? 15 : 16,
+                  ),
+                ),
+              );
 
               return Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'Registra a un nuevo colaborador',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
+                        fontSize: isMobile ? 24 : null,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -333,7 +373,7 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    SizedBox(height: isMobile ? 18 : 28),
                     Wrap(
                       spacing: 16,
                       runSpacing: 16,
@@ -430,39 +470,11 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 32),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.icon(
-                        icon: _isLoading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                ),
-                              )
-                            : const Icon(Icons.save_alt_outlined),
-                        label: Text(
-                          _isLoading ? 'Guardando...' : 'Registrar empleado',
-                        ),
-                        onPressed: _isLoading ? null : _registrarEmpleado,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 20,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          elevation: 0,
-                          textStyle: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
+                    SizedBox(height: isMobile ? 20 : 32),
+                    if (isMobile)
+                      SizedBox(width: double.infinity, child: submitButton)
+                    else
+                      Align(alignment: Alignment.centerRight, child: submitButton),
                   ],
                 ),
               );

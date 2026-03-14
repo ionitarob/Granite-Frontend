@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 import 'sentinel_provider.dart';
 import 'sentinel_models.dart';
 
@@ -10,7 +13,8 @@ import 'sentinel_theme.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 
 class PhysicalTablesScreen extends StatefulWidget {
-  const PhysicalTablesScreen({super.key});
+  final int? orderId;
+  const PhysicalTablesScreen({super.key, this.orderId});
 
   @override
   State<PhysicalTablesScreen> createState() => _PhysicalTablesScreenState();
@@ -29,6 +33,7 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
   @override
   void initState() {
     super.initState();
+    print('DEBUG: PhysicalTablesScreen initState with orderId=${widget.orderId}');
     _transformationController = TransformationController();
     _animationController =
         AnimationController(
@@ -42,6 +47,13 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        final user = Provider.of<ApiService>(context, listen: false).currentUser;
+        if (user != null) {
+          Provider.of<SentinelProvider>(context, listen: false).setUserName(
+            user.displayName(),
+          );
+        }
+
         final routeName = ModalRoute.of(context)?.settings.name;
         final overlay = Overlay.of(context, rootOverlay: true);
         _edgeOverlay = OverlayEntry(
@@ -53,15 +65,17 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
               child: SafeArea(
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: EdgeNavHandle(
-                    user: Provider.of<ApiService>(
-                      ctx,
-                      listen: false,
-                    ).currentUser,
-                    width: 32,
-                    currentRoute: routeName,
-                    showIndicator: true,
-                  ),
+                  child: widget.orderId != null
+                      ? const SizedBox.shrink()
+                      : EdgeNavHandle(
+                          user: Provider.of<ApiService>(
+                            ctx,
+                            listen: false,
+                          ).currentUser,
+                          width: 32,
+                          currentRoute: routeName,
+                          showIndicator: true,
+                        ),
                 ),
               ),
             );
@@ -248,6 +262,7 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
                   child: _PortContextPopup(
                     port: port,
                     parentSwitch: s,
+                    orderId: widget.orderId,
                     onClose: () {
                       _resetView();
                     },
@@ -300,29 +315,17 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
       );
     }
 
-    return ChangeNotifierProvider(
-      create: (context) {
-        final provider = SentinelProvider();
-        final user = Provider.of<ApiService>(
-          context,
-          listen: false,
-        ).currentUser;
-        if (user != null) {
-          provider.setUserName(user.displayName());
-        }
-        return provider;
-      },
-      child: Theme(
-        data: ThemeData.dark().copyWith(
-          scaffoldBackgroundColor: const Color(0xFF1E1E1E),
-          cardColor: const Color(0xFF2C2C2C),
-          colorScheme: const ColorScheme.dark(
-            primary: Colors.cyanAccent,
-            secondary: Colors.blueAccent,
-            surface: Color(0xFF2C2C2C),
-          ),
+    return Theme(
+      data: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF1E1E1E),
+        cardColor: const Color(0xFF2C2C2C),
+        colorScheme: const ColorScheme.dark(
+          primary: Colors.cyanAccent,
+          secondary: Colors.blueAccent,
+          surface: Color(0xFF2C2C2C),
         ),
-        child: Scaffold(
+      ),
+      child: Scaffold(
           backgroundColor: const Color(0xFF121212),
           body: Container(
             decoration: const BoxDecoration(
@@ -333,7 +336,7 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
                 children: [
                   Column(
                     children: [
-                      _SwitchSelector(),
+                      _SwitchSelector(orderId: widget.orderId),
                       const Divider(height: 1, color: Colors.white10),
                       Expanded(
                         child: Consumer<SentinelProvider>(
@@ -378,13 +381,67 @@ class _PhysicalTablesScreenState extends State<PhysicalTablesScreen>
               ),
             ),
           ),
-        ),
       ),
     );
   }
 }
 
 class _SwitchSelector extends StatelessWidget {
+  final int? orderId;
+  const _SwitchSelector({this.orderId});
+
+  Future<void> _exportCsv(
+    BuildContext context,
+    SentinelProvider provider,
+    String type,
+  ) async {
+    try {
+      final now = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final orderPrefix = orderId != null ? 'order_${orderId}_' : '';
+      final filename =
+          type == 'events'
+          ? '${orderPrefix}sentinel_events_$now.csv'
+          : '${orderPrefix}sentinel_snapshot_$now.csv';
+
+      final csv = type == 'events'
+          ? provider.buildEventsCsv(orderId: orderId)
+          : provider.buildImagingSnapshotCsv(orderId: orderId);
+
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsString(csv, flush: true);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('CSV generado: $filename')),
+        );
+      }
+
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error exportando CSV: $e')));
+      }
+    }
+  }
+
+  Widget _statPill(String label, int value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: SentinelTheme.label.copyWith(color: color, fontSize: 10),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<SentinelProvider>(context);
@@ -397,75 +454,81 @@ class _SwitchSelector extends StatelessWidget {
           bottom: BorderSide(color: SentinelTheme.primary.withOpacity(0.1)),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.table_restaurant, // Switch/Table icon
-            color: SentinelTheme.primary,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Text('ACTIVE SWITCH:', style: SentinelTheme.label),
-          const SizedBox(width: 8),
-          // Connection Indicator
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: provider.isConnected
-                  ? SentinelTheme.success.withOpacity(0.1)
-                  : SentinelTheme.error.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: provider.isConnected
-                    ? SentinelTheme.success.withOpacity(0.5)
-                    : SentinelTheme.error.withOpacity(0.5),
-                width: 1,
+          Row(
+            children: [
+              const Icon(
+                Icons.table_restaurant, // Switch/Table icon
+                color: SentinelTheme.primary,
+                size: 20,
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
+              const SizedBox(width: 12),
+              Text('ACTIVE SWITCH:', style: SentinelTheme.label),
+              const SizedBox(width: 8),
+              // Connection Indicator
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: provider.isConnected
+                      ? SentinelTheme.success.withOpacity(0.1)
+                      : SentinelTheme.error.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
                     color: provider.isConnected
-                        ? SentinelTheme.success
-                        : SentinelTheme.error,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      if (provider.isConnected)
-                        BoxShadow(
-                          color: SentinelTheme.success.withOpacity(0.6),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                        ),
-                    ],
+                        ? SentinelTheme.success.withOpacity(0.5)
+                        : SentinelTheme.error.withOpacity(0.5),
+                    width: 1,
                   ),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  provider.isConnected ? 'EN LINEA' : 'DESCONECTADO',
-                  style: SentinelTheme.label.copyWith(
-                    color: provider.isConnected
-                        ? SentinelTheme.success
-                        : SentinelTheme.error,
-                    fontSize: 9,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: provider.isConnected
+                            ? SentinelTheme.success
+                            : SentinelTheme.error,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          if (provider.isConnected)
+                            BoxShadow(
+                              color: SentinelTheme.success.withOpacity(0.6),
+                              blurRadius: 4,
+                              spreadRadius: 1,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      provider.isConnected ? 'EN LINEA' : 'DESCONECTADO',
+                      style: SentinelTheme.label.copyWith(
+                        color: provider.isConnected
+                            ? SentinelTheme.success
+                            : SentinelTheme.error,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-              decoration: SentinelTheme.glassDecoration(
-                borderRadius: 8,
-                opacity: 0.05,
-                border: true,
               ),
-              child: PopupMenuButton<SentinelSwitch>(
+              const SizedBox(width: 16),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 2,
+                  ),
+                  decoration: SentinelTheme.glassDecoration(
+                    borderRadius: 8,
+                    opacity: 0.05,
+                    border: true,
+                  ),
+                  child: PopupMenuButton<SentinelSwitch>(
                 tooltip: 'Seleccionar Mesa Activa',
                 offset: const Offset(0, 48),
                 shape: RoundedRectangleBorder(
@@ -596,29 +659,82 @@ class _SwitchSelector extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: () {
-              if (provider.selectedSwitch != null) {
-                showDialog(
-                  context: context,
-                  builder: (_) => ChangeNotifierProvider.value(
-                    value: provider,
-                    child: _SwitchImageDialog(
-                      sentinelSwitch: provider.selectedSwitch!,
-                    ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () {
+                  if (provider.selectedSwitch != null) {
+                    showDialog(
+                      context: context,
+                      builder: (_) => ChangeNotifierProvider.value(
+                        value: provider,
+                        child: _SwitchImageDialog(
+                          sentinelSwitch: provider.selectedSwitch!,
+                          orderId: orderId,
+                        ),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(
+                  Icons.settings_system_daydream,
+                  color: SentinelTheme.secondary,
+                ),
+                tooltip: 'Configurar Imágenes de Switch',
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Exportar logs/snapshot',
+                icon: const Icon(Icons.download, color: SentinelTheme.primary),
+                onSelected: (value) {
+                  if (value == 'snapshot') {
+                    _exportCsv(context, provider, 'snapshot');
+                  } else if (value == 'events') {
+                    _exportCsv(context, provider, 'events');
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'snapshot',
+                    child: Text('Exportar snapshot CSV'),
                   ),
-                );
-              }
-            },
-            icon: const Icon(
-              Icons.settings_system_daydream,
-              color: SentinelTheme.secondary,
-            ),
-            tooltip: 'Configurar Imágenes de Switch',
+                  PopupMenuItem(
+                    value: 'events',
+                    child: Text('Exportar eventos CSV'),
+                  ),
+                ],
+              ),
+            ],
           ),
+          if (orderId != null) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _statPill(
+                  'PUERTOS CONFIG',
+                  provider.configuredPortsCount,
+                  SentinelTheme.primary,
+                ),
+                _statPill(
+                  'MATCH PC-ORDEN',
+                  provider.matchedDevicesCount,
+                  SentinelTheme.secondary,
+                ),
+                _statPill(
+                  'MAQUETANDO',
+                  provider.activelyImagingDevicesCount,
+                  SentinelTheme.warning,
+                ),
+                _statPill(
+                  'COMPLETADOS',
+                  provider.completedImagingDevicesCount,
+                  SentinelTheme.success,
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1277,8 +1393,9 @@ class _SeatState extends State<_Seat> {
 
 class _SwitchImageDialog extends StatefulWidget {
   final SentinelSwitch sentinelSwitch;
+  final int? orderId;
 
-  const _SwitchImageDialog({required this.sentinelSwitch});
+  const _SwitchImageDialog({required this.sentinelSwitch, this.orderId});
 
   @override
   State<_SwitchImageDialog> createState() => _SwitchImageDialogState();
@@ -1364,81 +1481,94 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
             style: SentinelTheme.subHeader.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: SentinelTheme.glassDecoration(
-              borderRadius: 8,
-              opacity: 0.05,
-              border: true,
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton2<String>(
-                value: _selectedImage,
-                hint: Text(
-                  'Selecc. Imagen (WIM/ESD/FFU)',
-                  style: SentinelTheme.body.copyWith(
-                    color: SentinelTheme.textDisabled,
-                  ),
-                ),
-                dropdownStyleData: DropdownStyleData(
-                  decoration: BoxDecoration(
-                    color: SentinelTheme.bgPanel,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: SentinelTheme.primary.withOpacity(0.3),
+          Opacity(
+            opacity: _enabled ? 1.0 : 0.55,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: SentinelTheme.glassDecoration(
+                borderRadius: 8,
+                opacity: 0.05,
+                border: true,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton2<String>(
+                  value: _selectedImage,
+                  hint: Text(
+                    'Selecc. Imagen (WIM/ESD/FFU)',
+                    style: SentinelTheme.body.copyWith(
+                      color: SentinelTheme.textDisabled,
                     ),
                   ),
-                  offset: const Offset(0, -4),
-                  maxHeight: 250,
-                ),
-                menuItemStyleData: const MenuItemStyleData(height: 40),
-                isExpanded: true,
-                buttonStyleData: ButtonStyleData(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
+                  dropdownStyleData: DropdownStyleData(
+                    decoration: BoxDecoration(
+                      color: SentinelTheme.bgPanel,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: SentinelTheme.primary.withOpacity(0.3),
+                      ),
+                    ),
+                    offset: const Offset(0, -4),
+                    maxHeight: 250,
                   ),
-                ),
-                iconStyleData: const IconStyleData(
-                  icon: Icon(
-                    Icons.arrow_drop_down,
-                    color: SentinelTheme.primary,
+                  menuItemStyleData: const MenuItemStyleData(height: 40),
+                  isExpanded: true,
+                  buttonStyleData: ButtonStyleData(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                ),
-                items:
-                    images.map((img) {
-                      return DropdownMenuItem(
-                        value: img,
-                        child: Text(
-                          img,
-                          overflow: TextOverflow.ellipsis,
-                          style: SentinelTheme.body.copyWith(
-                            color: Colors.white,
+                  iconStyleData: const IconStyleData(
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: SentinelTheme.primary,
+                    ),
+                  ),
+                  items:
+                      images.map((img) {
+                        return DropdownMenuItem(
+                          value: img,
+                          child: Text(
+                            img,
+                            overflow: TextOverflow.ellipsis,
+                            style: SentinelTheme.body.copyWith(
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList()..addAll(
-                      // Ensure the currently selected image is in the list to avoid crash
-                      (_selectedImage != null &&
-                              _selectedImage!.isNotEmpty &&
-                              !images.contains(_selectedImage))
-                          ? [
-                              DropdownMenuItem(
-                                value: _selectedImage,
-                                child: Text(
-                                  '$_selectedImage (Archived)',
-                                  style: SentinelTheme.body.copyWith(
-                                    fontStyle: FontStyle.italic,
-                                    color: SentinelTheme.warning,
+                        );
+                      }).toList()..addAll(
+                        // Ensure the currently selected image is in the list to avoid crash
+                        (_selectedImage != null &&
+                                _selectedImage!.isNotEmpty &&
+                                !images.contains(_selectedImage))
+                            ? [
+                                DropdownMenuItem(
+                                  value: _selectedImage,
+                                  child: Text(
+                                    '$_selectedImage (Archived)',
+                                    style: SentinelTheme.body.copyWith(
+                                      fontStyle: FontStyle.italic,
+                                      color: SentinelTheme.warning,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ]
-                          : [],
-                    ),
-                onChanged: (val) => setState(() => _selectedImage = val),
+                              ]
+                            : [],
+                      ),
+                  onChanged: _enabled
+                      ? (val) => setState(() => _selectedImage = val)
+                      : null,
+                ),
               ),
             ),
           ),
+          if (!_enabled)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Activa "Habilitar Maquetado" para aplicar una imagen.',
+                style: SentinelTheme.label.copyWith(color: SentinelTheme.warning),
+              ),
+            ),
         ],
       ),
       actions: [
@@ -1453,6 +1583,16 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
         ),
         ElevatedButton(
           onPressed: () async {
+            if (!_enabled && _selectedImage != null && _selectedImage!.isNotEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Activa "Habilitar Maquetado" antes de aplicar la imagen.'),
+                  backgroundColor: SentinelTheme.warning,
+                ),
+              );
+              return;
+            }
+
             // Allow disabling even if image is null
             if (_selectedImage == null && _enabled) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1472,6 +1612,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                 scopeId: widget.sentinelSwitch.switchId,
                 image: _enabled ? (_selectedImage ?? '') : '',
                 enabled: _enabled,
+                orderId: widget.orderId,
               );
 
               if (mounted) Navigator.pop(context);
@@ -1497,11 +1638,13 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
 class _PortContextPopup extends StatefulWidget {
   final SentinelPort port;
   final SentinelSwitch parentSwitch;
+  final int? orderId;
   final VoidCallback onClose;
 
   const _PortContextPopup({
     required this.port,
     required this.parentSwitch,
+    this.orderId,
     required this.onClose,
   });
 
@@ -1565,6 +1708,7 @@ class _PortContextPopupState extends State<_PortContextPopup> {
         scopeId: widget.port.portId,
         image: _enabled ? (_selectedImage ?? '') : '',
         enabled: _enabled,
+        orderId: widget.orderId,
       );
       if (mounted) widget.onClose();
     } catch (e) {

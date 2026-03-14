@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../services/theme_controller.dart';
@@ -6,6 +7,7 @@ import '../models/user_model.dart';
 import 'package:flutter/scheduler.dart';
 import '../services/api_service.dart';
 import '../login_screen.dart';
+import '../services/navigation_tracker.dart';
 
 /// A reusable main sidebar widget that can be embedded (permanent) or shown
 /// as an overlay via [showAppSidebar]. It mirrors the sidebar used in the
@@ -733,6 +735,7 @@ class _MainSidebarState extends State<MainSidebar> {
       '/orderops/work-items',
       '/orderops/activity',
       '/orderops/memory',
+      '/orderops/cotizaciones',
     ];
 
     final amazonExpanded = routeIn(amazonRoutes);
@@ -988,6 +991,20 @@ class _MainSidebarState extends State<MainSidebar> {
                 textPrimary: textPrimary,
                 isDark: isDark,
               ),
+              if ((user?.role == 'admin' || user?.role == 'chief'))
+                _SidebarTile(
+                  label: 'Cotizaciones (Admin)',
+                  icon: Icons.table_chart_rounded,
+                  selected: isRoute('/orderops/cotizaciones'),
+                  onTap: () => _navigate(
+                    context,
+                    '/orderops/cotizaciones',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                ),
             ],
           ),
         ],
@@ -1546,6 +1563,12 @@ class AppleSidebarSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.maybeOf(context);
+    final isMobile = (mq?.size.width ?? 1000) < 900;
+    if (isMobile) {
+      return const SizedBox.shrink();
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -1906,6 +1929,7 @@ class EdgeNavHandle extends StatefulWidget {
   final double width;
   final String? currentRoute;
   final bool showIndicator;
+  final bool openOnHover;
 
   const EdgeNavHandle({
     super.key,
@@ -1913,6 +1937,7 @@ class EdgeNavHandle extends StatefulWidget {
     this.width = 28,
     this.currentRoute,
     this.showIndicator = false,
+    this.openOnHover = true,
   });
 
   @override
@@ -1934,6 +1959,20 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
 
   @override
   Widget build(BuildContext context) {
+    final platform = defaultTargetPlatform;
+    final isNativeMobile =
+        platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+    if (isNativeMobile) {
+      return const SizedBox.shrink();
+    }
+
+    final mq = MediaQuery.maybeOf(context);
+    final logicalWidth = mq?.size.width ??
+        (View.of(context).physicalSize.width / View.of(context).devicePixelRatio);
+    if (logicalWidth < 900) {
+      return const SizedBox.shrink();
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -1944,7 +1983,9 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     return MouseRegion(
       onEnter: (_) {
         _hovering = true;
-        _scheduleOpen(context, actualRoute);
+        if (widget.openOnHover) {
+          _scheduleOpen(context, actualRoute);
+        }
       },
       onExit: (_) {
         _hovering = false;
@@ -1992,4 +2033,955 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
       ),
     );
   }
+}
+
+class GlobalMobileSidebarDock extends StatelessWidget {
+  final GlobalKey<NavigatorState>? rootNavigatorKey;
+
+  const GlobalMobileSidebarDock({super.key, this.rootNavigatorKey});
+
+  bool _isOperarioRole(String role) {
+    final normalized = role.toLowerCase().trim().replaceAll(' ', '_');
+    return normalized == 'operario_básico' ||
+        normalized == 'operario_basico' ||
+        normalized == 'operario_avanzado';
+  }
+
+  bool _isVisibleRoute(String? routeName) {
+    if (routeName == null || routeName.isEmpty) return true;
+    return routeName != '/login';
+  }
+
+  bool _isOrdersRoute(String? routeName) {
+    return (routeName ?? '').startsWith('/orderops/');
+  }
+
+  bool _isHomeRoute(String? routeName) {
+    return routeName == '/dashboard' || routeName == '/dashboard/redesigned';
+  }
+
+  bool _isHrRoute(String? routeName) {
+    return (routeName ?? '').startsWith('/hr/');
+  }
+
+  bool _isProjectRoute(String? routeName) {
+    final r = routeName ?? '';
+    if (r.isEmpty) return false;
+    const prefixes = [
+      '/amazon/',
+      '/igualdad/',
+      '/serials/',
+      '/xiaomi/',
+      '/servers/',
+      '/sentinel/',
+      '/analisis/',
+    ];
+    return prefixes.any(r.startsWith);
+  }
+
+  void _pushIfNeeded(String route, String? currentRoute) {
+    final nav = rootNavigatorKey?.currentState;
+    if (nav == null) return;
+    if (currentRoute == route) return;
+
+    final now = DateTime.now();
+    final last = _MobileDockMenuState.lastNavAt;
+    if (last != null && now.difference(last).inMilliseconds < 450) {
+      return;
+    }
+    if (_MobileDockMenuState.lastNavRoute == route &&
+        last != null &&
+        now.difference(last).inMilliseconds < 1200) {
+      return;
+    }
+
+    _MobileDockMenuState.lastNavAt = now;
+    _MobileDockMenuState.lastNavRoute = route;
+    AppRouteTracker.setRouteName(route);
+    nav.pushReplacementNamed(route);
+  }
+
+  Widget _menuSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.68),
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _menuRouteTile({
+    required BuildContext dialogContext,
+    required String title,
+    required IconData icon,
+    required String route,
+    required String? currentRoute,
+  }) {
+    final selected = currentRoute == route;
+    return InkWell(
+      onTap: () {
+        final elapsed = DateTime.now().difference(_MobileDockMenuState.openedAt);
+        if (elapsed.inMilliseconds < 420) return;
+        Navigator.of(dialogContext).pop(route);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: selected ? Colors.white.withOpacity(0.12) : Colors.transparent,
+          border: Border.all(
+            color: selected ? Colors.white.withOpacity(0.32) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: Colors.white.withOpacity(0.9)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: Colors.white.withOpacity(0.6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _routeMatchesAnyPrefix(String? route, List<String> prefixes) {
+    final r = route ?? '';
+    if (r.isEmpty) return false;
+    return prefixes.any(r.startsWith);
+  }
+
+  Widget _menuExpandableGroup({
+    required BuildContext dialogContext,
+    required String title,
+    required IconData icon,
+    required String? currentRoute,
+    required List<String> routePrefixes,
+    required List<Widget> children,
+    bool nested = false,
+  }) {
+    final expanded = _routeMatchesAnyPrefix(currentRoute, routePrefixes);
+    return Container(
+      margin: EdgeInsets.fromLTRB(nested ? 18 : 8, 4, 8, 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: expanded ? Colors.white.withOpacity(0.06) : Colors.transparent,
+        border: Border.all(
+          color: expanded ? Colors.white.withOpacity(0.14) : Colors.transparent,
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(dialogContext).copyWith(
+          dividerColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: expanded,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          childrenPadding: const EdgeInsets.only(bottom: 6),
+          leading: Icon(icon, size: 19, color: Colors.white.withOpacity(0.88)),
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+          trailing: Icon(
+            Icons.expand_more_rounded,
+            color: Colors.white.withOpacity(0.72),
+          ),
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAnchoredRouteMenu({
+    required BuildContext anchorContext,
+    required String title,
+    required IconData titleIcon,
+    required List<Widget> Function(BuildContext dialogContext) buildItems,
+    required String? currentRoute,
+  }) async {
+    if (_MobileDockMenuState.isOpen) return;
+
+    final navContext = rootNavigatorKey?.currentContext;
+    if (navContext == null) return;
+
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (anchorBox == null || !anchorBox.hasSize) return;
+
+    final screen = MediaQuery.of(navContext).size;
+    final anchorTopLeft = anchorBox.localToGlobal(Offset.zero);
+    final menuWidth = (screen.width - 24).clamp(286.0, 332.0);
+    const screenPadding = 12.0;
+    final anchorCenterX = anchorTopLeft.dx + (anchorBox.size.width / 2);
+
+    final left = (anchorCenterX - (menuWidth * 0.72)).clamp(
+      screenPadding,
+      screen.width - menuWidth - screenPadding,
+    );
+    final bottom = (screen.height - anchorTopLeft.dy + 14).clamp(
+      104.0,
+      screen.height - 90,
+    );
+
+    _MobileDockMenuState.isOpen = true;
+    _MobileDockMenuState.openedAt = DateTime.now();
+    String? selectedRoute;
+    try {
+      selectedRoute = await showGeneralDialog<String>(
+        context: navContext,
+        barrierDismissible: true,
+        barrierLabel: 'menu',
+        barrierColor: Colors.black.withOpacity(0.12),
+        transitionDuration: const Duration(milliseconds: 170),
+        pageBuilder: (dialogCtx, _, __) {
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(dialogCtx).pop(),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              Positioned(
+                left: left,
+                bottom: bottom,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                          child: Container(
+                            width: menuWidth,
+                            constraints: const BoxConstraints(maxHeight: 420),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  const Color(0xFF111827).withOpacity(0.92),
+                                  const Color(0xFF0B1220).withOpacity(0.84),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.18),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.34),
+                                  blurRadius: 28,
+                                  offset: const Offset(0, 16),
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        titleIcon,
+                                        size: 18,
+                                        color: Colors.white.withOpacity(0.82),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Divider(
+                                  height: 1,
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                                Flexible(
+                                  child: ListView(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    shrinkWrap: true,
+                                    children: buildItems(dialogCtx),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 26,
+                        bottom: -7,
+                        child: Transform.rotate(
+                          angle: 0.785398,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0B1220).withOpacity(0.9),
+                              border: Border(
+                                right: BorderSide(
+                                  color: Colors.white.withOpacity(0.18),
+                                  width: 1,
+                                ),
+                                bottom: BorderSide(
+                                  color: Colors.white.withOpacity(0.18),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+        transitionBuilder: (ctx, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.96, end: 1.0).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      );
+    } finally {
+      _MobileDockMenuState.isOpen = false;
+    }
+
+    if (selectedRoute == null) return;
+    _pushIfNeeded(selectedRoute, currentRoute);
+  }
+
+  Future<void> _showHrPopup({
+    required BuildContext anchorContext,
+    required String? currentRoute,
+  }) async {
+    await _showAnchoredRouteMenu(
+      anchorContext: anchorContext,
+      title: 'Recursos Humanos',
+      titleIcon: Icons.people_alt_rounded,
+      currentRoute: currentRoute,
+      buildItems: (dialogCtx) => [
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Fichaje',
+          icon: Icons.access_time_rounded,
+          route: '/hr/fichaje',
+          currentRoute: currentRoute,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Alta Empleado',
+          icon: Icons.person_add_rounded,
+          route: '/hr/alta_empleado',
+          currentRoute: currentRoute,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Registro Fichaje',
+          icon: Icons.format_list_bulleted_rounded,
+          route: '/hr/registro_fichaje',
+          currentRoute: currentRoute,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Asignación Trabajo',
+          icon: Icons.work_outline_rounded,
+          route: '/hr/asignacion_trabajo',
+          currentRoute: currentRoute,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Gestión Empleado',
+          icon: Icons.manage_accounts_rounded,
+          route: '/hr/gestion_empleado',
+          currentRoute: currentRoute,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showProjectsPopup({
+    required BuildContext anchorContext,
+    required String? currentRoute,
+  }) async {
+    await _showAnchoredRouteMenu(
+      anchorContext: anchorContext,
+      title: 'Proyectos',
+      titleIcon: Icons.widgets_rounded,
+      currentRoute: currentRoute,
+      buildItems: (dialogCtx) => [
+        _menuSectionTitle('Proyectos Principales'),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'Amazon',
+          icon: Icons.shopping_basket_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/amazon/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Grading',
+              icon: Icons.grade_rounded,
+              route: '/amazon/grading',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Sorting',
+              icon: Icons.sort_rounded,
+              route: '/amazon/sorting',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Quality Check',
+              icon: Icons.search_rounded,
+              route: '/amazon/quality',
+              currentRoute: currentRoute,
+            ),
+            _menuExpandableGroup(
+              dialogContext: dialogCtx,
+              title: 'Inventory',
+              icon: Icons.inventory_2_rounded,
+              currentRoute: currentRoute,
+              routePrefixes: const ['/amazon/inventory'],
+              nested: true,
+              children: [
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Registro',
+                  icon: Icons.app_registration_rounded,
+                  route: '/amazon/inventory',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Picking',
+                  icon: Icons.shopping_cart_rounded,
+                  route: '/amazon/inventory/picking',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Receiving',
+                  icon: Icons.move_to_inbox_rounded,
+                  route: '/amazon/inventory/receiving',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'ICQA',
+                  icon: Icons.check_circle_rounded,
+                  route: '/amazon/inventory/icqa',
+                  currentRoute: currentRoute,
+                ),
+              ],
+            ),
+            _menuExpandableGroup(
+              dialogContext: dialogCtx,
+              title: 'Herramientas',
+              icon: Icons.build_rounded,
+              currentRoute: currentRoute,
+              routePrefixes: const ['/amazon/herramientas/'],
+              nested: true,
+              children: [
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Cerrar Box',
+                  icon: Icons.close_rounded,
+                  route: '/amazon/herramientas/closebox',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Buscar Box',
+                  icon: Icons.find_in_page_rounded,
+                  route: '/amazon/herramientas/findbox',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Buscar DSN',
+                  icon: Icons.search_rounded,
+                  route: '/amazon/herramientas/finddsn',
+                  currentRoute: currentRoute,
+                ),
+              ],
+            ),
+          ],
+        ),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'M. Igualdad',
+          icon: Icons.group_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/igualdad/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Dashboard',
+              icon: Icons.dashboard_rounded,
+              route: '/igualdad/dashboard',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Entrada Stock',
+              icon: Icons.login_rounded,
+              route: '/igualdad/entrada',
+              currentRoute: currentRoute,
+            ),
+            _menuExpandableGroup(
+              dialogContext: dialogCtx,
+              title: 'Registros',
+              icon: Icons.folder_open_rounded,
+              currentRoute: currentRoute,
+              routePrefixes: const ['/igualdad/registro/'],
+              nested: true,
+              children: [
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Smartphone',
+                  icon: Icons.smartphone_rounded,
+                  route: '/igualdad/registro/smartphone',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Pulsera',
+                  icon: Icons.watch_rounded,
+                  route: '/igualdad/registro/pulsera',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Powerbank',
+                  icon: Icons.battery_charging_full_rounded,
+                  route: '/igualdad/registro/powerbank',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Botón',
+                  icon: Icons.radio_button_checked_rounded,
+                  route: '/igualdad/registro/boton',
+                  currentRoute: currentRoute,
+                ),
+              ],
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Historial',
+              icon: Icons.history_rounded,
+              route: '/igualdad/historial',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'Serials',
+          icon: Icons.qr_code_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/serials/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Registro Serial',
+              icon: Icons.change_circle_rounded,
+              route: '/serials/cambio',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Cambio Serial',
+              icon: Icons.swap_horiz_rounded,
+              route: '/serials/change',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Etiquetas',
+              icon: Icons.label_rounded,
+              route: '/serials/labels',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Máscaras',
+              icon: Icons.masks_rounded,
+              route: '/serials/masks',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Historial Cambios',
+              icon: Icons.history_edu_rounded,
+              route: '/serials/serial-changes',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'Xiaomi',
+          icon: Icons.phone_android_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/xiaomi/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Registro Unidades',
+              icon: Icons.app_registration_rounded,
+              route: '/xiaomi/registro/unidades',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Cerrar CESB',
+              icon: Icons.check_circle_outline_rounded,
+              route: '/xiaomi/cerrar_cesb',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Historial',
+              icon: Icons.history_rounded,
+              route: '/xiaomi/historial',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Estadísticas',
+              icon: Icons.bar_chart_rounded,
+              route: '/xiaomi/estadisticas',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+        _menuSectionTitle('Otros'),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'Servidores',
+          icon: Icons.dns_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/servers/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Previ',
+              icon: Icons.preview_rounded,
+              route: '/servers/previ',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Servidores',
+              icon: Icons.storage_rounded,
+              route: '/servers/servidores',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'Sentinel AI',
+          icon: Icons.security_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/sentinel/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Mesa Activa',
+              icon: Icons.table_restaurant_rounded,
+              route: '/sentinel/tables',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Imágenes Activas',
+              icon: Icons.downloading_rounded,
+              route: '/sentinel/active',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'Análisis y Servicios',
+          icon: Icons.analytics_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/analisis/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Dashboard',
+              icon: Icons.dashboard_rounded,
+              route: '/analisis/dashboard',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Gestión',
+              icon: Icons.settings_suggest_rounded,
+              route: '/analisis/management',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<String?>(
+      valueListenable: AppRouteTracker.currentRoute,
+      builder: (context, tracked, _) {
+        final media = MediaQuery.of(context);
+        if (media.size.width >= 900) {
+          return const SizedBox.shrink();
+        }
+        if (media.viewInsets.bottom > 0) {
+          return const SizedBox.shrink();
+        }
+
+        final navContext = rootNavigatorKey?.currentContext ?? context;
+        final modalRouteName = ModalRoute.of(navContext)?.settings.name;
+        final routeName = (modalRouteName != null && modalRouteName.isNotEmpty)
+            ? modalRouteName
+            : tracked;
+        if (routeName != null && routeName.isNotEmpty) {
+          AppRouteTracker.setRouteName(routeName);
+        }
+        if (!_isVisibleRoute(routeName)) {
+          return const SizedBox.shrink();
+        }
+
+        final api = Provider.of<ApiService>(context);
+        final user = api.currentUser;
+        if (user == null) {
+          return const SizedBox.shrink();
+        }
+
+        final canSeeHr = !_isOperarioRole(user.role);
+        final primary = Theme.of(context).colorScheme.primary;
+        final ordersSelected = _isOrdersRoute(routeName);
+        final homeSelected = _isHomeRoute(routeName);
+        final projectsSelected = _isProjectRoute(routeName);
+        final hrSelected = _isHrRoute(routeName);
+
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827).withOpacity(0.88),
+                borderRadius: BorderRadius.circular(34),
+                border: Border.all(color: Colors.white10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _MobileDockButton(
+                    icon: Icons.receipt_long_rounded,
+                    onTap: (_) {
+                      if (ordersSelected) return;
+                      _pushIfNeeded('/orderops/queue', routeName);
+                    },
+                    primary: primary,
+                    selected: ordersSelected,
+                  ),
+                  _MobileDockButton(
+                    icon: Icons.home_rounded,
+                    onTap: (_) {
+                      if (homeSelected) return;
+                      _pushIfNeeded('/dashboard/redesigned', routeName);
+                    },
+                    primary: primary,
+                    selected: homeSelected,
+                  ),
+                  _MobileDockButton(
+                    icon: Icons.widgets_rounded,
+                    onTap: (anchorCtx) => _showProjectsPopup(
+                      anchorContext: anchorCtx,
+                      currentRoute: routeName,
+                    ),
+                    primary: primary,
+                    selected: projectsSelected,
+                  ),
+                  if (canSeeHr)
+                    _MobileDockButton(
+                      icon: Icons.people_alt_rounded,
+                      onTap: (anchorCtx) => _showHrPopup(
+                        anchorContext: anchorCtx,
+                        currentRoute: routeName,
+                      ),
+                      primary: primary,
+                      selected: hrSelected,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MobileDockButton extends StatelessWidget {
+  final IconData icon;
+  final ValueChanged<BuildContext> onTap;
+  final Color primary;
+  final bool selected;
+
+  const _MobileDockButton({
+    required this.icon,
+    required this.onTap,
+    required this.primary,
+    this.selected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Builder(
+      builder: (buttonCtx) {
+        return GestureDetector(
+          onTap: () => onTap(buttonCtx),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: selected ? 58 : 50,
+            height: selected ? 58 : 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: selected
+                  ? LinearGradient(
+                      colors: [
+                        primary.withOpacity(0.42),
+                        primary.withOpacity(0.22),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                  : null,
+              color: selected ? null : Colors.transparent,
+              border: selected
+                  ? Border.all(color: primary.withOpacity(0.72), width: 1.4)
+                  : Border.all(color: Colors.transparent),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: primary.withOpacity(0.45),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Center(
+                  child: Icon(
+                    icon,
+                    color: Colors.white,
+                    size: selected ? 30 : 27,
+                  ),
+                ),
+                if (selected)
+                  Positioned(
+                    bottom: -4,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: primary.withOpacity(0.55),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MobileDockMenuState {
+  static bool isOpen = false;
+  static DateTime openedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static DateTime? lastNavAt;
+  static String? lastNavRoute;
 }

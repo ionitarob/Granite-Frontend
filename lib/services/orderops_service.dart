@@ -129,12 +129,14 @@ class OrderOpsService {
     bool? markCompleted,
     String? completionSummary,
     String? completionAuthor,
+    String? family,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
     if (estado != null) body['estado'] = estado;
     if (reason != null) body['reason'] = reason;
     if (markCompleted != null) body['mark_completed'] = markCompleted;
+    if (family != null) body['family'] = family;
     if (completionSummary != null) {
       body['completion_summary'] = completionSummary;
     }
@@ -147,6 +149,36 @@ class OrderOpsService {
       jsonBody: body,
     );
     return result.ok;
+  }
+
+  /// Same as updateAgentOrder but returns full ApiResult for rich error handling.
+  Future<ApiResult> updateAgentOrderWithResult(
+    int idnbr, {
+    String? department,
+    String? estado,
+    String? reason,
+    bool? markCompleted,
+    String? completionSummary,
+    String? completionAuthor,
+    String? family,
+  }) async {
+    final body = <String, dynamic>{};
+    if (department != null) body['department'] = department;
+    if (estado != null) body['estado'] = estado;
+    if (reason != null) body['reason'] = reason;
+    if (markCompleted != null) body['mark_completed'] = markCompleted;
+    if (family != null) body['family'] = family;
+    if (completionSummary != null) {
+      body['completion_summary'] = completionSummary;
+    }
+    if (completionAuthor != null) {
+      body['completion_author'] = completionAuthor;
+    }
+
+    return await _client.patch(
+      '/orderops/agent-orders/$idnbr/update',
+      jsonBody: body,
+    );
   }
 
   /// Post a comment for a work item (e.g. feedback to LLM)
@@ -391,6 +423,48 @@ class OrderOpsService {
     return result.ok;
   }
 
+  /// Register an existing server-side file path into Archivos.
+  Future<bool> addArchivoManual(
+    int idnbr,
+    String fileName,
+    String filePath, {
+    String? author,
+  }) async {
+    final body = <String, dynamic>{
+      'file_name': fileName,
+      'file_path': filePath,
+    };
+    if (author != null) body['author'] = author;
+    final result = await _client.post(
+      '/orderops/agent-orders/$idnbr/photos/manual',
+      jsonBody: body,
+    );
+    if (result.ok) return true;
+
+    // Backward compatibility: older backends accept manual add on /photos.
+    if (result.statusCode == 404 || result.statusCode == 405) {
+      final legacy = await _client.post(
+        '/orderops/agent-orders/$idnbr/photos',
+        jsonBody: body,
+      );
+      return legacy.ok;
+    }
+
+    return false;
+  }
+
+  /// Delete an attached file from Archivos.
+  /// Tries nested endpoint first, then fallback flat endpoint.
+  Future<bool> deletePhoto(int idnbr, int photoId) async {
+    final nested = await _client.delete(
+      '/orderops/agent-orders/$idnbr/photos/$photoId',
+    );
+    if (nested.ok) return true;
+
+    final flat = await _client.delete('/orderops/photos/$photoId');
+    return flat.ok;
+  }
+
   Future<List<AgentOrderService>> getServices(int idnbr) async {
     final result = await _client.get('/orderops/agent-orders/$idnbr/services');
     if (!result.ok) {
@@ -432,6 +506,68 @@ class OrderOpsService {
   /// Remove a manual service association
   Future<bool> removeManualService(int manualId) async {
     final result = await _client.delete('/orderops/manual-services/$manualId');
+    return result.ok;
+  }
+
+  /// Fetch all unique families from the catalog
+  Future<List<String>> getCatalogFamilies() async {
+    final result = await _client.get('/orderops/catalog/families');
+    if (!result.ok) {
+      debugPrint('OrderOpsService.getCatalogFamilies error: ${result.error}');
+      return [];
+    }
+    if (result.body is List) {
+      return List<String>.from(result.body.map((e) => e.toString()));
+    }
+    return [];
+  }
+
+  /// Admin/chief: list cotizaciones rows with pagination and optional filters.
+  Future<Map<String, dynamic>> listCotizacionesAdmin({
+    String? query,
+    String? family,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final queryParams = <String, String>{
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+    };
+    if (query != null && query.trim().isNotEmpty) {
+      queryParams['q'] = query.trim();
+    }
+    if (family != null && family.trim().isNotEmpty) {
+      queryParams['family'] = family.trim();
+    }
+    final qs = Uri(queryParameters: queryParams).query;
+    final result = await _client.get('/orderops/catalog/cotizaciones?$qs');
+    if (!result.ok || result.body is! Map) {
+      throw Exception('No se pudo cargar cotizaciones');
+    }
+    return Map<String, dynamic>.from(result.body as Map);
+  }
+
+  /// Admin/chief: create cotizacion row.
+  Future<bool> createCotizacion(Map<String, dynamic> payload) async {
+    final result = await _client.post(
+      '/orderops/catalog/cotizaciones',
+      jsonBody: payload,
+    );
+    return result.ok;
+  }
+
+  /// Admin/chief: update cotizacion row.
+  Future<bool> updateCotizacion(int id, Map<String, dynamic> payload) async {
+    final result = await _client.patch(
+      '/orderops/catalog/cotizaciones/$id',
+      jsonBody: payload,
+    );
+    return result.ok;
+  }
+
+  /// Admin/chief: delete cotizacion row.
+  Future<bool> deleteCotizacion(int id) async {
+    final result = await _client.delete('/orderops/catalog/cotizaciones/$id');
     return result.ok;
   }
 }

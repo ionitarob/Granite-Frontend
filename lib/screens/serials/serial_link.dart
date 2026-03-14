@@ -8,12 +8,27 @@ import 'package:provider/provider.dart';
 
 import '../../api_client.dart';
 import '../../services/api_service.dart';
+import '../../services/order_input_formatter.dart';
+import '../../services/orderops_service.dart';
 import '../../widgets/main_sidebar.dart';
 
 enum _SerialPanel { assign, match, upload, recent }
 
 class SerialLinkScreen extends StatefulWidget {
-  const SerialLinkScreen({super.key});
+  final bool isEmbedded;
+  final bool matchOnly;
+  final int initialTabIndex;
+  final String? initialOrderNumber;
+  final int? orderId;
+
+  const SerialLinkScreen({
+    super.key,
+    this.isEmbedded = false,
+    this.matchOnly = false,
+    this.initialTabIndex = 0,
+    this.initialOrderNumber,
+    this.orderId,
+  });
 
   @override
   State<SerialLinkScreen> createState() => _SerialLinkScreenState();
@@ -22,8 +37,12 @@ class SerialLinkScreen extends StatefulWidget {
 class _SerialLinkScreenState extends State<SerialLinkScreen>
     with SingleTickerProviderStateMixin {
   static const String _basePath = '/serials';
+  static final RegExp _orderFormatRegex = RegExp(
+    r'^[A-Z0-9]{2}-[A-Z0-9]{5}-[A-Z0-9]{2}$',
+  );
 
   late final TabController _tabs;
+  late final List<_SerialPanel> _activePanels;
   OverlayEntry? _edgeOverlay;
 
   final TextEditingController _serialCtrl = TextEditingController();
@@ -58,21 +77,46 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: _SerialPanel.values.length, vsync: this);
+
+    _activePanels = widget.matchOnly
+        ? const [_SerialPanel.match]
+        : _SerialPanel.values;
+
+    final safeInitialIndex = widget.matchOnly
+        ? 0
+        : widget.initialTabIndex.clamp(0, _activePanels.length - 1);
+
+    _tabs = TabController(
+      length: _activePanels.length,
+      vsync: this,
+      initialIndex: safeInitialIndex,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshRecent();
       _fetchNextInventory();
-      _serialFocus.requestFocus();
+
+      final initialOrder = widget.initialOrderNumber?.trim() ?? '';
+      if (initialOrder.isNotEmpty) {
+        _orderCtrl.text = _normalizeOrder(initialOrder);
+        _fetchOrder();
+      }
+
+      if (widget.matchOnly) {
+        _orderFocus.requestFocus();
+      } else {
+        _serialFocus.requestFocus();
+      }
     });
     _serialFocus.addListener(() {
       if (_serialFocus.hasFocus) _fetchNextInventory();
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.isEmbedded || widget.matchOnly) return;
       if (!mounted) return;
       final routeName = ModalRoute.of(context)?.settings.name;
       final overlay = Overlay.of(context, rootOverlay: true);
-      if (overlay == null) return;
 
       _edgeOverlay = OverlayEntry(
         builder: (ctx) {
@@ -129,6 +173,153 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _normalizeOrder(String raw) => OrderInputFormatter.normalize(raw.trim());
+
+  bool _isValidOrder(String value) => _orderFormatRegex.hasMatch(value);
+
+  int? _tryParseOrderId(Object? value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  int? _resolveOrderIdForArchivos() {
+    final direct = widget.orderId;
+    if (direct != null && direct > 0) return direct;
+    final order = _orderInfo;
+    if (order == null) return null;
+    return _tryParseOrderId(order['idnbr']) ??
+        _tryParseOrderId(order['order_id']) ??
+        _tryParseOrderId(order['source_idnbr']) ??
+        _tryParseOrderId(order['id']);
+  }
+
+  Future<void> _autoAttachExcelToArchivos(String numOrden) async {
+    final orderId = _resolveOrderIdForArchivos();
+    if (orderId == null) {
+      _showSnack('Match completado, pero no hay id de orden para adjuntar en Archivos');
+      return;
+    }
+    final client = _clientOrNull();
+    if (client == null) {
+      _showSnack('Match completado, pero no hay servicio API para adjuntar Excel');
+      return;
+    }
+
+    setState(() => _exportingExcel = true);
+    try {
+      final res = await client.getBytes(
+        '$_basePath/matches/export?num_orden=${Uri.encodeQueryComponent(numOrden)}',
+      );
+      if (!mounted) return;
+      if (!res.ok || res.body is! List<int>) {
+        _showSnack('Match completado, pero no se pudo generar Excel (${res.statusCode})');
+        return;
+      }
+
+      final headers = res.headers ?? const {};
+      final defaultName = 'serial_matches_${numOrden.replaceAll('-', '')}.xlsx';
+      final fileName = _filenameFromHeaders(headers) ?? defaultName;
+
+      final uploaded = await OrderOpsService(client).uploadPhoto(
+        orderId,
+        fileName,
+        res.body as List<int>,
+      );
+      if (!mounted) return;
+      _showSnack(
+        uploaded
+            ? 'Excel de match adjuntado automaticamente en Archivos'
+            : 'Match completado, pero no se pudo adjuntar el Excel en Archivos',
+      );
+    } catch (e) {
+      _showSnack('Match completado, pero fallo adjuntar Excel: $e');
+    } finally {
+      if (mounted) setState(() => _exportingExcel = false);
+    }
+  }
+
+  Future<bool> _canExtractMatchesExcel(String numOrden) async {
+    final client = _clientOrNull();
+    if (client == null) return false;
+    try {
+      final res = await client.getBytes(
+        '$_basePath/matches/export?num_orden=${Uri.encodeQueryComponent(numOrden)}',
+      );
+      return res.ok && res.body is List<int>;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _completeOrderAndAttach(String numOrden) async {
+    final removed = _resizeMatchRows(0);
+    _orderCtrl.clear();
+    setState(() {
+      _orderInfo = null;
+      _orderSerials = [];
+      _duplicateRows.clear();
+    });
+    _disposeRowsLater(removed);
+    if (numOrden.isNotEmpty) {
+      await _autoAttachExcelToArchivos(numOrden);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _orderFocus.requestFocus();
+      }
+    });
+  }
+
+  Future<void> _refreshOrderAfterSave(String numOrden) async {
+    final client = _clientOrNull();
+    if (client == null) return;
+    setState(() => _loadingOrder = true);
+    try {
+      final res = await client.post(
+        '$_basePath/order-info',
+        jsonBody: {'num_orden': numOrden},
+      );
+      if (!mounted) return;
+
+      if (res.statusCode == 404) {
+        await _completeOrderAndAttach(numOrden);
+        return;
+      }
+
+      if (!res.ok || res.body is! Map) {
+        _showSnack('No se pudo refrescar la orden (${res.statusCode})');
+        return;
+      }
+
+      final map = res.body as Map;
+      final orderMap = map['order'];
+      if (orderMap is! Map || orderMap.isEmpty) {
+        _showSnack('La orden no devolvio datos tras guardar');
+        return;
+      }
+
+      final serials = (map['serials'] as List? ?? const [])
+          .whereType<Map>()
+          .map<Map<String, String>>(
+            (e) => {
+              'serial': e['serial']?.toString() ?? '',
+              'inventory_code': e['inventory_code']?.toString() ?? '',
+            },
+          )
+          .toList();
+
+      _applyOrderData(
+        order: Map<String, dynamic>.from(orderMap),
+        serials: serials,
+        manualDouble: orderMap['manual_double'] == true,
+      );
+    } catch (e) {
+      _showSnack('Error refrescando orden: $e');
+    } finally {
+      if (mounted) setState(() => _loadingOrder = false);
+    }
   }
 
   Future<void> _fetchNextInventory() async {
@@ -372,8 +563,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     final numOrdenRaw = normalized['num_orden'];
     normalized['num_orden'] =
         (numOrdenRaw == null || numOrdenRaw.toString().trim().isEmpty)
-        ? _orderCtrl.text.trim()
-        : numOrdenRaw.toString().trim();
+      ? _normalizeOrder(_orderCtrl.text)
+      : _normalizeOrder(numOrdenRaw.toString());
     final resolvedUnits =
         unitsOverride ??
         int.tryParse(normalized['unidades']?.toString() ?? '') ??
@@ -444,8 +635,16 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       _showSnack('Servicio API no disponible');
       return;
     }
-    final numOrden = _orderCtrl.text.trim();
+    final numOrden = _normalizeOrder(_orderCtrl.text);
     if (numOrden.isEmpty) return;
+    if (!_isValidOrder(numOrden)) {
+      _showSnack('Formato inválido. Usa XX-XXXXX-XX');
+      return;
+    }
+    _orderCtrl.value = TextEditingValue(
+      text: numOrden,
+      selection: TextSelection.collapsed(offset: numOrden.length),
+    );
     setState(() {
       _loadingOrder = true;
       _duplicateRows.clear();
@@ -457,6 +656,23 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       );
       if (!mounted) return;
       if (res.statusCode == 404) {
+        final isEmbeddedMatchFlow = widget.matchOnly || widget.isEmbedded;
+        if (isEmbeddedMatchFlow) {
+          final canExtract = await _canExtractMatchesExcel(numOrden);
+          if (!mounted) return;
+          setState(() => _loadingOrder = false);
+          if (canExtract) {
+            _showSnack(
+              'Orden detectada como cerrada. Se extrae Excel y se adjunta en Archivos.',
+            );
+            await _completeOrderAndAttach(numOrden);
+          } else {
+            _showSnack(
+              'La orden existe en registros, pero /serials/order-info devolvio 404.',
+            );
+          }
+          return;
+        }
         setState(() => _loadingOrder = false);
         final existingManual = _existingManualConfig(numOrden);
         final manualConfig =
@@ -690,6 +906,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
   Future<void> _saveAllRows() async {
     if (_orderInfo == null) return;
+    final initialPendingRows = _matchRows.length;
     if (!_allRowsFilled()) {
       final remaining = _matchRows
           .where((row) => row.serial.text.trim().isEmpty)
@@ -707,6 +924,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       return;
     }
     int saved = 0;
+    final completedOrder = _normalizeOrder(
+      _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text,
+    );
     for (var i = 0; i < _matchRows.length; i++) {
       final ok = await _saveRow(i);
       if (ok) saved++;
@@ -729,16 +949,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       });
       return;
     }
-    await _fetchOrder();
-    if (_matchRows.isEmpty) {
-      _orderInfo = null;
-      _orderSerials = [];
-      _orderCtrl.clear();
-      setState(() {});
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _orderFocus.requestFocus(),
-      );
+
+    final allPendingSaved = initialPendingRows > 0 && saved == initialPendingRows;
+    if (allPendingSaved) {
+      await _completeOrderAndAttach(completedOrder);
+      return;
     }
+
+    await _refreshOrderAfterSave(completedOrder);
   }
 
   Future<void> _importOrders() async {
@@ -909,15 +1127,16 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       context: context,
       builder: (ctx) {
         final ctrl = TextEditingController(
-          text: _orderInfo?['num_orden']?.toString() ?? '',
+          text: _normalizeOrder(_orderInfo?['num_orden']?.toString() ?? ''),
         );
         return AlertDialog(
           title: const Text('Exportar acta'),
           content: TextField(
             controller: ctrl,
             decoration: const InputDecoration(labelText: 'Número de orden'),
+            inputFormatters: [OrderInputFormatter()],
             autofocus: true,
-            onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
+            onSubmitted: (_) => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
           ),
           actions: [
             TextButton(
@@ -925,7 +1144,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+              onPressed: () => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
               child: const Text('Exportar'),
             ),
           ],
@@ -933,6 +1152,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       },
     );
     if (num == null || num.isEmpty) return;
+    if (!_isValidOrder(num)) {
+      _showSnack('Formato inválido. Usa XX-XXXXX-XX');
+      return;
+    }
     final client = _clientOrNull();
     if (client == null) {
       _showSnack('Servicio API no disponible');
@@ -974,15 +1197,16 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       context: context,
       builder: (ctx) {
         final ctrl = TextEditingController(
-          text: _orderInfo?['num_orden']?.toString() ?? '',
+          text: _normalizeOrder(_orderInfo?['num_orden']?.toString() ?? ''),
         );
         return AlertDialog(
           title: const Text('Exportar Excel'),
           content: TextField(
             controller: ctrl,
             decoration: const InputDecoration(labelText: 'Número de orden'),
+            inputFormatters: [OrderInputFormatter()],
             autofocus: true,
-            onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
+            onSubmitted: (_) => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
           ),
           actions: [
             TextButton(
@@ -990,7 +1214,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+              onPressed: () => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
               child: const Text('Exportar'),
             ),
           ],
@@ -998,6 +1222,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       },
     );
     if (num == null || num.isEmpty) return;
+    if (!_isValidOrder(num)) {
+      _showSnack('Formato inválido. Usa XX-XXXXX-XX');
+      return;
+    }
 
     final client = _clientOrNull();
     if (client == null) {
@@ -1200,7 +1428,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                   focusNode: _orderFocus,
                   decoration: const InputDecoration(
                     labelText: 'Número de orden',
+                    hintText: 'XX-XXXXX-XX',
                   ),
+                  inputFormatters: [OrderInputFormatter()],
                   onSubmitted: (_) => _fetchOrder(),
                 ),
               ),
@@ -1535,7 +1765,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
   @override
   Widget build(BuildContext context) {
-    final tabs = _SerialPanel.values.map((panel) {
+    final tabs = _activePanels.map((panel) {
       switch (panel) {
         case _SerialPanel.assign:
           return const Tab(icon: Icon(Icons.qr_code), text: 'Serial');
@@ -1548,6 +1778,64 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       }
     }).toList();
 
+    final views = _activePanels.map((panel) {
+      switch (panel) {
+        case _SerialPanel.assign:
+          return _buildAssignTab();
+        case _SerialPanel.match:
+          return _buildMatchTab();
+        case _SerialPanel.upload:
+          return _buildUploadTab();
+        case _SerialPanel.recent:
+          return _buildRecentTab();
+      }
+    }).toList();
+
+    if (widget.matchOnly) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.primary.withOpacity(0.16),
+                    Colors.transparent,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border(
+                  bottom: BorderSide(
+                    color: Theme.of(context).dividerColor.withOpacity(0.2),
+                  ),
+                ),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Manipulacion y Etiquetado',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Modo Match directo para esta orden',
+                    style: TextStyle(fontSize: 13, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(child: views.first),
+          ],
+        ),
+      );
+    }
+
     return DefaultTabController(
       length: tabs.length,
       child: Scaffold(
@@ -1556,19 +1844,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           title: const Text('Seriales'),
           bottom: TabBar(controller: _tabs, tabs: tabs, isScrollable: true),
         ),
-        body: Stack(
-          children: [
-            TabBarView(
-              controller: _tabs,
-              children: [
-                _buildAssignTab(),
-                _buildMatchTab(),
-                _buildUploadTab(),
-                _buildRecentTab(),
-              ],
-            ),
-          ],
-        ),
+        body: TabBarView(controller: _tabs, children: views),
       ),
     );
   }

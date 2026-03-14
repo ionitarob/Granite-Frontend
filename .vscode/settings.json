@@ -1,4 +1,5 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
-    "dart.flutterSdkPath": "~/Documents/flutter"
+    "dart.flutterSdkPath": "~/Documents/flutter",
+    "cmake.sourceDirectory": "/Users/rionita_work/Documents/GRANITE/Granite-Frontend/linux"
 }

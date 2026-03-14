@@ -11,12 +11,15 @@ import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'services/api_service.dart';
+import 'services/orderops_service.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'models/user_model.dart';
+import 'models/agent_models.dart';
 import 'config.dart';
+import 'screens/orderops/order_detail_screen.dart';
 import 'widgets/kit_digital_stats_table.dart';
 import 'widgets/amz_bucket_distribution_widget.dart';
 import 'widgets/amz_sorting_backlog_widget.dart';
@@ -40,6 +43,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   DashboardTab _currentTab = DashboardTab.amazon;
+  bool _ordersLoading = false;
+  String? _ordersError;
+  List<AgentOrder> _dashboardOrders = const [];
 
   @override
   void initState() {
@@ -49,6 +55,279 @@ class _DashboardScreenState extends State<DashboardScreen>
       duration: const Duration(milliseconds: 1100),
     );
     _ctrl.repeat(reverse: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDashboardOrders();
+    });
+  }
+
+  int _estadoSortRank(String estado) {
+    switch (estado.trim()) {
+      case '3':
+        return 0;
+      case '2':
+        return 1;
+      case '4':
+        return 2;
+      case '1':
+        return 3;
+      default:
+        return 99;
+    }
+  }
+
+  Future<void> _loadDashboardOrders({bool silent = false}) async {
+    if (_ordersLoading) return;
+    if (!mounted) return;
+
+    final api = Provider.of<ApiService>(context, listen: false);
+    final service = OrderOpsService(api.client);
+
+    if (!silent) {
+      setState(() {
+        _ordersLoading = true;
+        _ordersError = null;
+      });
+    } else {
+      _ordersLoading = true;
+    }
+
+    try {
+      final all = await service.getAgentOrders(limit: 300);
+      final allowed = {'1', '2', '3', '4'};
+      final filtered = all
+          .where((o) => allowed.contains(o.estado.trim()))
+          .toList();
+
+      filtered.sort((a, b) {
+        final rank = _estadoSortRank(a.estado).compareTo(_estadoSortRank(b.estado));
+        if (rank != 0) return rank;
+
+        final ad = a.orderDate ?? a.createdAt;
+        final bd = b.orderDate ?? b.createdAt;
+        if (ad == null && bd == null) return 0;
+        if (ad == null) return 1;
+        if (bd == null) return -1;
+        return bd.compareTo(ad);
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _dashboardOrders = filtered;
+        _ordersError = null;
+        _ordersLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _ordersError = e.toString();
+        _ordersLoading = false;
+      });
+    }
+  }
+
+  String _estadoLabel(String estado) {
+    switch (estado.trim()) {
+      case '1':
+        return 'Pendiente';
+      case '2':
+        return 'Iniciada';
+      case '3':
+        return 'En ejecución';
+      case '4':
+        return 'En revisión';
+      default:
+        return 'Estado $estado';
+    }
+  }
+
+  Color _estadoColor(String estado) {
+    switch (estado.trim()) {
+      case '3':
+        return const Color(0xFF00B8D9);
+      case '2':
+        return const Color(0xFFFFB300);
+      case '4':
+        return const Color(0xFF8E24AA);
+      case '1':
+        return const Color(0xFF43A047);
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  String _fmtDate(DateTime? date) {
+    if (date == null) return '--/--/----';
+    final d = date.toLocal();
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    final yy = d.year.toString();
+    return '$dd/$mm/$yy';
+  }
+
+  String _formatOrderNbr(String nbr) {
+    final clean = nbr.replaceAll(RegExp(r'[^0-9]'), '');
+    if (clean.length < 9) return nbr;
+    final first = clean.substring(0, 2);
+    final mid = clean.substring(2, 7);
+    final last = clean.substring(7, 9);
+    return '$first-$mid-$last';
+  }
+
+  Widget _buildOrdenesPage(ThemeData theme) {
+    return DashboardSurface(
+      title: 'Órdenes',
+      subtitle: 'Pendientes, en ejecución o en revisión',
+      headerRight: IconButton(
+        tooltip: 'Actualizar',
+        onPressed: () => _loadDashboardOrders(),
+        icon: const Icon(Icons.refresh_rounded),
+      ),
+      child: Builder(
+        builder: (ctx) {
+          if (_ordersLoading && _dashboardOrders.isEmpty) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (_ordersError != null && _dashboardOrders.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline_rounded, size: 34),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No se pudieron cargar las órdenes',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _ordersError!,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => _loadDashboardOrders(),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          if (_dashboardOrders.isEmpty) {
+            return const Center(
+              child: Text('No hay órdenes en estados 1, 2, 3 o 4'),
+            );
+          }
+
+          return ListView.separated(
+            itemCount: _dashboardOrders.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (ctx, i) {
+              final o = _dashboardOrders[i];
+              final statusColor = _estadoColor(o.estado);
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => OrderDetailScreen(orderId: o.idnbr),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: theme.brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.04)
+                        : Colors.black.withOpacity(0.03),
+                    border: Border.all(
+                      color: theme.colorScheme.onSurface.withOpacity(0.08),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _formatOrderNbr(o.orderNbr),
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: statusColor.withOpacity(0.55)),
+                            ),
+                            child: Text(
+                              _estadoLabel(o.estado),
+                              style: TextStyle(
+                                color: statusColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        o.customer,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 14,
+                            color: theme.colorScheme.onSurface.withOpacity(0.65),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _fmtDate(o.orderDate ?? o.createdAt),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(width: 14),
+                          Icon(
+                            Icons.flag_rounded,
+                            size: 14,
+                            color: theme.colorScheme.onSurface.withOpacity(0.65),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            o.prioridad,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 
   // Bump this to force WidgetGrid to reinitialize when layout changes.
@@ -538,7 +817,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: SegmentedButton<DashboardTab>(
         segments: segments,
         selected: {_currentTab},
-        onSelectionChanged: (s) => setState(() => _currentTab = s.first),
+        onSelectionChanged: (s) {
+          final next = s.first;
+          setState(() => _currentTab = next);
+          if (next == DashboardTab.ordenes) {
+            _loadDashboardOrders(silent: true);
+          }
+        },
         showSelectedIcon: false,
         style: ButtonStyle(
           visualDensity: VisualDensity.compact,
@@ -619,17 +904,352 @@ class _DashboardScreenState extends State<DashboardScreen>
         );
 
       case DashboardTab.ordenes:
-        return const DashboardSurface(
-          title: 'Órdenes',
-          subtitle: 'Vista general (pendiente)',
-          child: Center(
+        return _buildOrdenesPage(theme);
+    }
+  }
+
+  void _navigateToRoute(String route) {
+    Navigator.of(context, rootNavigator: true).pushNamed(route);
+  }
+
+  Future<void> _showProjectsPopup() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.62,
+          minChildSize: 0.35,
+          maxChildSize: 0.9,
+          builder: (ctx, scrollController) {
+            return Material(
+              color: const Color(0xFF111827),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Icon(Icons.widgets_rounded, color: Colors.white70),
+                        SizedBox(width: 8),
+                        Text(
+                          'Proyectos',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1, color: Colors.white10),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      children: [
+                        _projectSection(
+                          title: 'Amazon',
+                          icon: Icons.shopping_basket_rounded,
+                          routes: const [
+                            ('Grading', '/amazon/grading'),
+                            ('Sorting', '/amazon/sorting'),
+                            ('Quality Check', '/amazon/quality'),
+                            ('Inventory · Registro', '/amazon/inventory'),
+                            (
+                              'Inventory · Picking',
+                              '/amazon/inventory/picking',
+                            ),
+                            (
+                              'Inventory · Receiving',
+                              '/amazon/inventory/receiving',
+                            ),
+                            ('Inventory · ICQA', '/amazon/inventory/icqa'),
+                            (
+                              'Herramientas · Cerrar Box',
+                              '/amazon/herramientas/closebox',
+                            ),
+                            (
+                              'Herramientas · Buscar Box',
+                              '/amazon/herramientas/findbox',
+                            ),
+                            (
+                              'Herramientas · Buscar DSN',
+                              '/amazon/herramientas/finddsn',
+                            ),
+                          ],
+                        ),
+                        _projectSection(
+                          title: 'Igualdad',
+                          icon: Icons.dashboard_rounded,
+                          routes: const [
+                            ('Dashboard', '/igualdad/dashboard'),
+                            ('Entrada Stock', '/igualdad/entrada'),
+                            (
+                              'Registro · Smartphone',
+                              '/igualdad/registro/smartphone',
+                            ),
+                            ('Registro · Pulsera', '/igualdad/registro/pulsera'),
+                            (
+                              'Registro · Powerbank',
+                              '/igualdad/registro/powerbank',
+                            ),
+                            ('Registro · Botón', '/igualdad/registro/boton'),
+                            ('Historial', '/igualdad/historial'),
+                          ],
+                        ),
+                        _projectSection(
+                          title: 'Serials',
+                          icon: Icons.swap_horizontal_circle_rounded,
+                          routes: const [
+                            ('Registro Serial', '/serials/cambio'),
+                            ('Cambio Serial', '/serials/change'),
+                            ('Etiquetas', '/serials/labels'),
+                            ('Máscaras', '/serials/masks'),
+                            ('Historial Cambios', '/serials/serial-changes'),
+                          ],
+                        ),
+                        _projectSection(
+                          title: 'Xiaomi',
+                          icon: Icons.smartphone_rounded,
+                          routes: const [
+                            ('Registro Unidades', '/xiaomi/registro/unidades'),
+                            ('Cerrar CESB', '/xiaomi/cerrar_cesb'),
+                            ('Historial', '/xiaomi/historial'),
+                            ('Estadísticas', '/xiaomi/estadisticas'),
+                          ],
+                        ),
+                        _projectSection(
+                          title: 'Servidores',
+                          icon: Icons.storage_rounded,
+                          routes: const [
+                            ('Previ', '/servers/previ'),
+                            ('Servidores', '/servers/servidores'),
+                          ],
+                        ),
+                        _projectSection(
+                          title: 'Sentinel AI',
+                          icon: Icons.psychology_rounded,
+                          routes: const [
+                            ('Mesa Activa', '/sentinel/tables'),
+                            ('Imágenes Activas', '/sentinel/active'),
+                          ],
+                        ),
+                        _projectSection(
+                          title: 'Análisis y Servicios',
+                          icon: Icons.analytics_rounded,
+                          routes: const [
+                            ('Dashboard', '/analisis/dashboard'),
+                            ('Gestión', '/analisis/management'),
+                          ],
+                        ),
+                        const SizedBox(height: 28),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showHrPopup() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return Material(
+          color: const Color(0xFF111827),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          child: SafeArea(
+            top: false,
             child: Padding(
-              padding: EdgeInsets.all(40.0),
-              child: Text("Ordenes Page (Empty)"),
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const ListTile(
+                    leading: Icon(Icons.people_alt_rounded, color: Colors.white),
+                    title: Text(
+                      'Recursos Humanos',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1, color: Colors.white10),
+                  _sheetRouteTile('Fichaje', '/hr/fichaje'),
+                  _sheetRouteTile('Alta Empleado', '/hr/alta_empleado'),
+                  _sheetRouteTile('Registro Fichajes', '/hr/registro_fichaje'),
+                  _sheetRouteTile(
+                    'Asignación Trabajo',
+                    '/hr/asignacion_trabajo',
+                  ),
+                  _sheetRouteTile('Gestión Empleado', '/hr/gestion_empleado'),
+                ],
+              ),
             ),
           ),
         );
-    }
+      },
+    );
+  }
+
+  Widget _projectSection({
+    required String title,
+    required IconData icon,
+    required List<(String, String)> routes,
+  }) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+      ),
+      child: ExpansionTile(
+        leading: Icon(icon, color: Colors.white70),
+        iconColor: Colors.white70,
+        collapsedIconColor: Colors.white70,
+        textColor: Colors.white,
+        collapsedTextColor: Colors.white,
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        children: routes
+            .map(
+              (entry) => _sheetRouteTile(entry.$1, entry.$2, leftPad: 28),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _sheetRouteTile(String label, String route, {double leftPad = 12}) {
+    return ListTile(
+      contentPadding: EdgeInsets.only(left: leftPad, right: 12),
+      leading: const Icon(
+        Icons.arrow_forward_ios_rounded,
+        size: 14,
+        color: Colors.white54,
+      ),
+      title: Text(
+        label,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+      onTap: () {
+        Navigator.of(context).pop();
+        _navigateToRoute(route);
+      },
+    );
+  }
+
+  Widget _mobileDockButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    bool selected = false,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: selected ? 56 : 48,
+        height: selected ? 56 : 48,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? primary.withOpacity(0.18) : Colors.transparent,
+          border: selected
+              ? Border.all(color: primary.withOpacity(0.5))
+              : Border.all(color: Colors.transparent),
+        ),
+        child: Icon(
+          icon,
+          color: selected ? primary : Colors.white,
+          size: selected ? 30 : 28,
+        ),
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  Widget _buildMobileDock(ThemeData theme, User u) {
+    final canSeeHr = !_isOperario(u);
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827).withOpacity(0.88),
+            borderRadius: BorderRadius.circular(34),
+            border: Border.all(color: Colors.white10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _mobileDockButton(
+                icon: Icons.receipt_long_rounded,
+                onTap: () => _navigateToRoute('/orderops/queue'),
+              ),
+              _mobileDockButton(
+                icon: Icons.home_rounded,
+                selected: true,
+                onTap: () {
+                  final allowed = _availableTabsFor(u);
+                  if (allowed.contains(_currentTab)) return;
+                  setState(() => _currentTab = allowed.first);
+                },
+              ),
+              _mobileDockButton(
+                icon: Icons.widgets_rounded,
+                onTap: _showProjectsPopup,
+              ),
+              if (canSeeHr)
+                _mobileDockButton(
+                  icon: Icons.people_alt_rounded,
+                  onTap: _showHrPopup,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // The inner content block that holds widgets; reused by desktop and mobile
@@ -699,6 +1319,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isMobileRoot = MediaQuery.of(context).size.width < 900;
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
 
@@ -737,74 +1358,26 @@ class _DashboardScreenState extends State<DashboardScreen>
                     );
                   }
 
-                  // Mobile: header with edge handle + full-width content
-                  return Column(
+                  // Mobile: full content + floating dock navigation.
+                  return Stack(
                     children: [
-                      Container(
-                        height: 72,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: theme.cardColor.withAlpha(6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: SafeArea(
-                          child: Stack(
-                            children: [
-                              Positioned(
-                                left: 0,
-                                top: 0,
-                                bottom: 0,
-                                child: EdgeNavHandle(
-                                  user: u,
-                                  width: 32,
-                                  showIndicator: true,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Allow the whole page to scroll on mobile so users can scroll
-                      // down to see more widgets. We reuse the inner body to avoid
-                      // duplicating widget layout.
-                      Expanded(
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: SingleChildScrollView(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20.0,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 6),
-                                // Removed Dashboard Title
-                                const SizedBox(height: 12),
-                                // Replaced _buildMainContentBody with _buildMainContent which now handles tabs
-                                // Actually _buildMainContent handles the structure, but here we are in mobile layout
-                                // We should reuse _buildMainContent's logic or just call _buildMainContent directly if possible?
-                                // _buildMainContent returns a Column with Expanded. That might conflict with SingleChildScrollView here.
-                                // Let's simplify mobile layout to just use _buildMainContent but ensuring it fits.
-                                // Actually, let's just render the tabs and content here too.
-                                // But _buildMainContent has Expanded.
-                                // Let's reimplement similar logic or extract widgets.
-                                // To avoid duplication, let's just allow _buildMainContent to be the body.
-                                // Mobile View - Use Dropdown as well
-                                _buildTopHeader(u, theme),
-                                const SizedBox(height: 14),
-                                _buildNavigationSelector(theme, u),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  height: MediaQuery.of(ctx).size.height * 0.7,
-                                  child: _buildCurrentPage(
-                                    theme,
-                                    colorScheme,
-                                    u,
-                                  ),
-                                ),
-                                const SizedBox(height: 40),
-                              ],
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 6),
+                              _buildTopHeader(u, theme),
+                              const SizedBox(height: 14),
+                              _buildNavigationSelector(theme, u),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                height: MediaQuery.of(ctx).size.height * 0.7,
+                                child: _buildCurrentPage(theme, colorScheme, u),
+                              ),
+                              const SizedBox(height: 110),
+                            ],
                           ),
                         ),
                       ),
@@ -815,7 +1388,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           // Animated, interactive AI Sphere in bottom-right
-          const _AispherePosition(),
+          _AispherePosition(bottomInset: isMobileRoot ? 106 : 20),
         ],
       ),
     );
@@ -826,7 +1399,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 // It plays the provided Lottie animation and reacts to mouse hover by growing
 // slightly and adding a glow.
 class _AispherePosition extends StatelessWidget {
-  const _AispherePosition();
+  final double bottomInset;
+
+  const _AispherePosition({this.bottomInset = 20});
 
   @override
   Widget build(BuildContext context) {
@@ -835,7 +1410,7 @@ class _AispherePosition extends StatelessWidget {
     // panel above the sphere). The size covers the chat panel + sphere.
     return Positioned(
       right: 20,
-      bottom: 20,
+      bottom: bottomInset,
       // make the wrapper compact so the sphere is clearly visible at
       // bottom-right; the ChatPanel will still position itself above the
       // sphere using the internal Stack.

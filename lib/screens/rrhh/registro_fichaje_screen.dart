@@ -29,6 +29,7 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
   List<Map<String, dynamic>> _empresas = [], _roles = [];
   bool _cargando = false;
   List<Map<String, dynamic>> _empleados = [];
+  bool _showMobileAdvancedFilters = false;
 
   final _entradaCtrl = TextEditingController();
   final _salidaCtrl = TextEditingController();
@@ -369,6 +370,8 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isMobile = MediaQuery.of(context).size.width < 980;
+    final mobileFilterHeight = _showMobileAdvancedFilters ? 196.0 : 108.0;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -377,7 +380,6 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         centerTitle: true,
-        toolbarHeight: 64,
         title: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: BackdropFilter(
@@ -403,6 +405,7 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
         ),
+        toolbarHeight: isMobile ? 58 : 64,
         actions: [
           Tooltip(
             message: 'Recargar',
@@ -421,7 +424,7 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
           const SizedBox(width: 4),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(66),
+          preferredSize: Size.fromHeight(isMobile ? mobileFilterHeight : 66),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
             child: Center(
@@ -433,7 +436,7 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
                       horizontal: 8,
                       vertical: 6,
                     ),
-                    child: _buildFiltroSemana(context),
+                    child: _buildFiltroSemana(context, isMobile: isMobile),
                   ),
                 ),
               ),
@@ -452,218 +455,37 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
                 ? const Center(child: Text("Sin datos para este rango"))
                 : Column(
                     children: [
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Tabla principal (izquierda)
-                            Expanded(
-                              child: LayoutBuilder(
-                                builder: (context, viewport) {
-                                  // ancho del viewport disponible
-                                  final double vw = viewport.maxWidth;
-                                  // ancho real del grid (col empleado + dias * celda+gap)
-                                  final int diasCount = diasSemana.length;
-                                  const double cellW = 96;
-                                  const double gap =
-                                      6; // margen horizontal total por celda
-                                  final double gridW =
-                                      _empleadoColWidth +
-                                      diasCount * (cellW + gap) +
-                                      4; // + slack
-
-                                  return SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.all(8),
-                                    child: ConstrainedBox(
-                                      constraints: BoxConstraints(minWidth: vw),
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: gridW,
-                                          child: LiquidGlassCard(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.fromLTRB(
-                                                        14,
-                                                        12,
-                                                        14,
-                                                        10,
-                                                      ),
-                                                  child: Row(
-                                                    children: [
-                                                      const Icon(
-                                                        Icons.grid_view_rounded,
-                                                        size: 18,
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      const Text(
-                                                        'Planificación vs Real',
-                                                        style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.w800,
-                                                          fontSize: 15,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 10,
-                                                              vertical: 6,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          color:
-                                                              Theme.of(
-                                                                    context,
-                                                                  ).brightness ==
-                                                                  Brightness
-                                                                      .dark
-                                                              ? Colors.white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.06,
-                                                                    )
-                                                              : Colors.black
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.04,
-                                                                    ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                999,
-                                                              ),
-                                                          border: Border.all(
-                                                            color: Colors.black
-                                                                .withValues(
-                                                                  alpha: 0.06,
-                                                                ),
-                                                          ),
-                                                        ),
-                                                        child: Text(
-                                                          '${_empleados.length} empleados',
-                                                          style:
-                                                              const TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                                fontSize: 12,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                const Divider(height: 1),
-                                                const SizedBox(height: 8),
-
-                                                // cabecera
-                                                Row(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.center,
-                                                  children: [
-                                                    SizedBox(
-                                                      width: _empleadoColWidth,
-                                                      child: const Center(
-                                                        child: Padding(
-                                                          padding:
-                                                              EdgeInsets.symmetric(
-                                                                vertical: 6,
-                                                              ),
-                                                          child: Text(
-                                                            "Empleado",
-                                                            style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                              fontSize: 15,
-                                                              letterSpacing: .5,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    for (final fecha
-                                                        in diasSemana)
-                                                      _HeaderDia(
-                                                        fecha: fecha,
-                                                        esHoy: fecha == hoyStr,
-                                                      ),
-                                                  ],
-                                                ),
-                                                const Divider(
-                                                  height: 28,
-                                                  thickness: 1.3,
-                                                ),
-                                                _buildLegend(),
-                                                const SizedBox(height: 6),
-                                                // listado empleados
-                                                Expanded(
-                                                  child: SingleChildScrollView(
-                                                    child: Column(
-                                                      children: _empleados.map((
-                                                        emp,
-                                                      ) {
-                                                        final mapDias = {
-                                                          for (var d
-                                                              in emp["dias"])
-                                                            d["fecha"]
-                                                                    as String:
-                                                                d,
-                                                        };
-                                                        return Padding(
-                                                          padding:
-                                                              const EdgeInsets.only(
-                                                                bottom: 10,
-                                                              ),
-                                                          child: Row(
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .center,
-                                                            children: [
-                                                              SizedBox(
-                                                                width:
-                                                                    _empleadoColWidth,
-                                                                child:
-                                                                    _empleadoBubble(
-                                                                      emp,
-                                                                    ),
-                                                              ),
-                                                              for (final fecha
-                                                                  in diasSemana)
-                                                                _buildCeldaDia(
-                                                                  emp,
-                                                                  mapDias[fecha],
-                                                                  esHoy:
-                                                                      fecha ==
-                                                                      hoyStr,
-                                                                ),
-                                                            ],
-                                                          ),
-                                                        );
-                                                      }).toList(),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // Panel de activos por empresa (derecha)
-                            _panelActivos(hoyStr),
-                            const SizedBox(width: 8),
-                          ],
+                      if (isMobile) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                          child: _panelActivosMobile(hoyStr),
                         ),
+                        const SizedBox(height: 8),
+                      ],
+                      Expanded(
+                        child: isMobile
+                            ? Padding(
+                                padding: const EdgeInsets.only(bottom: 92),
+                                child: _buildPlanVsRealTable(
+                                  diasSemana: diasSemana,
+                                  hoyStr: hoyStr,
+                                  compact: true,
+                                ),
+                              )
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    child: _buildPlanVsRealTable(
+                                      diasSemana: diasSemana,
+                                      hoyStr: hoyStr,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _panelActivos(hoyStr),
+                                  const SizedBox(width: 8),
+                                ],
+                              ),
                       ),
                     ],
                   ),
@@ -783,7 +605,202 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
   }
 
   // Barra de filtros y navegación de semana centrada
-  Widget _buildFiltroSemana(BuildContext context) {
+  Widget _buildFiltroSemana(BuildContext context, {bool isMobile = false}) {
+    if (isMobile) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Tooltip(
+                message: 'Semana anterior',
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () {
+                    setState(() {
+                      _fechaIni = _fechaIni.subtract(const Duration(days: 7));
+                      _fechaFin = _fechaIni.add(const Duration(days: 6));
+                    });
+                    _cargarFichajes();
+                  },
+                ),
+              ),
+              Expanded(
+                child: LiquidGlassCard(
+                  radius: 14,
+                  elevated: false,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 10,
+                  ),
+                  onTap: () async {
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(2023, 1, 1),
+                      lastDate: DateTime(2030, 12, 31),
+                      initialDateRange: DateTimeRange(
+                        start: _fechaIni,
+                        end: _fechaFin,
+                      ),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _fechaIni = picked.start;
+                        _fechaFin = picked.end;
+                      });
+                      _cargarFichajes();
+                    }
+                  },
+                  child: Text(
+                    "${_fechaIni.toIso8601String().substring(0, 10)} → ${_fechaFin.toIso8601String().substring(0, 10)}",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Semana siguiente',
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () {
+                    setState(() {
+                      _fechaIni = _fechaIni.add(const Duration(days: 7));
+                      _fechaFin = _fechaIni.add(const Duration(days: 6));
+                    });
+                    _cargarFichajes();
+                  },
+                ),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Tooltip(
+                message: _showMobileAdvancedFilters
+                    ? 'Ocultar filtros'
+                    : 'Mostrar filtros',
+                child: IconButton(
+                  icon: Icon(
+                    _showMobileAdvancedFilters
+                        ? Icons.tune_rounded
+                        : Icons.tune_outlined,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _showMobileAdvancedFilters = !_showMobileAdvancedFilters;
+                    });
+                  },
+                ),
+              ),
+              Tooltip(
+                message: 'Limpiar filtros',
+                child: IconButton(
+                  icon: const Icon(Icons.filter_alt_off),
+                  onPressed: () {
+                    setState(() {
+                      _empresaId = _turno = _rolId = _nombre = null;
+                    });
+                    _cargarFichajes();
+                  },
+                ),
+              ),
+            ],
+          ),
+          if (_showMobileAdvancedFilters) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildFilterDropdown(
+                    hint: 'Empresa',
+                    value: _empresaId,
+                    items: _empresas.map((e) => e['id'].toString()).toList(),
+                    display: (v) =>
+                        _empresas.firstWhere((e) => e['id'].toString() == v)['nombre'],
+                    onChanged: (v) {
+                      setState(() => _empresaId = v);
+                      _cargarFichajes();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildFilterDropdown(
+                    hint: 'Turno',
+                    value: _turno,
+                    items: const ['Mañana', 'Tarde', 'Noche', 'Central'],
+                    display: (v) => v,
+                    onChanged: (v) {
+                      setState(() => _turno = v);
+                      _cargarFichajes();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildFilterDropdown(
+                    hint: 'Rol',
+                    value: _rolId,
+                    items: _roles.map((r) => r['id'].toString()).toList(),
+                    display: (v) =>
+                        _roles.firstWhere((r) => r['id'].toString() == v)['nombre'],
+                    onChanged: (v) {
+                      setState(() => _rolId = v);
+                      _cargarFichajes();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Nombre',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: .7),
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: .06),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: .06),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF64B5F6)),
+                      ),
+                    ),
+                    onSubmitted: (t) {
+                      setState(() => _nombre = t.trim().isEmpty ? null : t.trim());
+                      _cargarFichajes();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -946,21 +963,231 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
     );
   }
 
+  Widget _buildPlanVsRealTable({
+    required List<String> diasSemana,
+    required String hoyStr,
+    bool compact = false,
+  }) {
+    return LayoutBuilder(
+      builder: (context, viewport) {
+        final double vw = viewport.maxWidth;
+        final int diasCount = diasSemana.length;
+        final double cellW = compact ? 86 : 96;
+        final double empleadoColWidth = compact ? 206 : _empleadoColWidth;
+        const double gap = 6;
+        final double gridW = empleadoColWidth + diasCount * (cellW + gap) + 4;
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.all(compact ? 6 : 8),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: vw),
+            child: Center(
+              child: SizedBox(
+                width: gridW,
+                child: LiquidGlassCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          compact ? 10 : 14,
+                          compact ? 10 : 12,
+                          compact ? 10 : 14,
+                          compact ? 8 : 10,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.grid_view_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Planificación vs Real',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: compact ? 14 : 15,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.black.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                ),
+                              ),
+                              child: Text(
+                                '${_empleados.length} empleados',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: empleadoColWidth,
+                            child: const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                child: Text(
+                                  'Empleado',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    letterSpacing: .5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          for (final fecha in diasSemana)
+                            _HeaderDia(
+                              fecha: fecha,
+                              esHoy: fecha == hoyStr,
+                              width: cellW,
+                            ),
+                        ],
+                      ),
+                      const Divider(height: 28, thickness: 1.3),
+                      _buildLegend(),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: _empleados.map((emp) {
+                              final mapDias = {
+                                for (var d in emp['dias']) d['fecha'] as String: d,
+                              };
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: empleadoColWidth,
+                                      child: _empleadoBubble(emp),
+                                    ),
+                                    for (final fecha in diasSemana)
+                                      _buildCeldaDia(
+                                        emp,
+                                        mapDias[fecha],
+                                        esHoy: fecha == hoyStr,
+                                        cellWidth: cellW,
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _panelActivosMobile(String fecha) {
+    final activos = _activosPorEmpresaParaFecha(fecha);
+    final etiquetas = const ['Marlex', 'ManPower', 'Cares', 'Ingram'];
+
+    return LiquidGlassCard(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Activos hoy',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final e in etiquetas)
+                  Container(
+                    width: 74,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white.withValues(alpha: 0.06),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          e,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${activos[e] ?? 0}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF1565C0),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCeldaDia(
     Map<String, dynamic> emp,
     dynamic dia, {
     bool esHoy = false,
+    double cellWidth = 96,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
     if (dia == null) {
       return _HoverCell(
-        width: 96,
+        width: cellWidth,
         height: 86,
         tooltip: 'Sin fichajes ni planificación',
         child: Container(
-          width: 96,
+          width: cellWidth,
           height: 86,
           margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
           alignment: Alignment.center,
@@ -1014,14 +1241,14 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
     );
 
     return _HoverCell(
-      width: 96,
+      width: cellWidth,
       height: 86,
       tooltip: tooltip.toString(),
       onTap: () => _mostrarDetalleDia(dia, emp),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-        width: 96,
+        width: cellWidth,
         height: 86,
         decoration: baseDecor,
         child: Stack(
@@ -1620,7 +1847,12 @@ class _HoverCellState extends State<_HoverCell> {
 class _HeaderDia extends StatelessWidget {
   final String fecha; // YYYY-MM-DD
   final bool esHoy;
-  const _HeaderDia({required this.fecha, required this.esHoy});
+  final double width;
+  const _HeaderDia({
+    required this.fecha,
+    required this.esHoy,
+    this.width = 96,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1650,7 +1882,7 @@ class _HeaderDia extends StatelessWidget {
         : (isDark ? Colors.white60 : Colors.blueGrey[700]!);
 
     return Container(
-      width: 96,
+      width: width,
       margin: const EdgeInsets.symmetric(horizontal: 3),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
       decoration: BoxDecoration(

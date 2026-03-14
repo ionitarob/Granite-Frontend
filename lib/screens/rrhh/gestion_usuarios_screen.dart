@@ -41,6 +41,8 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final isMobile = MediaQuery.of(context).size.width < 980;
+      if (isMobile) return;
       final overlay = Overlay.of(context, rootOverlay: true);
       _edgeOverlay = OverlayEntry(
         builder: (ctx) {
@@ -369,208 +371,218 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
 
     final guardado = await showDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 400),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor.withValues(alpha: .9),
-                border: Border.all(color: Colors.white.withValues(alpha: .2)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .2),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(24),
-              child: StatefulBuilder(
-                builder: (context, setModalState) {
-                  return SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.edit_note, size: 28),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Editar empleado',
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        // ID Field (Read-only)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: .05),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.black.withValues(alpha: .1),
-                            ),
-                          ),
-                          child: Row(
+      builder: (ctx) {
+        final modalIsMobile = MediaQuery.of(ctx).size.width < 560;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: modalIsMobile ? 12 : 40,
+            vertical: 24,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(modalIsMobile ? 18 : 24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                constraints: BoxConstraints(maxWidth: modalIsMobile ? 520 : 400),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor.withValues(alpha: .9),
+                  border: Border.all(color: Colors.white.withValues(alpha: .2)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: .2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                padding: EdgeInsets.all(modalIsMobile ? 16 : 24),
+                child: StatefulBuilder(
+                  builder: (context, setModalState) {
+                    return SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
                             children: [
-                              const Icon(Icons.fingerprint, size: 20),
+                              const Icon(Icons.edit_note, size: 28),
                               const SizedBox(width: 12),
-                              Text(
-                                'ID: ${emp['id']}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontFamily: 'monospace',
+                              Expanded(
+                                child: Text(
+                                  'Editar empleado',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: nombreCtrl,
-                          decoration: _inputDecoration('Nombre', Icons.person),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: apellidoCtrl,
-                          decoration: _inputDecoration(
-                            'Apellido',
-                            Icons.person_outline,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: usuarioCtrl,
-                          enabled: false,
-                          decoration:
-                              _inputDecoration(
-                                'Usuario',
-                                Icons.account_circle,
-                              ).copyWith(
-                                fillColor: Colors.grey.withValues(alpha: .2),
+                          const SizedBox(height: 24),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: .05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.black.withValues(alpha: .1),
                               ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: contrasenaCtrl,
-                          obscureText: true,
-                          decoration: _inputDecoration(
-                            'Contraseña',
-                            Icons.lock,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.fingerprint, size: 20),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'ID: ${emp['id']}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        DropdownButtonFormField<String>(
-                          value: turnoSel.isEmpty ? null : turnoSel,
-                          decoration: _inputDecoration(
-                            'Turno',
-                            Icons.schedule,
-                          ).copyWith(contentPadding: EdgeInsets.zero),
-                          items: ['Mañana', 'Tarde', 'Central', 'Noche']
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 12),
-                                    child: Text(t),
-                                  ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: nombreCtrl,
+                            decoration: _inputDecoration('Nombre', Icons.person),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: apellidoCtrl,
+                            decoration: _inputDecoration(
+                              'Apellido',
+                              Icons.person_outline,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: usuarioCtrl,
+                            enabled: false,
+                            decoration:
+                                _inputDecoration(
+                                  'Usuario',
+                                  Icons.account_circle,
+                                ).copyWith(
+                                  fillColor: Colors.grey.withValues(alpha: .2),
                                 ),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setModalState(() => turnoSel = v ?? ''),
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<int>(
-                          value: empresaSel,
-                          decoration: _inputDecoration(
-                            'Empresa',
-                            Icons.business,
-                          ).copyWith(contentPadding: EdgeInsets.zero),
-                          items: _empresas
-                              .map(
-                                (e) => DropdownMenuItem<int>(
-                                  value: (e['id'] as num).toInt(),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 12),
-                                    child: Text(
-                                      e['nombre']?.toString() ?? 'Sin nombre',
-                                      overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: contrasenaCtrl,
+                            obscureText: true,
+                            decoration: _inputDecoration(
+                              'Contraseña',
+                              Icons.lock,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          DropdownButtonFormField<String>(
+                            value: turnoSel.isEmpty ? null : turnoSel,
+                            decoration: _inputDecoration(
+                              'Turno',
+                              Icons.schedule,
+                            ).copyWith(contentPadding: EdgeInsets.zero),
+                            items: ['Mañana', 'Tarde', 'Central', 'Noche']
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: Text(t),
                                     ),
                                   ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) => setModalState(() => empresaSel = v),
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<int>(
-                          value: rolSel,
-                          decoration: _inputDecoration(
-                            'Rol',
-                            Icons.badge,
-                          ).copyWith(contentPadding: EdgeInsets.zero),
-                          items: _roles
-                              .map(
-                                (r) => DropdownMenuItem<int>(
-                                  value: (r['id'] as num).toInt(),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 12),
-                                    child: Text(
-                                      r['nombre']?.toString() ?? 'Sin nombre',
-                                      overflow: TextOverflow.ellipsis,
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setModalState(() => turnoSel = v ?? ''),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<int>(
+                            value: empresaSel,
+                            decoration: _inputDecoration(
+                              'Empresa',
+                              Icons.business,
+                            ).copyWith(contentPadding: EdgeInsets.zero),
+                            items: _empresas
+                                .map(
+                                  (e) => DropdownMenuItem<int>(
+                                    value: (e['id'] as num).toInt(),
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: Text(
+                                        e['nombre']?.toString() ?? 'Sin nombre',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) => setModalState(() => rolSel = v),
-                        ),
-                        const SizedBox(height: 32),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(false),
-                              child: const Text('Cancelar'),
-                            ),
-                            const SizedBox(width: 12),
-                            FilledButton.icon(
-                              icon: const Icon(Icons.save),
-                              label: const Text('Guardar'),
-                              onPressed: () {
-                                if (nombreCtrl.text.trim().isEmpty ||
-                                    apellidoCtrl.text.trim().isEmpty ||
-                                    (turnoSel.isEmpty) ||
-                                    empresaSel == null ||
-                                    rolSel == null) {
-                                  _mostrarSnack('Revisa los campos requeridos');
-                                  return;
-                                }
-                                Navigator.of(ctx).pop(true);
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                                )
+                                .toList(),
+                            onChanged: (v) => setModalState(() => empresaSel = v),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<int>(
+                            value: rolSel,
+                            decoration: _inputDecoration(
+                              'Rol',
+                              Icons.badge,
+                            ).copyWith(contentPadding: EdgeInsets.zero),
+                            items: _roles
+                                .map(
+                                  (r) => DropdownMenuItem<int>(
+                                    value: (r['id'] as num).toInt(),
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: Text(
+                                        r['nombre']?.toString() ?? 'Sin nombre',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) => setModalState(() => rolSel = v),
+                          ),
+                          const SizedBox(height: 24),
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              FilledButton.icon(
+                                icon: const Icon(Icons.save),
+                                label: const Text('Guardar'),
+                                onPressed: () {
+                                  if (nombreCtrl.text.trim().isEmpty ||
+                                      apellidoCtrl.text.trim().isEmpty ||
+                                      (turnoSel.isEmpty) ||
+                                      empresaSel == null ||
+                                      rolSel == null) {
+                                    _mostrarSnack('Revisa los campos requeridos');
+                                    return;
+                                  }
+                                  Navigator.of(ctx).pop(true);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     if (guardado == true) {
@@ -595,6 +607,8 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 980;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -618,12 +632,17 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
 
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 10 : 16,
+                isMobile ? 10 : 16,
+                isMobile ? 10 : 16,
+                (isMobile ? 92 : 16) + bottomInset,
+              ),
               child: Column(
                 children: [
-                  _buildControlsCard(theme),
-                  const SizedBox(height: 16),
-                  Expanded(child: _buildEmployeeList(theme)),
+                  _buildControlsCard(theme, isMobile: isMobile),
+                  SizedBox(height: isMobile ? 10 : 16),
+                  Expanded(child: _buildEmployeeList(theme, isMobile: isMobile)),
                 ],
               ),
             ),
@@ -633,16 +652,16 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
     );
   }
 
-  Widget _buildControlsCard(ThemeData theme) {
+  Widget _buildControlsCard(ThemeData theme, {required bool isMobile}) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(26),
+      borderRadius: BorderRadius.circular(isMobile ? 20 : 26),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(isMobile ? 14 : 20),
           decoration: BoxDecoration(
             color: theme.cardColor.withValues(alpha: .65),
-            borderRadius: BorderRadius.circular(30),
+            borderRadius: BorderRadius.circular(isMobile ? 20 : 30),
             border: Border.all(color: Colors.white.withValues(alpha: .2)),
             boxShadow: [
               BoxShadow(
@@ -682,16 +701,26 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  FilledButton.icon(
+              if (isMobile)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: const Text('Actualizar'),
                     onPressed: _cargarEmpleados,
                   ),
-                ],
-              ),
+                )
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    FilledButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Actualizar'),
+                      onPressed: _cargarEmpleados,
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -699,7 +728,7 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
     );
   }
 
-  Widget _buildEmployeeList(ThemeData theme) {
+  Widget _buildEmployeeList(ThemeData theme, {required bool isMobile}) {
     if (_cargando) {
       return _glassCard(
         theme,
@@ -761,6 +790,27 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
             final initials =
                 (nombre.isNotEmpty ? nombre[0] : '') +
                 (apellido.isNotEmpty ? apellido[0] : '');
+            final trailingActions = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Editar',
+                  icon: const Icon(
+                    Icons.edit_rounded,
+                    color: Colors.blueAccent,
+                  ),
+                  onPressed: () => _dialogoEditar(emp),
+                ),
+                IconButton(
+                  tooltip: 'Eliminar',
+                  icon: Icon(
+                    Icons.delete_rounded,
+                    color: theme.colorScheme.error,
+                  ),
+                  onPressed: () => _dialogoEliminar(emp),
+                ),
+              ],
+            );
 
             return Container(
               decoration: BoxDecoration(
@@ -770,12 +820,12 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
               ),
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 12 : 20,
+                  vertical: isMobile ? 8 : 12,
                 ),
                 leading: CircleAvatar(
-                  radius: 24,
+                  radius: isMobile ? 20 : 24,
                   backgroundColor: theme.colorScheme.primaryContainer,
                   child: Text(
                     initials.toUpperCase(),
@@ -785,93 +835,121 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
                     ),
                   ),
                 ),
-                title: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        '$nombre $apellido',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: .05),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.black.withValues(alpha: .05),
-                        ),
-                      ),
-                      child: Text(
-                        '#${emp['id']}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: .6,
+                title: isMobile
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$nombre $apellido',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          fontWeight: FontWeight.bold,
-                        ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: .05),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.black.withValues(alpha: .05),
+                              ),
+                            ),
+                            child: Text(
+                              '#${emp['id']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: .6,
+                                ),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '$nombre $apellido',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: .05),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.black.withValues(alpha: .05),
+                              ),
+                            ),
+                            child: Text(
+                              '#${emp['id']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: .6,
+                                ),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
                 subtitle: Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Badge(
-                        text: emp['turno'] ?? '-',
-                        color: Colors.blue.withValues(alpha: .1),
-                        textColor: Colors.blue.shade800,
+                      Wrap(
+                        spacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _Badge(
+                            text: emp['turno'] ?? '-',
+                            color: Colors.blue.withValues(alpha: .1),
+                            textColor: Colors.blue.shade800,
+                          ),
+                          _Badge(
+                            text:
+                                emp['empresa'] ??
+                                emp['empresa_nombre'] ??
+                                'Sin empresa',
+                            color: Colors.purple.withValues(alpha: .1),
+                            textColor: Colors.purple.shade800,
+                          ),
+                          Text(
+                            emp['rol'] ?? emp['rol_nombre'] ?? '-',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: .6,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      _Badge(
-                        text:
-                            emp['empresa'] ??
-                            emp['empresa_nombre'] ??
-                            'Sin empresa',
-                        color: Colors.purple.withValues(alpha: .1),
-                        textColor: Colors.purple.shade800,
-                      ),
-                      Text(
-                        emp['rol'] ?? emp['rol_nombre'] ?? '-',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: .6,
+                      if (isMobile)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: trailingActions,
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Editar',
-                      icon: const Icon(
-                        Icons.edit_rounded,
-                        color: Colors.blueAccent,
-                      ),
-                      onPressed: () => _dialogoEditar(emp),
-                    ),
-                    IconButton(
-                      tooltip: 'Eliminar',
-                      icon: Icon(
-                        Icons.delete_rounded,
-                        color: theme.colorScheme.error,
-                      ),
-                      onPressed: () => _dialogoEliminar(emp),
-                    ),
-                  ],
-                ),
+                trailing: isMobile ? null : trailingActions,
               ),
             );
           },

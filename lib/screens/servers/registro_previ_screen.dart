@@ -131,15 +131,22 @@ class _RegistroPreviScreenState extends State<RegistroPreviScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 980;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: const EdgeNavHandle(),
-        title: const Text(
+        leading: isMobile ? null : const EdgeNavHandle(),
+        title: Text(
           'Registro Previ',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: isMobile ? 20 : 22,
+          ),
         ),
         centerTitle: true,
       ),
@@ -161,16 +168,22 @@ class _RegistroPreviScreenState extends State<RegistroPreviScreen> {
                 builder: (context, constraints) {
                   final maxWidth = constraints.maxWidth > 680
                       ? 640.0
-                      : constraints.maxWidth - 24;
+                      : constraints.maxWidth - (isMobile ? 12 : 24);
+                  final imageSize = isMobile ? 76.0 : 90.0;
                   return Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.fromLTRB(
+                        isMobile ? 10 : 16,
+                        isMobile ? 10 : 16,
+                        isMobile ? 10 : 16,
+                        (isMobile ? 102 : 20) + bottomInset,
+                      ),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(maxWidth: maxWidth),
                         child: GlassPanel(
                           elevation: 10,
                           child: Padding(
-                            padding: const EdgeInsets.all(18),
+                            padding: EdgeInsets.all(isMobile ? 14 : 18),
                             child: Form(
                               key: _formKey,
                               child: Column(
@@ -308,8 +321,8 @@ class _RegistroPreviScreenState extends State<RegistroPreviScreen> {
                                               .surfaceContainerHighest
                                               .withOpacity(.18),
                                           child: Container(
-                                            width: 90,
-                                            height: 90,
+                                            width: imageSize,
+                                            height: imageSize,
                                             decoration: BoxDecoration(
                                               border: Border.all(
                                                 color: i == 0 && file == null
@@ -370,8 +383,8 @@ class _RegistroPreviScreenState extends State<RegistroPreviScreen> {
                                       foregroundColor: Theme.of(
                                         context,
                                       ).colorScheme.onPrimary,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: isMobile ? 14 : 16,
                                       ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(14),

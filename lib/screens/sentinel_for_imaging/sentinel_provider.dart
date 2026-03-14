@@ -90,6 +90,111 @@ class SentinelProvider extends ChangeNotifier {
   List<SentinelPort> get ports => _selectedSwitch?.ports ?? [];
   List<String> get availableImages => _availableImages; // New getter
 
+  bool _isDoneStage(String? stage) {
+    final s = (stage ?? '').toLowerCase();
+    return s == 'done' ||
+        s == 'completed' ||
+        s == 'success' ||
+        s == 'wim_apply_done';
+  }
+
+  bool _isFailedStage(String? stage) {
+    final s = (stage ?? '').toLowerCase();
+    return s == 'failed' || s == 'error' || s == 'wim_apply_failed';
+  }
+
+  List<SentinelPort> get allPorts =>
+      _switches.expand((s) => s.ports).toList(growable: false);
+
+  int get configuredPortsCount => allPorts
+      .where((p) => p.imageEnabled && (p.selectedImage ?? '').trim().isNotEmpty)
+      .length;
+
+  int get matchedDevicesCount => allPorts
+      .where(
+        (p) =>
+            p.imageEnabled &&
+            (p.selectedImage ?? '').trim().isNotEmpty &&
+            (p.connectedDevice != null || (p.connectedMac ?? '').trim().isNotEmpty),
+      )
+      .length;
+
+  int get activelyImagingDevicesCount => _deviceMap.values
+      .where(
+        (d) =>
+            (d.activeRunId ?? '').trim().isNotEmpty &&
+            !_isDoneStage(d.stage) &&
+            !_isFailedStage(d.stage),
+      )
+      .length;
+
+  int get completedImagingDevicesCount => _deviceMap.values
+      .where(
+        (d) =>
+            _isDoneStage(d.stage) ||
+            d.completedAt != null ||
+            ((d.imagingProgress ?? 0) >= 100),
+      )
+      .length;
+
+  String buildImagingSnapshotCsv({int? orderId}) {
+    final b = StringBuffer();
+    b.writeln(
+      'order_id,switch_id,switch_name,port_id,port_number,label,image_enabled,selected_image,connected_mac,device_hostname,device_ip,status,stage,progress,active_run_id,completed_at',
+    );
+
+    for (final s in _switches) {
+      for (final p in s.ports) {
+        final d = p.connectedDevice;
+        final row = [
+          orderId?.toString() ?? '',
+          s.switchId.toString(),
+          _csv(s.name),
+          p.portId.toString(),
+          p.portNumber.toString(),
+          _csv(p.label),
+          p.imageEnabled ? '1' : '0',
+          _csv(p.selectedImage ?? ''),
+          _csv(p.connectedMac ?? d?.mac ?? ''),
+          _csv(d?.hostname ?? ''),
+          _csv(d?.ip ?? ''),
+          _csv(d?.status ?? p.status),
+          _csv(d?.stage ?? ''),
+          (d?.imagingProgress ?? '').toString(),
+          _csv(d?.activeRunId ?? ''),
+          _csv(d?.completedAt?.toIso8601String() ?? ''),
+        ];
+        b.writeln(row.join(','));
+      }
+    }
+
+    return b.toString();
+  }
+
+  String buildEventsCsv({int? orderId}) {
+    final b = StringBuffer();
+    b.writeln('order_id,timestamp,type,mac,message');
+
+    for (final e in _events) {
+      b.writeln(
+        [
+          orderId?.toString() ?? '',
+          _csv(e.timestamp.toIso8601String()),
+          _csv(e.type),
+          _csv(e.mac ?? ''),
+          _csv(e.message),
+        ].join(','),
+      );
+    }
+
+    return b.toString();
+  }
+
+  String _csv(String value) {
+    final v = value.replaceAll('"', '""');
+    return '"$v"';
+  }
+
   // O(1) Port Lookup for UI
   SentinelPort? portForDevice(SentinelDevice device) {
     if (device.portNumber == null) return null;
@@ -227,7 +332,11 @@ class SentinelProvider extends ChangeNotifier {
 
     // Only init voice on non-Windows to avoid threading issues
     if (!Platform.isWindows) {
-      await _voiceService.init();
+      try {
+        await _voiceService.init();
+      } catch (e) {
+        print('SentinelProvider: Voice init failed (likely MissingPluginException): $e');
+      }
     }
 
     // Load images in background
@@ -529,6 +638,7 @@ class SentinelProvider extends ChangeNotifier {
     required int scopeId,
     required String image,
     required bool enabled,
+    int? orderId,
   }) async {
     // 1. Send API Request
     await _service.updateImageSelection(
@@ -536,6 +646,7 @@ class SentinelProvider extends ChangeNotifier {
       scopeId: scopeId,
       image: image,
       enabled: enabled,
+      orderId: orderId,
     );
 
     // 2. Optimistic Local Update

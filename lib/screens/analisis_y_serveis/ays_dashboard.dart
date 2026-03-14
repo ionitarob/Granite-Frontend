@@ -66,12 +66,13 @@ class _AysDashboardState extends State<AysDashboard> {
     // Insert the sidebar handle into the root overlay
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final isMobile = MediaQuery.of(context).size.width < 980;
+      if (isMobile) return;
 
       final routeName =
           ModalRoute.of(context)?.settings.name ?? AysDashboard.routeName;
 
       final overlay = Overlay.of(context, rootOverlay: true);
-      if (overlay == null) return;
 
       _edgeOverlay = OverlayEntry(
         builder: (ctx) {
@@ -321,6 +322,7 @@ class _AysDashboardState extends State<AysDashboard> {
     final user = Provider.of<ApiService>(context).currentUser;
     final canSeeFunds =
         user != null && (user.role == 'admin' || user.role == 'chief');
+    final isMobile = MediaQuery.of(context).size.width < 980;
 
     return Scaffold(
       extendBody: true,
@@ -342,96 +344,116 @@ class _AysDashboardState extends State<AysDashboard> {
           ),
 
           // Main Content
-          Padding(
-            padding: const EdgeInsets.fromLTRB(60, 32, 32, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(context),
-                const SizedBox(height: 24),
-                if (canSeeFunds) ...[
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 24),
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        Navigator.pushNamed(
-                          context,
-                          AysManagementScreen.routeName,
-                        );
-                      },
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.all(20),
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        foregroundColor: theme.colorScheme.onPrimaryContainer,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 12 : 60,
+                isMobile ? 8 : 32,
+                isMobile ? 12 : 32,
+                isMobile ? 110 : 32,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(context, isMobile: isMobile),
+                  SizedBox(height: isMobile ? 14 : 24),
+                  if (canSeeFunds) ...[
+                    Container(
+                      width: double.infinity,
+                      margin: EdgeInsets.only(bottom: isMobile ? 14 : 24),
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(
+                            context,
+                            AysManagementScreen.routeName,
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          padding: EdgeInsets.all(isMobile ? 14 : 20),
+                          backgroundColor: theme.colorScheme.primaryContainer,
+                          foregroundColor: theme.colorScheme.onPrimaryContainer,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
-                      ),
-                      icon: const Icon(Icons.dashboard_customize_rounded),
-                      label: const Text(
-                        'Ir al Panel de Gestión (Fondos y Analíticas)',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                        icon: const Icon(Icons.dashboard_customize_rounded),
+                        label: Text(
+                          'Ir al Panel de Gestión (Fondos y Analíticas)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: isMobile ? 14 : 16,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ),
+                  ],
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final mobileLayout = constraints.maxWidth < 900;
+
+                        if (mobileLayout) {
+                          return SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.only(bottom: 100),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildServiciosPendientesBlock(
+                                  context,
+                                  isMobile: true,
+                                ),
+                                const SizedBox(height: 20),
+                                _buildHistorialBlock(context, isMobile: true),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: _buildServiciosPendientesBlock(
+                                context,
+                                isMobile: false,
+                              ),
+                            ),
+                            const SizedBox(width: 32),
+                            Expanded(
+                              flex: 7,
+                              child: _buildHistorialBlock(context, isMobile: false),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ],
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isMobile = constraints.maxWidth < 900;
-
-                      if (isMobile) {
-                        return SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.only(bottom: 100),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _buildServiciosPendientesBlock(context),
-                              const SizedBox(height: 32),
-                              _buildHistorialBlock(context),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 5,
-                            child: _buildServiciosPendientesBlock(context),
-                          ),
-                          const SizedBox(width: 32),
-                          Expanded(
-                            flex: 7,
-                            child: _buildHistorialBlock(context),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           // Floating Action Button
-          Positioned(bottom: 40, right: 40, child: _buildAddButton(context)),
+          Positioned(
+            bottom: isMobile ? 112 : 40,
+            right: isMobile ? 16 : 40,
+            child: _buildAddButton(context, isMobile: isMobile),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, {required bool isMobile}) {
     final theme = Theme.of(context);
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(isMobile ? 10 : 12),
           decoration: BoxDecoration(
             color: theme.colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(16),
@@ -445,34 +467,40 @@ class _AysDashboardState extends State<AysDashboard> {
           ),
           child: Icon(
             Icons.analytics_rounded,
-            size: 32,
+            size: isMobile ? 26 : 32,
             color: theme.colorScheme.primary,
           ),
         ),
-        const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Panel de Servicios',
-              style: theme.textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                letterSpacing: -0.5,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Panel de Servicios',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                  fontSize: isMobile ? 26 : null,
+                ),
               ),
-            ),
-            Text(
-              'Resumen general de actividad',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              Text(
+                'Resumen general de actividad',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildServiciosPendientesBlock(BuildContext context) {
+  Widget _buildServiciosPendientesBlock(
+    BuildContext context, {
+    required bool isMobile,
+  }) {
     final theme = Theme.of(context);
     return _buildListBlock(
       context,
@@ -486,12 +514,41 @@ class _AysDashboardState extends State<AysDashboard> {
         controller: _openTransactionsScrollController,
         physics: const BouncingScrollPhysics(),
         itemCount: _openTransactions.length,
-        padding: const EdgeInsets.only(right: 12),
+        padding: EdgeInsets.only(right: isMobile ? 0 : 12),
         separatorBuilder: (ctx, i) =>
             Divider(height: 1, color: theme.dividerColor.withOpacity(0.1)),
         itemBuilder: (ctx, i) {
           final t = _openTransactions[i];
           final order = t.orden ?? t.csku;
+          final statusChip = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              t.estado ?? 'Pendiente',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
+
+          final closeButton = IconButton(
+            icon: const Icon(
+              Icons.check_circle_outline_rounded,
+              color: Colors.green,
+            ),
+            tooltip: 'Cerrar Servicio',
+            onPressed: () {
+              if (t.id != null) {
+                _closeTransaction(t.id!, t.idxiaomi);
+              }
+            },
+          );
+
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             decoration: BoxDecoration(
@@ -529,55 +586,43 @@ class _AysDashboardState extends State<AysDashboard> {
                 '${order != null ? '$order - ' : ''}${t.idxiaomi ?? 'N/A'}',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              subtitle: Text(
-                '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${t.unit} uds' : ''}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      t.estado ?? 'Pendiente',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
+                  Text(
+                    '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${t.unit} uds' : ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (isMobile)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [statusChip, const SizedBox(width: 4), closeButton],
                       ),
                     ),
-                  ),
+                ],
+              ),
+              trailing: isMobile
+                  ? null
+                  : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  statusChip,
                   const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: Colors.green,
-                    ),
-                    tooltip: 'Cerrar Servicio',
-                    onPressed: () {
-                      if (t.id != null) {
-                        _closeTransaction(t.id!, t.idxiaomi);
-                      }
-                    },
-                  ),
+                  closeButton,
                 ],
               ),
             ),
           );
         },
       ),
+      isMobile: isMobile,
     );
   }
 
-  Widget _buildHistorialBlock(BuildContext context) {
+  Widget _buildHistorialBlock(BuildContext context, {required bool isMobile}) {
     final theme = Theme.of(context);
     final filtered = _filteredHistory;
     final user = Provider.of<ApiService>(context, listen: false).currentUser;
@@ -588,7 +633,8 @@ class _AysDashboardState extends State<AysDashboard> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 400),
+          height: isMobile ? 640 : null,
+          constraints: BoxConstraints(minHeight: isMobile ? 360 : 400),
           decoration: BoxDecoration(
             color: theme.cardColor.withOpacity(0.6),
             borderRadius: BorderRadius.circular(24),
@@ -691,6 +737,75 @@ class _AysDashboardState extends State<AysDashboard> {
                       itemBuilder: (ctx, i) {
                         final t = filtered[i];
                         final order = t.orden ?? t.csku;
+                        final canTogglePaid =
+                            user != null &&
+                            (user.role == 'admin' || user.role == 'chief');
+
+                        final paidChip = canTogglePaid
+                            ? InkWell(
+                                onTap: () async {
+                                  try {
+                                    await _analisisService.togglePaymentStatus(
+                                      t.id!,
+                                      !(t.paid ?? false),
+                                    );
+                                    if (!context.mounted) return;
+                                    _loadDashboardData();
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error: $e')),
+                                    );
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: (t.paid == true
+                                            ? Colors.green
+                                            : Colors.orange)
+                                        .withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: (t.paid == true
+                                              ? Colors.green
+                                              : Colors.orange)
+                                          .withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        t.paid == true
+                                            ? Icons.check_circle_rounded
+                                            : Icons.pending_rounded,
+                                        color: t.paid == true
+                                            ? Colors.green
+                                            : Colors.orange,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        t.paid == true ? 'PAGADO' : 'NO PAGADO',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: t.paid == true
+                                              ? Colors.green
+                                              : Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : null;
+
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
@@ -730,86 +845,37 @@ class _AysDashboardState extends State<AysDashboard> {
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            subtitle: Text(
-                              '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${t.unit} uds' : ''}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (user != null &&
-                                    (user.role == 'admin' ||
-                                        user.role == 'chief'))
-                                  InkWell(
-                                    onTap: () async {
-                                      try {
-                                        await _analisisService
-                                            .togglePaymentStatus(
-                                              t.id!,
-                                              !(t.paid ?? false),
-                                            );
-                                        if (!context.mounted) return;
-                                        _loadDashboardData();
-                                      } catch (e) {
-                                        if (!context.mounted) return;
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(content: Text('Error: $e')),
-                                        );
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            (t.paid == true
-                                                    ? Colors.green
-                                                    : Colors.orange)
-                                                .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(24),
-                                        border: Border.all(
-                                          color:
-                                              (t.paid == true
-                                                      ? Colors.green
-                                                      : Colors.orange)
-                                                  .withOpacity(0.3),
+                                Text(
+                                  '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${t.unit} uds' : ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (isMobile)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: [
+                                        if (paidChip != null) paidChip,
+                                        Text(
+                                          t.fechaf ?? t.fechai ?? '',
+                                          style: theme.textTheme.bodySmall,
                                         ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            t.paid == true
-                                                ? Icons.check_circle_rounded
-                                                : Icons.pending_rounded,
-                                            color: t.paid == true
-                                                ? Colors.green
-                                                : Colors.orange,
-                                            size: 14,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            t.paid == true
-                                                ? 'PAGADO'
-                                                : 'NO PAGADO',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: t.paid == true
-                                                  ? Colors.green
-                                                  : Colors.orange,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                      ],
                                     ),
                                   ),
+                              ],
+                            ),
+                            trailing: isMobile
+                                ? null
+                                : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (paidChip != null) paidChip,
                                 Text(
                                   t.fechaf ?? t.fechai ?? '',
                                   style: theme.textTheme.bodySmall,
@@ -831,159 +897,243 @@ class _AysDashboardState extends State<AysDashboard> {
 
   Widget _buildFilterSection(BuildContext context) {
     final user = Provider.of<ApiService>(context).currentUser;
-    return Column(
+    final canSeePaid =
+        user != null && (user.role == 'admin' || user.role == 'chief');
+
+    final paidField = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _buildDatePicker(
+        const Text(
+          'Estado Pago:',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<bool?>(
+          value: _filterPaid,
+          items: const [
+            DropdownMenuItem(value: null, child: Text('Todos')),
+            DropdownMenuItem(value: true, child: Text('Pagado')),
+            DropdownMenuItem(value: false, child: Text('No Pagado')),
+          ],
+          onChanged: (v) => setState(() => _filterPaid = v),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surface.withOpacity(0.5),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 900;
+
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDatePicker(
                 label: 'Desde',
                 value: _filterDateStart,
                 onChanged: (d) => setState(() => _filterDateStart = d),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildDatePicker(
+              const SizedBox(height: 12),
+              _buildDatePicker(
                 label: 'Hasta',
                 value: _filterDateEnd,
                 onChanged: (d) => setState(() => _filterDateEnd = d),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildDropdown(
+              const SizedBox(height: 12),
+              _buildDropdown(
                 label: 'Fabricante',
                 value: _filterManufacturer,
                 items: _manufacturers,
                 onChanged: (v) => setState(() => _filterManufacturer = v),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildDropdown(
+              const SizedBox(height: 12),
+              _buildDropdown(
                 label: 'Cliente',
                 value: _filterClient,
                 items: _clients,
                 onChanged: (v) => setState(() => _filterClient = v),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildDropdown(
+              const SizedBox(height: 12),
+              _buildDropdown(
                 label: 'Servicio CF',
                 value: _filterService,
                 items: _services,
                 onChanged: (v) => setState(() => _filterService = v),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildDropdown(
+              const SizedBox(height: 12),
+              _buildDropdown(
                 label: 'Id Xiaomi',
                 value: _filterIdXiaomi,
                 items: _xiaomiIds,
                 onChanged: (v) => setState(() => _filterIdXiaomi = v),
               ),
-            ),
-            if (user != null &&
-                (user.role == 'admin' || user.role == 'chief')) ...[
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Estado Pago:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<bool?>(
-                      value: _filterPaid,
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('Todos')),
-                        DropdownMenuItem(value: true, child: Text('Pagado')),
-                        DropdownMenuItem(
-                          value: false,
-                          child: Text('No Pagado'),
-                        ),
-                      ],
-                      onChanged: (v) => setState(() => _filterPaid = v),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Theme.of(
-                          context,
-                        ).colorScheme.surface.withOpacity(0.5),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
+              if (canSeePaid) ...[
+                const SizedBox(height: 12),
+                paidField,
+              ],
+              const SizedBox(height: 12),
+              TextField(
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Búsqueda general (Orden, SKU, Descripción...)',
                   prefixIcon: const Icon(Icons.search),
                   filled: true,
-                  fillColor: Theme.of(
-                    context,
-                  ).colorScheme.surface.withOpacity(0.5),
+                  fillColor: Theme.of(context).colorScheme.surface.withOpacity(0.5),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            ElevatedButton.icon(
-              onPressed: _filteredHistory.isEmpty ? null : _exportToExcel,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _filteredHistory.isEmpty ? null : _exportToExcel,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.file_download_rounded),
+                  label: const Text('EXCEL'),
                 ),
               ),
-              icon: const Icon(Icons.file_download_rounded),
-              label: const Text('EXCEL'),
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _buildDatePicker(
+                    label: 'Desde',
+                    value: _filterDateStart,
+                    onChanged: (d) => setState(() => _filterDateStart = d),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildDatePicker(
+                    label: 'Hasta',
+                    value: _filterDateEnd,
+                    onChanged: (d) => setState(() => _filterDateEnd = d),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDropdown(
+                    label: 'Fabricante',
+                    value: _filterManufacturer,
+                    items: _manufacturers,
+                    onChanged: (v) => setState(() => _filterManufacturer = v),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildDropdown(
+                    label: 'Cliente',
+                    value: _filterClient,
+                    items: _clients,
+                    onChanged: (v) => setState(() => _filterClient = v),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDropdown(
+                    label: 'Servicio CF',
+                    value: _filterService,
+                    items: _services,
+                    onChanged: (v) => setState(() => _filterService = v),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildDropdown(
+                    label: 'Id Xiaomi',
+                    value: _filterIdXiaomi,
+                    items: _xiaomiIds,
+                    onChanged: (v) => setState(() => _filterIdXiaomi = v),
+                  ),
+                ),
+                if (canSeePaid) ...[
+                  const SizedBox(width: 16),
+                  Expanded(child: paidField),
+                ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Búsqueda general (Orden, SKU, Descripción...)',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surface.withOpacity(0.5),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  onPressed: _filteredHistory.isEmpty ? null : _exportToExcel,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.file_download_rounded),
+                  label: const Text('EXCEL'),
+                ),
+              ],
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -1135,6 +1285,7 @@ class _AysDashboardState extends State<AysDashboard> {
     required String emptyText,
     required Widget child,
     required ScrollController controller,
+    required bool isMobile,
   }) {
     final theme = Theme.of(context);
     return ClipRRect(
@@ -1142,7 +1293,7 @@ class _AysDashboardState extends State<AysDashboard> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          height: 600, // Matched with Historial block
+          height: isMobile ? 460 : 600,
           decoration: BoxDecoration(
             color: theme.cardColor.withOpacity(0.6),
             borderRadius: BorderRadius.circular(24),
@@ -1159,7 +1310,7 @@ class _AysDashboardState extends State<AysDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.all(24),
+                padding: EdgeInsets.all(isMobile ? 16 : 24),
                 child: Row(
                   children: [
                     Container(
@@ -1219,7 +1370,7 @@ class _AysDashboardState extends State<AysDashboard> {
                   child: Scrollbar(
                     controller: controller,
                     thumbVisibility: true,
-                    trackVisibility: true,
+                    trackVisibility: !isMobile,
                     child: child,
                   ),
                 ),
@@ -1230,10 +1381,10 @@ class _AysDashboardState extends State<AysDashboard> {
     );
   }
 
-  Widget _buildAddButton(BuildContext context) {
+  Widget _buildAddButton(BuildContext context, {required bool isMobile}) {
     final theme = Theme.of(context);
     return PopupMenuButton<String>(
-      offset: const Offset(0, -150),
+      offset: Offset(0, isMobile ? -120 : -150),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 8,
       color:
@@ -1278,8 +1429,8 @@ class _AysDashboardState extends State<AysDashboard> {
         ),
       ],
       child: Container(
-        width: 56,
-        height: 56,
+        width: isMobile ? 52 : 56,
+        height: isMobile ? 52 : 56,
         decoration: BoxDecoration(
           color: theme.colorScheme.primary,
           shape: BoxShape.circle,

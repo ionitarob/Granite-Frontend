@@ -7,6 +7,7 @@ class AgentOrder {
   final DateTime? orderDate;
   final String prioridad;
   final String estado;
+  final String? family;
   final bool archived;
   final bool isBlocked;
   final String riskLevel; // low, medium, high
@@ -49,6 +50,7 @@ class AgentOrder {
     this.orderDate,
     required this.prioridad,
     required this.estado,
+    this.family,
     required this.archived,
     required this.isBlocked,
     required this.riskLevel,
@@ -94,6 +96,7 @@ class AgentOrder {
           : null,
       prioridad: json['prioridad'] as String? ?? 'Normal',
       estado: json['estado'] as String? ?? '',
+      family: json['family'] as String?,
       archived: json['archived'] as bool? ?? false,
       isBlocked: (json['is_blocked'] == 1 || json['is_blocked'] == true),
       riskLevel: json['risk_level'] as String? ?? 'low',
