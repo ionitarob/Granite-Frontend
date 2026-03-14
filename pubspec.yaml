@@ -50,7 +50,10 @@ flutter:
     - lib/assets/logo.png
     - assets/sounds/
 
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
   image_path: "lib/assets/logo.png"
+  macos:
+    generate: true
+    image_path: "lib/assets/logo.png"
