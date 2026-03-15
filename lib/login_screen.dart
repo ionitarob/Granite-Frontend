@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
 import 'package:configtool_granite_frontend/services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 // lottie was previously used for the header animation; replaced with a lightweight emoji animation.
 import 'package:configtool_granite_frontend/dashboard_screen.dart';
 import 'models/user_model.dart';
@@ -324,6 +325,12 @@ class _LoginScreenState extends State<LoginScreen>
 
       // Auto-trigger update if available
       if (_updateAvailable && mounted) {
+        // Redirect iOS/macOS users immediately if update is required
+        if (Platform.isIOS || Platform.isMacOS) {
+          _showUpdatesDialog(context);
+          return;
+        }
+
         final url = _patchUrl ?? _descargaUrl;
         if (url != null) {
           _startDownload(url);
@@ -568,6 +575,7 @@ class _LoginScreenState extends State<LoginScreen>
     final theme = Theme.of(ctx);
     await showDialog<void>(
       context: ctx,
+      barrierDismissible: !(Platform.isIOS || Platform.isMacOS),
       builder: (dctx) {
         return AlertDialog(
           backgroundColor: theme.cardColor,
@@ -592,15 +600,36 @@ class _LoginScreenState extends State<LoginScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_serverVersion != null)
-                  Text(
-                    _clientVersion != null
-                        ? 'Tú: ${_clientVersion!}  ·  Servidor: ${_serverVersion!}'
-                        : 'Servidor: ${_serverVersion!}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                if (Platform.isIOS || Platform.isMacOS) ...[
+                  const Center(
+                    child: Icon(
+                      Icons.new_releases,
+                      size: 48,
+                      color: Colors.amber,
+                    ),
                   ),
-                const SizedBox(height: 8),
-                if (_cambiosText != null) Text(_cambiosText!),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Nueva versión disponible',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Por favor, abre la aplicación TestFlight para instalar la última versión de Granite.',
+                    textAlign: TextAlign.center,
+                  ),
+                ] else ...[
+                  if (_serverVersion != null)
+                    Text(
+                      _clientVersion != null
+                          ? 'Tú: ${_clientVersion!}  ·  Servidor: ${_serverVersion!}'
+                          : 'Servidor: ${_serverVersion!}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  const SizedBox(height: 8),
+                  if (_cambiosText != null) Text(_cambiosText!),
+                ],
                 const SizedBox(height: 12),
 
                 // Download progress via notifiers
@@ -641,6 +670,19 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
           actions: [
+            if (Platform.isIOS || Platform.isMacOS)
+              ElevatedButton(
+                onPressed: () {
+                  // This opens the TestFlight app directly or the browser if not installed
+                  // Replace YOUR_APP_ID with the actual ID from App Store Connect (e.g. 647xxxxxx)
+                  const appId = '6470000000'; // <--- CAMBIA ESTO CON TU ID DE APPLE
+                  launchUrl(
+                    Uri.parse('https://testflight.apple.com/join/$appId'),
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+                child: const Text('Abrir TestFlight'),
+              ),
             ValueListenableBuilder<bool>(
               valueListenable: _downloadingNotifier,
               builder: (context, downloading, _) {
@@ -653,18 +695,25 @@ class _LoginScreenState extends State<LoginScreen>
                 return const SizedBox.shrink();
               },
             ),
-            TextButton(
-              onPressed: () => Navigator.of(dctx).pop(),
-              child: const Text('Cerrar'),
-            ),
-            if (!_updatesLoading && _updateAvailable && _patchUrl != null)
+            if (!(Platform.isIOS || Platform.isMacOS))
+              TextButton(
+                onPressed: () => Navigator.of(dctx).pop(),
+                child: const Text('Cerrar'),
+              ),
+            if (!(Platform.isIOS || Platform.isMacOS) &&
+                !_updatesLoading &&
+                _updateAvailable &&
+                _patchUrl != null)
               TextButton(
                 onPressed: () {
                   _startDownload(_patchUrl!);
                 },
                 child: const Text('Descargar Parche'),
               ),
-            if (!_updatesLoading && _updateAvailable && _descargaUrl != null)
+            if (!(Platform.isIOS || Platform.isMacOS) &&
+                !_updatesLoading &&
+                _updateAvailable &&
+                _descargaUrl != null)
               ElevatedButton(
                 onPressed: () {
                   _startDownload(_descargaUrl!);

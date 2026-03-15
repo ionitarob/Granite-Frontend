@@ -2614,14 +2614,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _takePhoto() async {
+    // Hide snackbars immediately to avoid UI clutter
     if (mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Abriendo selector de imagen...'),
-          duration: Duration(milliseconds: 900),
-        ),
-      );
     }
 
     _PickedImage? picked;
@@ -2735,17 +2730,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
+      useRootNavigator: true,
       builder: (ctx) => SafeArea(
         child: Wrap(
           children: [
             ListTile(
               leading: const Icon(Icons.photo_camera),
-              title: const Text('Camara'),
+              title: const Text('Cámara'),
               onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Galeria'),
+              title: const Text('Galería'),
               onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
             ),
           ],

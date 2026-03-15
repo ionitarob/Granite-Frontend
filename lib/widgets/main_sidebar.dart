@@ -42,7 +42,7 @@ class _MainSidebarState extends State<MainSidebar> {
     }
     final isDark = theme?.isDark ?? true;
     final routeName =
-        widget.currentRoute ?? ModalRoute.of(context)?.settings.name;
+        widget.currentRoute ?? (ModalRoute.of(context)?.settings.name == '/' ? '/dashboard' : ModalRoute.of(context)?.settings.name);
     final logoAsset = 'lib/assets/logo.png';
 
     final textPrimary = isDark ? Colors.white : Colors.black87;
@@ -2057,7 +2057,10 @@ class GlobalMobileSidebarDock extends StatelessWidget {
   }
 
   bool _isHomeRoute(String? routeName) {
-    return routeName == '/dashboard' || routeName == '/dashboard/redesigned';
+    return routeName == '/dashboard' ||
+        routeName == '/dashboard/redesigned' ||
+        routeName == '/' ||
+        routeName == '';
   }
 
   bool _isHrRoute(String? routeName) {
