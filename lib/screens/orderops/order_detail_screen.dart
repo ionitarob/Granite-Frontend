@@ -175,6 +175,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return merged;
   }
 
+  bool _observationBelongsToOrderOrGeneral(AgentOrderObservation obs) {
+    final orderId = widget.orderId;
+    final idnbr = obs.idnbr;
+    return idnbr <= 0 || idnbr == orderId;
+  }
+
+  bool _photoBelongsToOrderOrGeneral(AgentOrderPhoto photo) {
+    final orderId = widget.orderId;
+    final idnbr = photo.idnbr;
+    return idnbr <= 0 || idnbr == orderId;
+  }
+
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
@@ -196,11 +208,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         if (proyectoId != null) {
           final proyecto = await _orderOpsService!.getProyectoDetail(proyectoId);
           proyectoName = proyecto.nombre;
+          final scopedProyectoObservations = (proyecto.observations ?? const [])
+              .where(_observationBelongsToOrderOrGeneral)
+              .toList(growable: false);
+          final scopedProyectoPhotos = (proyecto.photos ?? const [])
+              .where(_photoBelongsToOrderOrGeneral)
+              .toList(growable: false);
           observations = _mergeObservations(
             observations,
-            proyecto.observations ?? const [],
+            scopedProyectoObservations,
           );
-          photos = _mergePhotos(photos, proyecto.photos ?? const []);
+          photos = _mergePhotos(photos, scopedProyectoPhotos);
         }
       } catch (e) {
         debugPrint('Could not merge Proyecto data into order detail: $e');
@@ -2752,6 +2770,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ),
               Positioned(
                 left: 8,
+                bottom: 36,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    // Tag shows whether the archivo is project-general or belongs to this order
+                    (file.idnbr == widget.orderId) ? 'Orden' : 'Proyecto',
+                    style: const TextStyle(fontSize: 10, color: Colors.white),
+                  ),
+                ),
+              ),
+
+              Positioned(
+                left: 8,
                 right: 8,
                 bottom: 8,
                 child: Container(
@@ -3054,10 +3089,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           )
           .toList(growable: false);
 
+      // When uploading from the Order detail, do not register the files
+      // under the Proyecto even if the order is linked to one. Attach
+      // archivos to the order only by omitting proyectoId.
       final result = await _orderOpsService!.uploadPhotos(
         widget.orderId,
         attachments,
-        proyectoId: _activeProyectoId,
+        proyectoId: null,
         scope: 'archivo',
       );
       if (!mounted) return;
@@ -3207,11 +3245,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (picked != null) {
       setState(() => _loading = true);
       try {
+        // Attach quality photos to the order only; do not register them
+        // under the Proyecto even if the order is linked to one.
         final success = await _orderOpsService?.uploadPhoto(
           widget.orderId,
           picked.name,
           picked.bytes,
-          proyectoId: _activeProyectoId,
+          proyectoId: null,
           scope: 'quality',
         );
         if (success == true) {
