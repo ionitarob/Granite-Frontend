@@ -8,6 +8,8 @@ class AgentOrder {
   final String prioridad;
   final String estado;
   final String? family;
+  final String? proyecto;
+  final int? proyectoId;
   final bool archived;
   final bool isBlocked;
   final String riskLevel; // low, medium, high
@@ -51,6 +53,8 @@ class AgentOrder {
     required this.prioridad,
     required this.estado,
     this.family,
+    this.proyecto,
+    this.proyectoId,
     required this.archived,
     required this.isBlocked,
     required this.riskLevel,
@@ -87,6 +91,29 @@ class AgentOrder {
       return null;
     }
 
+    final rawProyecto = json['proyecto'];
+    String? proyectoNombre;
+    int? proyectoId;
+
+    if (rawProyecto is Map) {
+      proyectoNombre = rawProyecto['nombre']?.toString();
+      final rawId = rawProyecto['id'];
+      if (rawId is int) {
+        proyectoId = rawId;
+      } else if (rawId is String) {
+        proyectoId = int.tryParse(rawId);
+      }
+    } else if (rawProyecto is String) {
+      proyectoNombre = rawProyecto;
+    }
+
+    final explicitProyectoId = json['proyecto_id'];
+    if (explicitProyectoId is int) {
+      proyectoId = explicitProyectoId;
+    } else if (explicitProyectoId is String) {
+      proyectoId = int.tryParse(explicitProyectoId) ?? proyectoId;
+    }
+
     return AgentOrder(
       idnbr: json['idnbr'] as int? ?? 0,
       orderNbr: json['order_nbr'] as String? ?? 'UNKNOWN',
@@ -97,6 +124,8 @@ class AgentOrder {
       prioridad: json['prioridad'] as String? ?? 'Normal',
       estado: json['estado'] as String? ?? '',
       family: json['family'] as String?,
+      proyecto: proyectoNombre,
+      proyectoId: proyectoId,
       archived: json['archived'] as bool? ?? false,
       isBlocked: (json['is_blocked'] == 1 || json['is_blocked'] == true),
       riskLevel: json['risk_level'] as String? ?? 'low',
@@ -384,6 +413,7 @@ class ChatMessage {
 class AgentOrderObservation {
   final int id;
   final int idnbr;
+  final int? proyectoId; // Link to a proyecto
   final String? author;
   final String body;
   final DateTime? createdAt;
@@ -391,6 +421,7 @@ class AgentOrderObservation {
   AgentOrderObservation({
     required this.id,
     required this.idnbr,
+    this.proyectoId,
     this.author,
     required this.body,
     this.createdAt,
@@ -400,6 +431,7 @@ class AgentOrderObservation {
     return AgentOrderObservation(
       id: json['id'] as int? ?? 0,
       idnbr: json['idnbr'] as int? ?? 0,
+      proyectoId: json['proyecto_id'] as int?,
       author: json['author'] as String?,
       body: json['body'] as String? ?? '',
       createdAt: json['created_at'] != null
@@ -412,17 +444,21 @@ class AgentOrderObservation {
 class AgentOrderPhoto {
   final int id;
   final int idnbr;
+  final int? proyectoId; // Link to a proyecto
   final String? author;
   final String fileName;
   final String filePath;
+  final String? scope;
   final DateTime? uploadedAt;
 
   AgentOrderPhoto({
     required this.id,
     required this.idnbr,
+    this.proyectoId,
     this.author,
     required this.fileName,
     required this.filePath,
+    this.scope,
     this.uploadedAt,
   });
 
@@ -430,11 +466,55 @@ class AgentOrderPhoto {
     return AgentOrderPhoto(
       id: json['id'] as int? ?? 0,
       idnbr: json['idnbr'] as int? ?? 0,
+      proyectoId: json['proyecto_id'] as int?,
       author: json['author'] as String?,
       fileName: json['file_name'] as String? ?? 'unknown.jpg',
       filePath: json['file_path'] as String? ?? '',
+      scope: json['scope'] as String?,
       uploadedAt: json['uploaded_at'] != null
           ? DateTime.tryParse(json['uploaded_at'])
+          : null,
+    );
+  }
+}
+
+class Proyecto {
+  final int id;
+  final String nombre;
+  final String? description;
+  final DateTime? createdAt;
+  final List<AgentOrder>? orders;
+  final List<AgentOrderObservation>? observations;
+  final List<AgentOrderPhoto>? photos;
+
+  Proyecto({
+    required this.id,
+    required this.nombre,
+    this.description,
+    this.createdAt,
+    this.orders,
+    this.observations,
+    this.photos,
+  });
+
+  factory Proyecto.fromJson(Map<String, dynamic> json) {
+    return Proyecto(
+      id: json['id'] as int? ?? 0,
+      nombre: json['nombre'] as String? ?? '',
+      description: json['description'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'])
+          : null,
+      orders: json['orders'] is List
+          ? List<dynamic>.from(json['orders']).map((e) => AgentOrder.fromJson(Map<String, dynamic>.from(e))).toList()
+          : (json['agent_orders'] is List
+              ? List<dynamic>.from(json['agent_orders']).map((e) => AgentOrder.fromJson(Map<String, dynamic>.from(e))).toList()
+              : null),
+      observations: json['observations'] is List
+          ? List<dynamic>.from(json['observations']).map((e) => AgentOrderObservation.fromJson(Map<String, dynamic>.from(e))).toList()
+          : null,
+      photos: json['photos'] is List
+          ? List<dynamic>.from(json['photos']).map((e) => AgentOrderPhoto.fromJson(Map<String, dynamic>.from(e))).toList()
           : null,
     );
   }

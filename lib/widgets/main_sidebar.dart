@@ -442,6 +442,9 @@ class _MainSidebarState extends State<MainSidebar> {
   }) {
     final permanent = widget.permanent;
     final user = widget.user;
+    final normalizedRole = (user?.role ?? '').toLowerCase();
+    final canAccessOrderOpsProyectos =
+        normalizedRole.contains('admin') || normalizedRole.contains('chief');
     if (_query.isNotEmpty) {
       final q = _query;
 
@@ -500,25 +503,16 @@ class _MainSidebarState extends State<MainSidebar> {
 
         // OrderOps
         (
-          label: 'OrderOps · Console / Queue',
+          label: 'OrderOps · Cola de Pedidos',
           icon: Icons.list_alt_rounded,
           route: '/orderops/queue',
         ),
-        (
-          label: 'OrderOps · Work Items',
-          icon: Icons.task_alt_rounded,
-          route: '/orderops/work-items',
-        ),
-        (
-          label: 'OrderOps · Activity Log',
-          icon: Icons.history_edu_rounded,
-          route: '/orderops/activity',
-        ),
-        (
-          label: 'OrderOps · Agent Q/A',
-          icon: Icons.question_answer_rounded,
-          route: '/orderops/memory',
-        ),
+        if (canAccessOrderOpsProyectos)
+          (
+            label: 'OrderOps · Proyectos',
+            icon: Icons.assignment_rounded,
+            route: '/orderops/proyectos',
+          ),
 
         // Igualdad
         (
@@ -732,9 +726,7 @@ class _MainSidebarState extends State<MainSidebar> {
     ];
     const orderOpsRoutes = [
       '/orderops/queue',
-      '/orderops/work-items',
-      '/orderops/activity',
-      '/orderops/memory',
+      '/orderops/proyectos',
       '/orderops/cotizaciones',
     ];
 
@@ -933,14 +925,14 @@ class _MainSidebarState extends State<MainSidebar> {
             ),
           ),
           SidebarExpansionTile(
-            title: 'OrderOps AI',
+            title: 'Ordenes CF',
             icon: Icons.psychology_rounded,
             highlight: highlight,
             textPrimary: textPrimary,
             initiallyExpanded: orderOpsExpanded,
             children: [
               _SidebarTile(
-                label: 'Console / Queue',
+                label: 'Cola de Pedidos',
                 icon: Icons.list_alt_rounded,
                 selected: isRoute('/orderops/queue'),
                 onTap: () => _navigate(
@@ -952,48 +944,23 @@ class _MainSidebarState extends State<MainSidebar> {
                 textPrimary: textPrimary,
                 isDark: isDark,
               ),
-              _SidebarTile(
-                label: 'Work Items',
-                icon: Icons.task_alt_rounded,
-                selected: isRoute('/orderops/work-items'),
-                onTap: () => _navigate(
-                  context,
-                  '/orderops/work-items',
-                  closeOverlay: !permanent,
+              if (canAccessOrderOpsProyectos)
+                _SidebarTile(
+                  label: 'Proyectos',
+                  icon: Icons.assignment_rounded,
+                  selected: isRoute('/orderops/proyectos'),
+                  onTap: () => _navigate(
+                    context,
+                    '/orderops/proyectos',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
                 ),
-                highlight: highlight,
-                textPrimary: textPrimary,
-                isDark: isDark,
-              ),
-              _SidebarTile(
-                label: 'Activity Log',
-                icon: Icons.history_edu_rounded,
-                selected: isRoute('/orderops/activity'),
-                onTap: () => _navigate(
-                  context,
-                  '/orderops/activity',
-                  closeOverlay: !permanent,
-                ),
-                highlight: highlight,
-                textPrimary: textPrimary,
-                isDark: isDark,
-              ),
-              _SidebarTile(
-                label: 'Agent Q/A',
-                icon: Icons.question_answer_rounded,
-                selected: isRoute('/orderops/memory'),
-                onTap: () => _navigate(
-                  context,
-                  '/orderops/memory',
-                  closeOverlay: !permanent,
-                ),
-                highlight: highlight,
-                textPrimary: textPrimary,
-                isDark: isDark,
-              ),
               if ((user?.role == 'admin' || user?.role == 'chief'))
                 _SidebarTile(
-                  label: 'Cotizaciones (Admin)',
+                  label: 'Tabla Cotizaciones',
                   icon: Icons.table_chart_rounded,
                   selected: isRoute('/orderops/cotizaciones'),
                   onTap: () => _navigate(
@@ -2037,8 +2004,13 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
 
 class GlobalMobileSidebarDock extends StatelessWidget {
   final GlobalKey<NavigatorState>? rootNavigatorKey;
+  final ValueListenable<bool>? hiddenListenable;
 
-  const GlobalMobileSidebarDock({super.key, this.rootNavigatorKey});
+  const GlobalMobileSidebarDock({
+    super.key,
+    this.rootNavigatorKey,
+    this.hiddenListenable,
+  });
 
   bool _isOperarioRole(String role) {
     final normalized = role.toLowerCase().trim().replaceAll(' ', '_');
@@ -2452,6 +2424,41 @@ class GlobalMobileSidebarDock extends StatelessWidget {
     );
   }
 
+  Future<void> _showOrderOpsPopup({
+    required BuildContext anchorContext,
+    required String? currentRoute,
+  }) async {
+    await _showAnchoredRouteMenu(
+      anchorContext: anchorContext,
+      title: 'Ordenes CF',
+      titleIcon: Icons.receipt_long_rounded,
+      currentRoute: currentRoute,
+      buildItems: (dialogCtx) => [
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Cola de Pedidos',
+          icon: Icons.list_alt_rounded,
+          route: '/orderops/queue',
+          currentRoute: currentRoute,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Tabla Cotizaciones',
+          icon: Icons.table_chart_rounded,
+          route: '/orderops/cotizaciones',
+          currentRoute: currentRoute,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Proyectos',
+          icon: Icons.assignment_rounded,
+          route: '/orderops/proyectos',
+          currentRoute: currentRoute,
+        ),
+      ],
+    );
+  }
+
   Future<void> _showProjectsPopup({
     required BuildContext anchorContext,
     required String? currentRoute,
@@ -2799,7 +2806,11 @@ class GlobalMobileSidebarDock extends StatelessWidget {
         }
 
         final navContext = rootNavigatorKey?.currentContext ?? context;
-        final modalRouteName = ModalRoute.of(navContext)?.settings.name;
+        final modalRoute = ModalRoute.of(navContext);
+        if (modalRoute is PopupRoute<dynamic>) {
+          return const SizedBox.shrink();
+        }
+        final modalRouteName = modalRoute?.settings.name;
         final routeName = (modalRouteName != null && modalRouteName.isNotEmpty)
             ? modalRouteName
             : tracked;
@@ -2816,77 +2827,178 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
+        final normalizedRole = user.role.toLowerCase();
+        final canOpenOrderOpsPopup =
+            normalizedRole.contains('admin') || normalizedRole.contains('chief');
         final canSeeHr = !_isOperarioRole(user.role);
         final primary = Theme.of(context).colorScheme.primary;
         final ordersSelected = _isOrdersRoute(routeName);
         final homeSelected = _isHomeRoute(routeName);
         final projectsSelected = _isProjectRoute(routeName);
         final hrSelected = _isHrRoute(routeName);
+        final width = media.size.width;
+        final isPhone = width < 430;
+        final isTablet = width >= 430 && width < 900;
+        final horizontalMargin = isPhone ? 10.0 : 12.0;
+        final verticalMargin = isPhone ? 6.0 : 8.0;
+        final horizontalPadding = isPhone ? 10.0 : 12.0;
+        final verticalPadding = isPhone ? 7.0 : 8.0;
+        final dockRadius = isPhone ? 28.0 : 30.0;
+        final dockDrop = isPhone ? 4.0 : 5.0;
+        final defaultButtonSize = isPhone ? 40.0 : (isTablet ? 44.0 : 50.0);
+        final selectedButtonSize = isPhone ? 46.0 : (isTablet ? 50.0 : 58.0);
+        final defaultIconSize = isPhone ? 21.0 : (isTablet ? 23.0 : 27.0);
+        final selectedIconSize = isPhone ? 24.0 : (isTablet ? 27.0 : 30.0);
 
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: SafeArea(
-            top: false,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF111827).withOpacity(0.88),
-                borderRadius: BorderRadius.circular(34),
-                border: Border.all(color: Colors.white10),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.35),
-                    blurRadius: 22,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _MobileDockButton(
-                    icon: Icons.receipt_long_rounded,
-                    onTap: (_) {
-                      if (ordersSelected) return;
-                      _pushIfNeeded('/orderops/queue', routeName);
-                    },
-                    primary: primary,
-                    selected: ordersSelected,
-                  ),
-                  _MobileDockButton(
-                    icon: Icons.home_rounded,
-                    onTap: (_) {
-                      if (homeSelected) return;
-                      _pushIfNeeded('/dashboard/redesigned', routeName);
-                    },
-                    primary: primary,
-                    selected: homeSelected,
-                  ),
-                  _MobileDockButton(
-                    icon: Icons.widgets_rounded,
-                    onTap: (anchorCtx) => _showProjectsPopup(
+        List<Widget> buildDockButtons() => [
+              _MobileDockButton(
+                icon: Icons.receipt_long_rounded,
+                onTap: (anchorCtx) {
+                  if (canOpenOrderOpsPopup) {
+                    _showOrderOpsPopup(
                       anchorContext: anchorCtx,
                       currentRoute: routeName,
-                    ),
-                    primary: primary,
-                    selected: projectsSelected,
+                    );
+                    return;
+                  }
+                  if (!ordersSelected) {
+                    _pushIfNeeded('/orderops/queue', routeName);
+                  }
+                },
+                primary: primary,
+                selected: ordersSelected,
+                defaultSize: defaultButtonSize,
+                selectedSize: selectedButtonSize,
+                defaultIconSize: defaultIconSize,
+                selectedIconSize: selectedIconSize,
+              ),
+              _MobileDockButton(
+                icon: Icons.home_rounded,
+                onTap: (_) {
+                  if (homeSelected) return;
+                  _pushIfNeeded('/dashboard/redesigned', routeName);
+                },
+                primary: primary,
+                selected: homeSelected,
+                defaultSize: defaultButtonSize,
+                selectedSize: selectedButtonSize,
+                defaultIconSize: defaultIconSize,
+                selectedIconSize: selectedIconSize,
+              ),
+              _MobileDockButton(
+                icon: Icons.widgets_rounded,
+                onTap: (anchorCtx) => _showProjectsPopup(
+                  anchorContext: anchorCtx,
+                  currentRoute: routeName,
+                ),
+                primary: primary,
+                selected: projectsSelected,
+                defaultSize: defaultButtonSize,
+                selectedSize: selectedButtonSize,
+                defaultIconSize: defaultIconSize,
+                selectedIconSize: selectedIconSize,
+              ),
+              if (canSeeHr)
+                _MobileDockButton(
+                  icon: Icons.people_alt_rounded,
+                  onTap: (anchorCtx) => _showHrPopup(
+                    anchorContext: anchorCtx,
+                    currentRoute: routeName,
                   ),
-                  if (canSeeHr)
-                    _MobileDockButton(
-                      icon: Icons.people_alt_rounded,
-                      onTap: (anchorCtx) => _showHrPopup(
-                        anchorContext: anchorCtx,
-                        currentRoute: routeName,
+                  primary: primary,
+                  selected: hrSelected,
+                  defaultSize: defaultButtonSize,
+                  selectedSize: selectedButtonSize,
+                  defaultIconSize: defaultIconSize,
+                  selectedIconSize: selectedIconSize,
+                ),
+            ];
+
+        Widget dock = Align(
+          alignment: Alignment.bottomCenter,
+          child: Transform.translate(
+            offset: Offset(0, dockDrop),
+            child: SafeArea(
+              top: false,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  IgnorePointer(
+                    child: Container(
+                      margin: EdgeInsets.symmetric(
+                        horizontal: horizontalMargin,
+                        vertical: verticalMargin,
                       ),
-                      primary: primary,
-                      selected: hrSelected,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(dockRadius),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                              vertical: verticalPadding,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.24),
+                              borderRadius: BorderRadius.circular(dockRadius),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.14),
+                                width: 0.9,
+                              ),
+                              boxShadow: const [],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: buildDockButtons(),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
+                  ),
+                  Container(
+                    margin: EdgeInsets.symmetric(
+                      horizontal: horizontalMargin,
+                      vertical: verticalMargin,
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                      vertical: verticalPadding,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: buildDockButtons(),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         );
+
+        if (hiddenListenable != null) {
+          dock = ValueListenableBuilder<bool>(
+            valueListenable: hiddenListenable!,
+            builder: (context, hidden, child) {
+              return AnimatedSlide(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                offset: hidden ? const Offset(0, 1.4) : Offset.zero,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 160),
+                  opacity: hidden ? 0.0 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: hidden,
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: dock,
+          );
+        }
+
+        return dock;
       },
     );
   }
@@ -2897,12 +3009,20 @@ class _MobileDockButton extends StatelessWidget {
   final ValueChanged<BuildContext> onTap;
   final Color primary;
   final bool selected;
+  final double defaultSize;
+  final double selectedSize;
+  final double defaultIconSize;
+  final double selectedIconSize;
 
   const _MobileDockButton({
     required this.icon,
     required this.onTap,
     required this.primary,
     this.selected = false,
+    this.defaultSize = 50,
+    this.selectedSize = 58,
+    this.defaultIconSize = 27,
+    this.selectedIconSize = 30,
   });
 
   @override
@@ -2913,8 +3033,8 @@ class _MobileDockButton extends StatelessWidget {
           onTap: () => onTap(buttonCtx),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            width: selected ? 58 : 50,
-            height: selected ? 58 : 50,
+            width: selected ? selectedSize : defaultSize,
+            height: selected ? selectedSize : defaultSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: selected
@@ -2948,7 +3068,7 @@ class _MobileDockButton extends StatelessWidget {
                   child: Icon(
                     icon,
                     color: Colors.white,
-                    size: selected ? 30 : 27,
+                    size: selected ? selectedIconSize : defaultIconSize,
                   ),
                 ),
                 if (selected)

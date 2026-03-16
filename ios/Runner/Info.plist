@@ -31,6 +31,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Se necesita acceso a la camara para tomar fotos en Registro de Calidad.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Se necesita acceso a la galeria para adjuntar imagenes en Registro de Calidad.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Se necesita permiso para guardar evidencias e imagenes relacionadas con pedidos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:image_picker/image_picker.dart';
@@ -12,6 +13,9 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
+import 'package:flutter/services.dart';
+
+import '../../api_client.dart';
 import '../../services/api_service.dart';
 import '../../services/orderops_service.dart';
 import '../../models/agent_models.dart';
@@ -45,14 +49,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   OrderOpsService? _orderOpsService;
   OrderOpsDetail? _detail;
+  int? _activeProyectoId;
+  String? _activeProyectoName;
   List<AgentOrderObservation> _observations = [];
   List<AgentOrderPhoto> _photos = [];
   List<AgentOrderService> _services = [];
   final Map<int, Uint8List> _pdfPreviewCache = {};
 
   bool _loading = true;
+  bool _isArchivoDropActive = false;
   String? _error;
-  bool _autoAssigningMasterFamily = false;
 
   final TextEditingController _obsController = TextEditingController();
 
@@ -71,6 +77,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   bool get _canEditOrderMeta => _isPrivilegedRole;
 
+  bool _isTabletWidth(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return width >= 760 && width < 1200;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -87,80 +98,188 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     super.dispose();
   }
 
+  String _normalizeProyectoName(String? value) {
+    return (value ?? '').trim().toLowerCase();
+  }
+
+  Future<int?> _resolveProyectoIdByOrderProyectoName(String? proyectoName) async {
+    if (_orderOpsService == null) return null;
+    final normalized = _normalizeProyectoName(proyectoName);
+    if (normalized.isEmpty) return null;
+
+    final asId = int.tryParse(normalized);
+    if (asId != null && asId > 0) {
+      return asId;
+    }
+
+    final proyectos = await _orderOpsService!.getProyectos();
+    for (final proyecto in proyectos) {
+      if (_normalizeProyectoName(proyecto.nombre) == normalized) {
+        return proyecto.id;
+      }
+    }
+    return null;
+  }
+
+  Future<int?> _resolveActiveProyectoId(AgentOrder order) async {
+    if (order.proyectoId != null && order.proyectoId! > 0) {
+      return order.proyectoId;
+    }
+    if (_activeProyectoId != null && _activeProyectoId! > 0) {
+      return _activeProyectoId;
+    }
+    return _resolveProyectoIdByOrderProyectoName(order.proyecto);
+  }
+
+  List<AgentOrderObservation> _mergeObservations(
+    List<AgentOrderObservation> primary,
+    List<AgentOrderObservation> secondary,
+  ) {
+    final merged = <AgentOrderObservation>[];
+    final seen = <String>{};
+
+    String keyFor(AgentOrderObservation obs) {
+      if (obs.id > 0) return 'id:${obs.id}';
+      return 'raw:${obs.idnbr}|${obs.proyectoId}|${obs.author ?? ''}|${obs.body}|${obs.createdAt?.toIso8601String() ?? ''}';
+    }
+
+    for (final obs in [...primary, ...secondary]) {
+      final key = keyFor(obs);
+      if (seen.add(key)) {
+        merged.add(obs);
+      }
+    }
+
+    return merged;
+  }
+
+  List<AgentOrderPhoto> _mergePhotos(
+    List<AgentOrderPhoto> primary,
+    List<AgentOrderPhoto> secondary,
+  ) {
+    final merged = <AgentOrderPhoto>[];
+    final seen = <String>{};
+
+    String keyFor(AgentOrderPhoto photo) {
+      if (photo.id > 0) return 'id:${photo.id}';
+      return 'raw:${photo.idnbr}|${photo.proyectoId}|${photo.fileName}|${photo.filePath}|${photo.uploadedAt?.toIso8601String() ?? ''}';
+    }
+
+    for (final photo in [...primary, ...secondary]) {
+      final key = keyFor(photo);
+      if (seen.add(key)) {
+        merged.add(photo);
+      }
+    }
+
+    return merged;
+  }
+
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      final detail = await _orderOpsService!.getAgentOrder(widget.orderId);
       final futures = await Future.wait([
-        _orderOpsService!.getAgentOrder(widget.orderId),
         _orderOpsService!.getObservations(widget.orderId),
         _orderOpsService!.getPhotos(widget.orderId),
         _orderOpsService!.getServices(widget.orderId),
       ]);
 
+      var observations = futures[0] as List<AgentOrderObservation>;
+      var photos = futures[1] as List<AgentOrderPhoto>;
+      final services = futures[2] as List<AgentOrderService>;
+
+      int? proyectoId;
+      String? proyectoName;
+      try {
+        proyectoId = await _resolveActiveProyectoId(detail.agentOrder);
+        if (proyectoId != null) {
+          final proyecto = await _orderOpsService!.getProyectoDetail(proyectoId);
+          proyectoName = proyecto.nombre;
+          observations = _mergeObservations(
+            observations,
+            proyecto.observations ?? const [],
+          );
+          photos = _mergePhotos(photos, proyecto.photos ?? const []);
+        }
+      } catch (e) {
+        debugPrint('Could not merge Proyecto data into order detail: $e');
+      }
+
       if (mounted) {
-        final loadedDetail = futures[0] as OrderOpsDetail;
         setState(() {
-          _detail = loadedDetail;
-          _observations = futures[1] as List<AgentOrderObservation>;
-          _photos = futures[2] as List<AgentOrderPhoto>;
-          _services = futures[3] as List<AgentOrderService>;
+          _detail = detail;
+          _activeProyectoId = proyectoId;
+          _activeProyectoName = proyectoName ?? _activeProyectoName;
+          _observations = observations;
+          _photos = photos;
+          _services = services;
           _loading = false;
           _error = null;
         });
-
-        await _autoAssignMasterFamilyFromLinesIfNeeded(loadedDetail);
       }
     } catch (e) {
       if (mounted) {
+        final errorStr = e.toString();
+        if (errorStr.contains('404')) {
+          _handleOrderNotFound();
+          return;
+        }
         setState(() {
-          _error = e.toString();
+          _error = errorStr;
           _loading = false;
         });
       }
     }
   }
 
-  bool _linesContainMasterKeyword(OrderOpsDetail detail) {
-    final source = detail.sourceOrder;
-    if (source == null) return false;
-    final lines = source['lines'];
-    if (lines is! List) return false;
+  Future<void> _handleOrderNotFound() async {
+    final result = await showDialog<_ManualOrderPromptResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ManualUnitsDialog(numOrden: widget.orderId.toString()),
+    );
 
-    for (final raw in lines) {
-      if (raw is! Map) continue;
-      final row = Map<String, dynamic>.from(raw);
-      final description =
-          (row['DESCRIP1'] ?? row['description'] ?? '').toString().toUpperCase();
-      if (description.contains('MASTER')) {
-        return true;
-      }
+    if (result == null) {
+      if (mounted) Navigator.of(context).pop();
+      return;
     }
-    return false;
-  }
 
-  Future<void> _autoAssignMasterFamilyFromLinesIfNeeded(
-    OrderOpsDetail detail,
-  ) async {
-    if (_autoAssigningMasterFamily || _orderOpsService == null) return;
-
-    final currentFamily = (detail.agentOrder.family ?? '').trim().toUpperCase();
-    if (currentFamily.contains('MASTERIZ')) return;
-    if (!_linesContainMasterKeyword(detail)) return;
-
-    _autoAssigningMasterFamily = true;
+    setState(() => _loading = true);
     try {
-      final ok = await _orderOpsService!.updateAgentOrder(
-        detail.agentOrder.idnbr,
-        family: 'MASTERIZACIÓN',
-        reason: 'Autoasignación por línea de pedido con palabra MASTER',
+      final api = Provider.of<ApiService>(context, listen: false);
+      final token = api.client.accessToken;
+      final response = await api.client.post(
+        '/serials/order-info',
+        jsonBody: {
+          'num_orden': widget.orderId.toString(),
+          'save': true,
+          'unidades': int.tryParse(result.unitsText) ?? 1,
+          'manual': !result.doubleEntry,
+          'manual_double': result.doubleEntry,
+        },
+        extraHeaders: (token != null && token.isNotEmpty)
+            ? {'Authorization': 'Bearer $token'}
+            : null,
       );
-      if (ok && mounted) {
+
+      if (response.ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Orden registrada exitosamente')),
+          );
+        }
         await _loadData();
+      } else {
+        throw Exception(response.error ?? 'Error registrando orden');
       }
     } catch (e) {
-      debugPrint('Auto-assign MASTERIZACIÓN failed: $e');
-    } finally {
-      _autoAssigningMasterFamily = false;
+      if (mounted) {
+        setState(() {
+          _error = 'No se pudo crear la orden: $e';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -171,10 +290,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() => _loading = true);
     try {
       final user = Provider.of<ApiService>(context, listen: false).currentUser;
+      
       await _orderOpsService!.postObservation(
         widget.orderId,
         text,
         author: user?.username,
+        proyectoId: _activeProyectoId,
       );
       _obsController.clear();
       await _loadData();
@@ -285,17 +406,43 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         body: Stack(
           children: [
             const AnimatedBackgroundWidget(intensity: 0.3),
-            SafeArea(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(
-                      child: Text(
-                        'Error: $_error',
-                        style: const TextStyle(color: Colors.red),
+            DropTarget(
+              onDragEntered: (_) {
+                if (!mounted) return;
+                setState(() => _isArchivoDropActive = true);
+              },
+              onDragExited: (_) {
+                if (!mounted) return;
+                setState(() => _isArchivoDropActive = false);
+              },
+              onDragDone: (details) async {
+                if (!mounted) return;
+                setState(() => _isArchivoDropActive = false);
+                await _uploadDroppedArchivos(details.files);
+              },
+              child: SafeArea(
+                child: _loading && _detail == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null && _detail == null
+                    ? Center(
+                        child: Text(
+                          'Error: $_error',
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          _buildDashboard(theme),
+                          if (_loading)
+                            const Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: LinearProgressIndicator(minHeight: 2),
+                            ),
+                        ],
                       ),
-                    )
-                  : _buildDashboard(theme),
+              ),
             ),
           ],
         ),
@@ -344,6 +491,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _buildTopExecutionStrip(ThemeData theme) {
+    if (_detail == null) return const SizedBox();
     final order = _detail!.agentOrder;
     final sourceOrder = _detail!.sourceOrder;
     final lines = (sourceOrder?['lines'] as List<dynamic>?) ?? const [];
@@ -577,6 +725,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   (String, Color) _mapEstado(String rawEstado) {
+    if (rawEstado.isEmpty) return ('Desconocido', Colors.grey);
     var text = rawEstado;
     Color color = Colors.grey;
     if (text.contains('1')) {
@@ -610,6 +759,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   (String, Color) _mapPrioridad(String rawPrioridad) {
+    if (rawPrioridad.isEmpty) return ('Baja', Colors.grey);
     var text = rawPrioridad;
     Color color = Colors.grey;
     if (text.contains('1')) {
@@ -903,6 +1053,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildHeaderCard(ThemeData theme) {
     final order = _detail!.agentOrder;
+    final isTablet = _isTabletWidth(context);
 
     // Map Estado to User Logic
     // 1=Validada,2=Pendiente,3=En Ejecución,4=Parada,5=Finalizada,6=Facturada
@@ -974,8 +1125,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       child: Wrap(
         alignment: WrapAlignment.center,
         crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 32,
-        runSpacing: 16,
+        spacing: isTablet ? 20 : 32,
+        runSpacing: isTablet ? 12 : 16,
         children: [
           _buildInfoItem('Cliente', order.customer),
           _buildInfoItem(
@@ -994,6 +1145,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             'Prioridad',
             prioText,
             prioColor,
+          ),
+          _buildBadgeItem(
+            'Proyecto',
+            (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
+              ? (_activeProyectoName ?? order.proyecto)!
+                : 'SIN PROYECTO',
+            (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
+                ? Colors.indigoAccent
+                : Colors.grey,
+            onTap:
+                _canEditOrderMeta
+                ? () => _showProyectoPicker(
+                  _activeProyectoName ?? order.proyecto ?? '',
+                )
+                    : null,
           ),
           _buildBadgeItem(
             'Familia',
@@ -1156,6 +1322,181 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
+  Future<void> _showProyectoPicker(String currentProyecto) async {
+    if (!_canEditOrderMeta) return;
+    if (_orderOpsService == null) return;
+
+    List<Proyecto> proyectos = [];
+    try {
+      proyectos = await _orderOpsService!.getProyectos();
+    } catch (e) {
+      debugPrint('Error fetching proyectos: $e');
+    }
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          builder:
+              (context, scrollController) => Material(
+                color: const Color(0xFF1A1A2E),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Text(
+                          'Enlazar con Proyecto',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1, color: Colors.white10),
+                      if (currentProyecto.isNotEmpty)
+                        ListTile(
+                          leading: const Icon(
+                            Icons.link_off,
+                            color: Colors.redAccent,
+                          ),
+                          title: const Text(
+                            'Desvincular Proyecto',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _updateProyecto(proyectoNombre: '');
+                          },
+                        ),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: proyectos.length,
+                          itemBuilder: (context, index) {
+                            final p = proyectos[index];
+                            final isSel = p.nombre == currentProyecto;
+                            return ListTile(
+                              leading: Icon(
+                                Icons.assignment_outlined,
+                                color: isSel ? Colors.indigoAccent : Colors.white70,
+                              ),
+                              title: Text(
+                                p.nombre,
+                                style: TextStyle(
+                                  color: isSel ? Colors.indigoAccent : Colors.white,
+                                  fontWeight:
+                                      isSel ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              trailing:
+                                  isSel
+                                      ? const Icon(
+                                        Icons.check,
+                                        color: Colors.indigoAccent,
+                                      )
+                                      : null,
+                              onTap: () {
+                                Navigator.pop(context);
+                                if (p.nombre != currentProyecto) {
+                                  _updateProyecto(
+                                    proyectoNombre: p.nombre,
+                                    proyectoId: p.id,
+                                    reasonLabel: p.nombre,
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+        );
+      },
+    );
+  }
+
+  Future<void> _updateProyecto({
+    required String proyectoNombre,
+    int? proyectoId,
+    String? reasonLabel,
+  }) async {
+    if (!_canEditOrderMeta) return;
+    if (_orderOpsService == null || _detail == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Actualizando proyecto...')),
+    );
+
+    try {
+      final success = await _orderOpsService!.updateAgentOrder(
+        _detail!.agentOrder.idnbr,
+        proyecto: proyectoId == null ? '' : null,
+        proyectoId: proyectoId,
+        reason: 'Relación con proyecto: ${reasonLabel ?? proyectoNombre}',
+      );
+
+      if (success) {
+        if (mounted) {
+          setState(() {
+            _activeProyectoId = proyectoId;
+            _activeProyectoName = proyectoNombre.trim().isEmpty
+                ? null
+                : proyectoNombre;
+          });
+        }
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Proyecto vinculado correctamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _showStatusPicker(String currentEstado) {
     if (!_canEditOrderMeta) return;
     debugPrint('Opening status picker. Current estado: $currentEstado');
@@ -1258,22 +1599,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return;
     }
 
-    if (_isSerigrafiadoFamily() && code == '3' && !_hasArchivosAttached()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Necesitas adjuntar los archivos de la serigrafia para poder comenzar con la orden',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-
-    if (_isSerigrafiadoFamily() && code == '5' && !_hasQualityEvidence()) {
+    if (code == '5' && !_hasQualityEvidence()) {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1558,18 +1884,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     String value, {
     int maxLines = 2,
   }) {
+    final isTablet = _isTabletWidth(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SelectableText(
           label,
-          style: const TextStyle(color: Colors.grey, fontSize: 12),
+          style: TextStyle(
+            color: Colors.grey,
+            fontSize: isTablet ? 11 : 12,
+          ),
         ),
         const SizedBox(height: 4),
         SelectableText(
           value,
           maxLines: maxLines,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: isTablet ? 14 : 16,
+          ),
         ),
       ],
     );
@@ -1581,16 +1914,26 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     Color color, {
     VoidCallback? onTap,
   }) {
+    final isTablet = _isTabletWidth(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey,
+            fontSize: isTablet ? 11 : 12,
+          ),
+        ),
         const SizedBox(height: 4),
         GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: EdgeInsets.symmetric(
+              horizontal: isTablet ? 8 : 10,
+              vertical: isTablet ? 3 : 4,
+            ),
             decoration: BoxDecoration(
               color: color.withOpacity(0.2),
               border: Border.all(color: color.withOpacity(0.6)),
@@ -1604,7 +1947,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   style: TextStyle(
                     color: color,
                     fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                    fontSize: isTablet ? 12 : 13,
                   ),
                 ),
                 if (onTap != null) ...[
@@ -2146,7 +2489,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _buildQualityQualityCard(ThemeData theme) {
-    final imageFiles = _photos.where(_isImageFile).toList(growable: false);
+    final imageFiles = _photos
+        .where((photo) => _isImageFile(photo) && _photoScope(photo) == 'quality')
+        .toList(growable: false);
     return _buildCard(
       theme: theme,
       title: 'Registro de Calidad (Obligatorio)',
@@ -2195,6 +2540,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _buildArchivosCard(ThemeData theme) {
+    final archivoFiles = _photos
+      .where((photo) => _photoScope(photo) != 'quality')
+      .toList(growable: false);
+    final borderColor = _isArchivoDropActive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outline.withOpacity(0.5);
+
     return _buildCard(
       theme: theme,
       title: 'Archivos',
@@ -2210,14 +2562,56 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ),
       ],
       height: null,
-      child: _photos.isEmpty
-          ? const Center(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: _uploadArchivo,
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 1.5),
+                color: _isArchivoDropActive
+                    ? theme.colorScheme.primary.withOpacity(0.08)
+                    : theme.colorScheme.surface.withOpacity(0.12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.upload_file_rounded,
+                    color: _isArchivoDropActive
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withOpacity(0.75),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _isArchivoDropActive
+                          ? 'Suelta los archivos para subirlos'
+                          : 'Arrastra y suelta 1 o mas archivos aqui, o haz click para seleccionar',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.85),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (archivoFiles.isEmpty)
+            const Center(
               child: Text(
                 'No hay archivos adjuntos.',
                 style: TextStyle(color: Colors.grey),
               ),
             )
-          : LayoutBuilder(
+          else
+            LayoutBuilder(
               builder: (context, constraints) {
                 final cardWidth = constraints.maxWidth >= 1200
                     ? 220.0
@@ -2228,7 +2622,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 return Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: _photos
+                  children: archivoFiles
                       .map(
                         (file) => SizedBox(
                           width: cardWidth,
@@ -2239,6 +2633,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 );
               },
             ),
+        ],
+      ),
     );
   }
 
@@ -2408,6 +2804,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return path.endsWith('.pdf');
   }
 
+  String _photoScope(AgentOrderPhoto photo) {
+    final declared = (photo.scope ?? '').trim().toLowerCase();
+    if (declared == 'quality' || declared == 'archivo') {
+      return declared;
+    }
+
+    final normalizedPath = photo.filePath.replaceAll('\\', '/').toLowerCase();
+    if (normalizedPath.startsWith('order_quality/')) return 'quality';
+
+    final normalizedName = photo.fileName.toLowerCase();
+    if (normalizedName.startsWith('quality_')) return 'quality';
+
+    return 'archivo';
+  }
+
   Future<Uint8List> _downloadOrderFileBytes(AgentOrderPhoto file) async {
     final token = ApiService.instance?.client.accessToken;
     final url = Uri.parse('$kBackendBaseUrl/uploads/${file.filePath}');
@@ -2491,34 +2902,190 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _uploadArchivo() async {
-    final picked = await _pickArchivoFile();
-    if (picked == null) return;
-    if (picked.bytes.isEmpty) {
+    final platform = defaultTargetPlatform;
+    final isDesktop = !kIsWeb &&
+        (platform == TargetPlatform.macOS ||
+            platform == TargetPlatform.windows ||
+            platform == TargetPlatform.linux);
+
+    if (!kIsWeb && !isDesktop) {
+      final source = await showModalBottomSheet<_ArchivoSource>(
+        context: context,
+        useRootNavigator: true,
+        builder: (ctx) => SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded),
+                title: const Text('Fotos'),
+                subtitle: const Text('Seleccionar desde la galería'),
+                onTap: () => Navigator.of(ctx).pop(_ArchivoSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_open_rounded),
+                title: const Text('Archivos'),
+                subtitle: const Text('Seleccionar desde la app Archivos'),
+                onTap: () => Navigator.of(ctx).pop(_ArchivoSource.files),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (source == null) return;
+      final pickedFiles = source == _ArchivoSource.gallery
+          ? await _pickArchivoImagesFromGallery()
+          : await _pickArchivoFiles();
+      await _uploadArchivoBatch(pickedFiles);
+      return;
+    }
+
+    final pickedFiles = await _pickArchivoFiles();
+    await _uploadArchivoBatch(pickedFiles);
+  }
+
+  Future<List<_PickedBinaryFile>> _pickArchivoImagesFromGallery() async {
+    final picker = ImagePicker();
+    final out = <_PickedBinaryFile>[];
+
+    try {
+      final images = await picker.pickMultiImage(imageQuality: 90);
+      for (final image in images) {
+        final bytes = await image.readAsBytes();
+        if (bytes.isEmpty) continue;
+        final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final name = image.name.isNotEmpty ? image.name : fallback;
+        out.add(_PickedBinaryFile(name: name, bytes: bytes));
+      }
+      if (out.isNotEmpty) return out;
+    } catch (_) {
+      // Fall back to single-image picker if multi-image is unavailable.
+    }
+
+    try {
+      final image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+      );
+      if (image == null) return const [];
+      final bytes = await image.readAsBytes();
+      if (bytes.isEmpty) return const [];
+      final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final name = image.name.isNotEmpty ? image.name : fallback;
+      return [_PickedBinaryFile(name: name, bytes: bytes)];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _uploadDroppedArchivos(List<XFile> droppedFiles) async {
+    if (droppedFiles.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo leer el archivo seleccionado')),
+        const SnackBar(content: Text('Drop detectado, pero no se recibieron archivos.')),
+      );
+      return;
+    }
+
+    final pickedFiles = <_PickedBinaryFile>[];
+    var failedReads = 0;
+    for (final dropped in droppedFiles) {
+      try {
+        List<int> bytes = const [];
+        try {
+          bytes = await dropped.readAsBytes();
+        } catch (_) {
+          bytes = const [];
+        }
+        if (bytes.isEmpty && dropped.path.isNotEmpty) {
+          try {
+            bytes = await File(dropped.path).readAsBytes();
+          } catch (_) {
+            bytes = const [];
+          }
+        }
+        if (bytes.isEmpty) continue;
+        final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}';
+        final name = dropped.name.isNotEmpty ? dropped.name : fallback;
+        pickedFiles.add(_PickedBinaryFile(name: name, bytes: Uint8List.fromList(bytes)));
+      } catch (_) {
+        failedReads += 1;
+      }
+    }
+
+    if (pickedFiles.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failedReads > 0
+                ? 'Se detectaron ${droppedFiles.length} archivo(s), pero no se pudieron leer.'
+                : 'No se detectaron archivos validos en el drop.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await _uploadArchivoBatch(pickedFiles);
+  }
+
+  Future<void> _uploadArchivoBatch(List<_PickedBinaryFile> pickedFiles) async {
+    if (pickedFiles.isEmpty) return;
+    if (pickedFiles.any((f) => f.bytes.isEmpty)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo leer uno o mas archivos seleccionados')),
       );
       return;
     }
 
     setState(() => _loading = true);
     try {
-      final success = await _orderOpsService?.uploadPhoto(
+      final attachments = pickedFiles
+          .map(
+            (picked) => MultipartAttachment(
+              fieldName: 'files',
+              fileName: picked.name.isNotEmpty
+                  ? picked.name
+                  : 'archivo_${DateTime.now().millisecondsSinceEpoch}',
+              bytes: picked.bytes,
+            ),
+          )
+          .toList(growable: false);
+
+      final result = await _orderOpsService!.uploadPhotos(
         widget.orderId,
-        picked.name.isNotEmpty
-            ? picked.name
-            : 'archivo_${DateTime.now().millisecondsSinceEpoch}',
-        picked.bytes,
+        attachments,
+        proyectoId: _activeProyectoId,
+        scope: 'archivo',
       );
       if (!mounted) return;
-      if (success == true) {
+      if (result.ok) {
         await _loadData();
+        final body = result.body;
+        int uploaded = attachments.length;
+        int skipped = 0;
+        if (body is Map) {
+          uploaded = (body['count_uploaded'] as num?)?.toInt() ?? uploaded;
+          skipped = (body['count_skipped'] as num?)?.toInt() ?? 0;
+        }
+        final msg = skipped > 0
+            ? 'Subidos $uploaded archivo(s). $skipped duplicado(s) omitido(s).'
+            : 'Subidos $uploaded archivo(s) en Archivos.';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      } else if (result.statusCode == 409) {
+        final body = result.body;
+        int skipped = attachments.length;
+        if (body is Map) {
+          skipped = (body['count_skipped'] as num?)?.toInt() ?? skipped;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Archivo subido en Archivos')),
+          SnackBar(content: Text('No se subio ningun archivo: $skipped ya existia(n).')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo subir el archivo')),
+          const SnackBar(content: Text('No se pudo subir los archivos')),
         );
       }
     } catch (e) {
@@ -2531,7 +3098,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
-  Future<_PickedBinaryFile?> _pickArchivoFile() async {
+  Future<List<_PickedBinaryFile>> _pickArchivoFiles() async {
     final platform = defaultTargetPlatform;
     final isDesktop = !kIsWeb &&
         (platform == TargetPlatform.macOS ||
@@ -2540,32 +3107,39 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     if (isDesktop) {
       try {
-        final xFile = await fs.openFile();
-        if (xFile == null) return null;
-        final bytes = await xFile.readAsBytes();
-        if (bytes.isEmpty) return null;
-        final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}';
-        final name = xFile.name.isNotEmpty ? xFile.name : fallback;
-        return _PickedBinaryFile(name: name, bytes: bytes);
+        final xFiles = await fs.openFiles();
+        if (xFiles.isEmpty) return const [];
+        final out = <_PickedBinaryFile>[];
+        for (final xFile in xFiles) {
+          final bytes = await xFile.readAsBytes();
+          if (bytes.isEmpty) continue;
+          final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}';
+          final name = xFile.name.isNotEmpty ? xFile.name : fallback;
+          out.add(_PickedBinaryFile(name: name, bytes: bytes));
+        }
+        return out;
       } catch (_) {
         // Fall through to file_picker fallback.
       }
     }
 
     final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
+      allowMultiple: true,
       withData: true,
       type: FileType.any,
     );
-    if (picked == null || picked.files.isEmpty) return null;
-    final file = picked.files.first;
-    final bytes =
-        file.bytes ??
-        (file.path != null ? await File(file.path!).readAsBytes() : null);
-    if (bytes == null || bytes.isEmpty) return null;
-    final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}';
-    final name = file.name.isNotEmpty ? file.name : fallback;
-    return _PickedBinaryFile(name: name, bytes: bytes);
+    if (picked == null || picked.files.isEmpty) return const [];
+    final out = <_PickedBinaryFile>[];
+    for (final file in picked.files) {
+      final bytes =
+          file.bytes ??
+          (file.path != null ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null || bytes.isEmpty) continue;
+      final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}';
+      final name = file.name.isNotEmpty ? file.name : fallback;
+      out.add(_PickedBinaryFile(name: name, bytes: bytes));
+    }
+    return out;
   }
 
   Future<void> _deleteArchivo(AgentOrderPhoto file) async {
@@ -2637,14 +3211,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           widget.orderId,
           picked.name,
           picked.bytes,
+          proyectoId: _activeProyectoId,
+          scope: 'quality',
         );
         if (success == true) {
-          // Refresh photos
-          final newPhotos = await _orderOpsService?.getPhotos(widget.orderId);
-          setState(() {
-            _photos = newPhotos ?? [];
-            _loading = false;
-          });
+          await _loadData();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Foto guardada correctamente')),
           );
@@ -3089,6 +3660,110 @@ class _PickedBinaryFile {
   final Uint8List bytes;
 
   _PickedBinaryFile({required this.name, required this.bytes});
+}
+
+enum _ArchivoSource { gallery, files }
+
+class _ManualOrderPromptResult {
+  const _ManualOrderPromptResult({
+    required this.unitsText,
+    required this.doubleEntry,
+  });
+
+  final String unitsText;
+  final bool doubleEntry;
+}
+
+class _ManualUnitsDialog extends StatefulWidget {
+  const _ManualUnitsDialog({required this.numOrden});
+
+  final String numOrden;
+
+  @override
+  State<_ManualUnitsDialog> createState() => _ManualUnitsDialogState();
+}
+
+class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
+  late final TextEditingController _ctrl;
+  bool _doubleEntry = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(
+      _ManualOrderPromptResult(
+        unitsText: _ctrl.text.trim(),
+        doubleEntry: _doubleEntry,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Orden no encontrada'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Introduce el número de unidades para la orden ${widget.numOrden}.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Número de unidades'),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 12),
+          const Text('Tipo de registro'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Unitario'),
+                selected: !_doubleEntry,
+                onSelected: (_) => setState(() => _doubleEntry = false),
+              ),
+              ChoiceChip(
+                label: const Text('Doble'),
+                selected: _doubleEntry,
+                onSelected: (_) => setState(() => _doubleEntry = true),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _doubleEntry
+                ? 'Captura Serial y Inventario/IMEI'
+                : 'Solo Serial (S/N)',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Confirmar')),
+      ],
+    );
+  }
 }
 
 class CatalogSearchDialog extends StatefulWidget {

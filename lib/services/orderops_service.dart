@@ -8,6 +8,37 @@ class OrderOpsService {
 
   OrderOpsService(this._client);
 
+  // --- Proyectos ---
+
+  Future<List<Proyecto>> getProyectos() async {
+    final result = await _client.get('/orderops/proyectos');
+    if (!result.ok) throw Exception('Failed to load projects');
+    final List<dynamic> data = result.body;
+    return data.map((e) => Proyecto.fromJson(e)).toList();
+  }
+
+  Future<Proyecto> getProyectoDetail(int id) async {
+    final result = await _client.get('/orderops/proyectos/$id');
+    if (!result.ok) throw Exception('Failed to load project details');
+    return Proyecto.fromJson(result.body);
+  }
+
+  Future<bool> createProyecto(String nombre, {String? description}) async {
+    final result = await _client.post(
+      '/orderops/proyectos',
+      jsonBody: {
+        'nombre': nombre,
+        if (description != null) 'descripcion': description,
+      },
+    );
+    return result.ok;
+  }
+
+  Future<bool> deleteProyecto(int id) async {
+    final result = await _client.delete('/orderops/proyectos/$id');
+    return result.ok;
+  }
+
   /// Fetch list of orders for the agent queue
   Future<List<AgentOrder>> getAgentOrders({
     String? agentStatus,
@@ -130,6 +161,8 @@ class OrderOpsService {
     String? completionSummary,
     String? completionAuthor,
     String? family,
+    String? proyecto,
+    int? proyectoId,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
@@ -137,6 +170,11 @@ class OrderOpsService {
     if (reason != null) body['reason'] = reason;
     if (markCompleted != null) body['mark_completed'] = markCompleted;
     if (family != null) body['family'] = family;
+    if (proyectoId != null) {
+      body['proyecto'] = proyectoId;
+    } else if (proyecto != null) {
+      body['proyecto'] = proyecto;
+    }
     if (completionSummary != null) {
       body['completion_summary'] = completionSummary;
     }
@@ -161,6 +199,8 @@ class OrderOpsService {
     String? completionSummary,
     String? completionAuthor,
     String? family,
+    String? proyecto,
+    int? proyectoId,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
@@ -168,6 +208,11 @@ class OrderOpsService {
     if (reason != null) body['reason'] = reason;
     if (markCompleted != null) body['mark_completed'] = markCompleted;
     if (family != null) body['family'] = family;
+    if (proyectoId != null) {
+      body['proyecto'] = proyectoId;
+    } else if (proyecto != null) {
+      body['proyecto'] = proyecto;
+    }
     if (completionSummary != null) {
       body['completion_summary'] = completionSummary;
     }
@@ -370,9 +415,11 @@ class OrderOpsService {
     int idnbr,
     String bodyText, {
     String? author,
+    int? proyectoId,
   }) async {
     final body = <String, dynamic>{'body': bodyText};
     if (author != null) body['author'] = author;
+    if (proyectoId != null) body['proyecto_id'] = proyectoId;
     final result = await _client.post(
       '/orderops/agent-orders/$idnbr/observations',
       jsonBody: body,
@@ -399,12 +446,14 @@ class OrderOpsService {
     String fileName,
     String filePath, {
     String? author,
+    int? proyectoId,
   }) async {
     final body = <String, dynamic>{
       'file_name': fileName,
       'file_path': filePath,
     };
     if (author != null) body['author'] = author;
+    if (proyectoId != null) body['proyecto_id'] = proyectoId;
     final result = await _client.post(
       '/orderops/agent-orders/$idnbr/photos',
       jsonBody: body,
@@ -413,14 +462,42 @@ class OrderOpsService {
   }
 
   /// Upload photo via multipart (Camera/Gallery)
-  Future<bool> uploadPhoto(int idnbr, String fileName, List<int> bytes) async {
-    final result = await _client.postMultipart(
-      '/orderops/agent-orders/$idnbr/photos',
-      fileName: fileName,
-      fileBytes: bytes,
-      fileFieldName: 'file',
+  Future<bool> uploadPhoto(
+    int idnbr,
+    String fileName,
+    List<int> bytes, {
+    int? proyectoId,
+    String? scope,
+  }) async {
+    final result = await uploadPhotos(
+      idnbr,
+      [MultipartAttachment(fieldName: 'file', fileName: fileName, bytes: bytes)],
+      proyectoId: proyectoId,
+      scope: scope,
     );
     return result.ok;
+  }
+
+  /// Upload one or more files via multipart (supports drag/drop batches).
+  Future<ApiResult> uploadPhotos(
+    int idnbr,
+    List<MultipartAttachment> files, {
+    int? proyectoId,
+    String? scope,
+  }) async {
+    final queryParams = <String, String>{};
+    if (proyectoId != null) queryParams['proyecto_id'] = proyectoId.toString();
+    if (scope != null && scope.trim().isNotEmpty) {
+      queryParams['scope'] = scope.trim().toLowerCase();
+    }
+    final queryString = Uri(queryParameters: queryParams).query;
+    final path =
+        '/orderops/agent-orders/$idnbr/photos${queryString.isNotEmpty ? '?$queryString' : ''}';
+
+    return _client.postMultipart(
+      path,
+      files: files,
+    );
   }
 
   /// Register an existing server-side file path into Archivos.

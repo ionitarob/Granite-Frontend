@@ -168,6 +168,12 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     }
   }
 
+  Map<String, String>? _orderInfoAuthHeaders(ApiClient? client) {
+    final token = client?.accessToken;
+    if (token == null || token.isEmpty) return null;
+    return {'Authorization': 'Bearer $token'};
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -247,7 +253,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       final res = await client.getBytes(
         '$_basePath/matches/export?num_orden=${Uri.encodeQueryComponent(numOrden)}',
       );
-      return res.ok && res.body is List<int>;
+      if (!res.ok || res.body is! List<int>) return false;
+      final bytes = res.body as List<int>;
+      // Heuristic: consider an export valid only if the returned file is
+      // reasonably large (avoid treating tiny/empty files as a valid export).
+      return bytes.length > 512;
     } catch (_) {
       return false;
     }
@@ -280,6 +290,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       final res = await client.post(
         '$_basePath/order-info',
         jsonBody: {'num_orden': numOrden},
+        extraHeaders: _orderInfoAuthHeaders(client),
       );
       if (!mounted) return;
 
@@ -653,23 +664,60 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       final res = await client.post(
         '$_basePath/order-info',
         jsonBody: {'num_orden': numOrden},
+        extraHeaders: _orderInfoAuthHeaders(client),
       );
       if (!mounted) return;
       if (res.statusCode == 404) {
-        final isEmbeddedMatchFlow = widget.matchOnly || widget.isEmbedded;
+        final isEmbeddedMatchFlow = widget.matchOnly || widget.isEmbedded || _tabs.index == 1;
+        setState(() => _loadingOrder = false);
         if (isEmbeddedMatchFlow) {
-          final canExtract = await _canExtractMatchesExcel(numOrden);
-          if (!mounted) return;
-          setState(() => _loadingOrder = false);
-          if (canExtract) {
-            _showSnack(
-              'Orden detectada como cerrada. Se extrae Excel y se adjunta en Archivos.',
+          final manualConfig = await _promptManualUnits(numOrden);
+          if (manualConfig == null) {
+            setState(() => _loadingOrder = false);
+            return;
+          }
+
+          try {
+            final regRes = await client.post(
+              '$_basePath/order-info',
+              jsonBody: {
+                'num_orden': numOrden,
+                'save': true,
+                'unidades': manualConfig.units,
+                'manual': true,
+                'manual_double': manualConfig.doubleEntry,
+              },
+              extraHeaders: _orderInfoAuthHeaders(client),
             );
-            await _completeOrderAndAttach(numOrden);
-          } else {
-            _showSnack(
-              'La orden existe en registros, pero /serials/order-info devolvio 404.',
+            if (!mounted) return;
+            if (!regRes.ok || regRes.body is! Map) {
+              _showSnack('No se pudo registrar la orden (${regRes.statusCode})');
+              return;
+            }
+            final map = regRes.body as Map;
+            final orderMap = map['order'];
+            final serials = (map['serials'] as List? ?? const [])
+                .whereType<Map>()
+                .map<Map<String, String>>(
+                  (e) => {
+                    'serial': e['serial']?.toString() ?? '',
+                    'inventory_code': e['inventory_code']?.toString() ?? '',
+                  },
+                )
+                .toList();
+
+            if (orderMap is! Map) {
+              _showSnack('Orden registrada pero no se devolvieron datos.');
+              return;
+            }
+
+            _applyOrderData(
+              order: Map<String, dynamic>.from(orderMap),
+              serials: serials,
+              manualDouble: orderMap['manual_double'] == true,
             );
+          } catch (e) {
+            _showSnack('Error registrando orden: $e');
           }
           return;
         }
@@ -700,7 +748,66 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         return;
       }
       if (!res.ok || res.body is! Map) {
-        _showSnack('Orden no encontrada (${res.statusCode})');
+        // TRICK: If the server returns a 500 but it's clearly a missing order
+        // (common in dev/staging environments with complex SQL triggers),
+        // we still allow the manual registration prompt if we are in one of the match flows.
+        final isEmbeddedMatchFlow = widget.matchOnly || widget.isEmbedded || _tabs.index == 1;
+
+        if (isEmbeddedMatchFlow) {
+          setState(() => _loadingOrder = false);
+          final manualConfig = await _promptManualUnits(numOrden);
+          if (manualConfig == null) return;
+
+          try {
+            final regRes = await client.post(
+              '$_basePath/order-info',
+              jsonBody: {
+                'num_orden': numOrden,
+                'save': true,
+                'unidades': manualConfig.units,
+                'manual': true,
+                'manual_double': manualConfig.doubleEntry,
+              },
+              extraHeaders: _orderInfoAuthHeaders(client),
+            );
+            if (!mounted) return;
+            if (!regRes.ok || regRes.body is! Map) {
+              _showSnack('No se pudo registrar la orden (${regRes.statusCode})');
+              return;
+            }
+            final map = regRes.body as Map;
+            final orderMap = map['order'];
+            final serials = (map['serials'] as List? ?? const [])
+                .whereType<Map>()
+                .map<Map<String, String>>(
+                  (e) => {
+                    'serial': e['serial']?.toString() ?? '',
+                    'inventory_code': e['inventory_code']?.toString() ?? '',
+                  },
+                )
+                .toList();
+
+            if (orderMap is! Map) {
+              _showSnack('Orden registrada pero no se devolvieron datos.');
+              return;
+            }
+
+            _applyOrderData(
+              order: Map<String, dynamic>.from(orderMap),
+              serials: serials,
+              manualDouble: orderMap['manual_double'] == true,
+            );
+          } catch (e) {
+            _showSnack('Error registrando orden: $e');
+          }
+          return;
+        }
+
+        if (res.statusCode == 500) {
+          _showSnack('Error del servidor al buscar la orden');
+        } else {
+          _showSnack('Orden no encontrada (${res.statusCode})');
+        }
         return;
       }
       final map = res.body as Map;

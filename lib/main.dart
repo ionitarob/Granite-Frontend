@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'splash_screen.dart';
@@ -58,6 +59,7 @@ import 'screens/orderops/work_items_screen.dart';
 import 'screens/orderops/agent_activity_screen.dart';
 import 'screens/orderops/agent_memory_screen.dart';
 import 'screens/orderops/cotizaciones_management_screen.dart';
+import 'screens/orderops/proyectos_management_screen.dart';
 import 'widgets/main_sidebar.dart';
 import 'services/navigation_tracker.dart';
 
@@ -246,6 +248,7 @@ class MainApp extends StatelessWidget {
                 '/orderops/activity': (_) => const AgentActivityScreen(),
                 '/orderops/memory': (_) => const AgentMemoryScreen(),
                 '/orderops/cotizaciones': (_) => const CotizacionesManagementScreen(),
+                '/orderops/proyectos': (_) => const ProyectosManagementScreen(),
               },
             ),
           );
@@ -272,9 +275,17 @@ class SessionWatcher extends StatefulWidget {
   State<SessionWatcher> createState() => _SessionWatcherState();
 }
 
-class _SessionWatcherState extends State<SessionWatcher> {
+class _SessionWatcherState extends State<SessionWatcher>
+    with WidgetsBindingObserver {
   ApiService? _apiService;
   bool _handlingForcedLogout = false;
+  final ValueNotifier<bool> _mobileDockHidden = ValueNotifier<bool>(false);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didChangeDependencies() {
@@ -286,6 +297,24 @@ class _SessionWatcherState extends State<SessionWatcher> {
       _apiService = svc;
       _apiService?.sessionExpiring.addListener(_onSessionExpiring);
       _apiService?.sessionExpired.addListener(_onSessionExpired);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      if (!_mobileDockHidden.value) {
+        _mobileDockHidden.value = true;
+      }
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      if (_mobileDockHidden.value) {
+        _mobileDockHidden.value = false;
+      }
     }
   }
 
@@ -339,8 +368,10 @@ class _SessionWatcherState extends State<SessionWatcher> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _apiService?.sessionExpiring.removeListener(_onSessionExpiring);
     _apiService?.sessionExpired.removeListener(_onSessionExpired);
+    _mobileDockHidden.dispose();
     super.dispose();
   }
 
@@ -385,11 +416,54 @@ class _SessionWatcherState extends State<SessionWatcher> {
               final builtChild = app.builder != null
                   ? app.builder!(context, child)
                   : child ?? const SizedBox.shrink();
-              return Stack(
-                children: [
-                  builtChild,
-                  GlobalMobileSidebarDock(rootNavigatorKey: globalNavigatorKey),
-                ],
+              final media = MediaQuery.of(context);
+              final width = media.size.width;
+              final isDockDevice = width < 900;
+              final reserveDockSpace = (isDockDevice && media.viewInsets.bottom == 0)
+                  ? (width < 430 ? 52.0 : 60.0)
+                  : 0.0;
+              final insetChild = MediaQuery(
+                data: media.copyWith(
+                  padding: media.padding.copyWith(
+                    bottom: media.padding.bottom + reserveDockSpace,
+                  ),
+                  viewPadding: media.viewPadding.copyWith(
+                    bottom: media.viewPadding.bottom + reserveDockSpace,
+                  ),
+                ),
+                child: builtChild,
+              );
+              return NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  final vertical = notification.metrics.axis == Axis.vertical;
+                  if (!vertical) return false;
+
+                  if (notification is ScrollUpdateNotification ||
+                      notification is OverscrollNotification) {
+                    if (!_mobileDockHidden.value) {
+                      _mobileDockHidden.value = true;
+                    }
+                  } else if (notification is ScrollEndNotification) {
+                    if (_mobileDockHidden.value) {
+                      _mobileDockHidden.value = false;
+                    }
+                  } else if (notification is UserScrollNotification &&
+                      notification.direction == ScrollDirection.idle) {
+                    if (_mobileDockHidden.value) {
+                      _mobileDockHidden.value = false;
+                    }
+                  }
+                  return false;
+                },
+                child: Stack(
+                  children: [
+                    insetChild,
+                    GlobalMobileSidebarDock(
+                      rootNavigatorKey: globalNavigatorKey,
+                      hiddenListenable: _mobileDockHidden,
+                    ),
+                  ],
+                ),
               );
             },
           );

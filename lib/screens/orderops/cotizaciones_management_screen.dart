@@ -857,11 +857,12 @@ class _CotizacionesManagementScreenState
     required String label,
     required String value,
     required Color color,
+    double width = 210,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     return Container(
-      width: 210,
+      width: width,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -1401,6 +1402,7 @@ class _CotizacionesManagementScreenState
     final isDark = theme.brightness == Brightness.dark;
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 900;
+    final isPhone = width < 430;
     return Scaffold(
       body: Stack(
         children: [
@@ -1418,79 +1420,132 @@ class _CotizacionesManagementScreenState
                       : Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
+                        if (isMobile)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
                                 'OrderOps · Gestión Cotizaciones',
                                 style: TextStyle(
-                                  fontSize: isMobile ? 18 : 24,
+                                  fontSize: isPhone ? 17 : 19,
                                   fontWeight: FontWeight.bold,
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            Wrap(
-                              spacing: 10,
-                              children: [
-                                FilledButton.tonalIcon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: isDark
-                                        ? _cPrimary.withOpacity(0.28)
-                                        : _cPrimary.withOpacity(0.22),
-                                    foregroundColor: isDark
-                                        ? Colors.white
-                                        : theme.colorScheme.onPrimaryContainer,
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton.tonalIcon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: isDark
+                                            ? _cPrimary.withOpacity(0.28)
+                                            : _cPrimary.withOpacity(0.22),
+                                        foregroundColor: isDark
+                                            ? Colors.white
+                                            : theme.colorScheme.onPrimaryContainer,
+                                        minimumSize: Size(0, isPhone ? 40 : 44),
+                                      ),
+                                      onPressed: _loading ? null : _load,
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('Refrescar'),
+                                    ),
                                   ),
-                                  onPressed: _loading ? null : _load,
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('Refrescar'),
-                                ),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: _cSecondary,
-                                    foregroundColor: isDark
-                                        ? Colors.white
-                                        : theme.colorScheme.onPrimary,
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: _cSecondary,
+                                        foregroundColor: isDark
+                                            ? Colors.white
+                                            : theme.colorScheme.onPrimary,
+                                        minimumSize: Size(0, isPhone ? 40 : 44),
+                                      ),
+                                      onPressed: _loading
+                                          ? null
+                                          : () => _createOrEdit(),
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('Nueva cotización'),
+                                    ),
                                   ),
-                                  onPressed: _loading
-                                      ? null
-                                      : () => _createOrEdit(),
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Nueva cotización'),
+                                ],
+                              ),
+                            ],
+                          )
+                        else
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'OrderOps · Gestión Cotizaciones',
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
+                              ),
+                              Wrap(
+                                spacing: 10,
+                                children: [
+                                  FilledButton.tonalIcon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: isDark
+                                          ? _cPrimary.withOpacity(0.28)
+                                          : _cPrimary.withOpacity(0.22),
+                                      foregroundColor: isDark
+                                          ? Colors.white
+                                          : theme.colorScheme.onPrimaryContainer,
+                                    ),
+                                    onPressed: _loading ? null : _load,
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Refrescar'),
+                                  ),
+                                  FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: _cSecondary,
+                                      foregroundColor: isDark
+                                          ? Colors.white
+                                          : theme.colorScheme.onPrimary,
+                                    ),
+                                    onPressed: _loading
+                                        ? null
+                                        : () => _createOrEdit(),
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Nueva cotización'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            _kpiTile(
-                              icon: Icons.dataset_rounded,
-                              label: 'Registros Totales',
-                              value: _total.toString(),
-                              color: _cPrimary,
-                            ),
-                            _kpiTile(
-                              icon: Icons.view_list_rounded,
-                              label: 'Mostrados',
-                              value: _rows.length.toString(),
-                              color: _cSecondary,
-                            ),
-                            _kpiTile(
-                              icon: Icons.layers_rounded,
-                              label: 'Página',
-                              value: '${(_offset ~/ _limit) + 1}',
-                              color: _cAccent,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
+                        if (!isMobile)
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              _kpiTile(
+                                icon: Icons.dataset_rounded,
+                                label: 'Registros Totales',
+                                value: _total.toString(),
+                                color: _cPrimary,
+                              ),
+                              _kpiTile(
+                                icon: Icons.view_list_rounded,
+                                label: 'Mostrados',
+                                value: _rows.length.toString(),
+                                color: _cSecondary,
+                              ),
+                              _kpiTile(
+                                icon: Icons.layers_rounded,
+                                label: 'Página',
+                                value: '${(_offset ~/ _limit) + 1}',
+                                color: _cAccent,
+                              ),
+                            ],
+                          ),
+                        SizedBox(height: isMobile ? 8 : 14),
                         SizedBox(
                           width: double.infinity,
                           child: Container(
@@ -1515,139 +1570,363 @@ class _CotizacionesManagementScreenState
                                     : theme.colorScheme.outline.withOpacity(0.30),
                               ),
                             ),
-                            child: Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              alignment: WrapAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 320,
-                                  child: TextField(
-                                    controller: _searchCtrl,
-                                    decoration: InputDecoration(
-                                      labelText: 'Buscar',
-                                      hintText: 'Descripción, SKU Config, HP o Lenovo',
-                                      prefixIcon: Icon(
-                                        Icons.search,
-                                        color: isDark
-                                            ? Colors.white70
-                                            : theme.colorScheme.onSurface.withOpacity(0.7),
-                                      ),
-                                      filled: true,
-                                      fillColor: isDark
-                                          ? _cSurface.withOpacity(0.55)
-                                          : theme.colorScheme.surface,
-                                      labelStyle: TextStyle(
-                                        color: isDark
-                                            ? Colors.white70
-                                            : theme.colorScheme.onSurface.withOpacity(0.72),
-                                      ),
-                                      hintStyle: TextStyle(
-                                        color: isDark
-                                            ? Colors.white54
-                                            : theme.colorScheme.onSurface.withOpacity(0.55),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: isDark
-                                              ? _cPrimary.withOpacity(0.35)
-                                              : theme.colorScheme.outline.withOpacity(0.38),
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _cPrimary,
-                                          width: 1.6,
-                                        ),
-                                      ),
+                            child: isMobile
+                                ? Theme(
+                                    data: Theme.of(context).copyWith(
+                                      dividerColor: Colors.transparent,
                                     ),
-                                    onSubmitted: (_) {
-                                      _offset = 0;
-                                      _load();
-                                    },
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 260,
-                                  child: TextField(
-                                    controller: _familyCtrl,
-                                    decoration: InputDecoration(
-                                      labelText: 'Familia',
-                                      prefixIcon: Icon(
-                                        Icons.category_outlined,
-                                        color: isDark
-                                            ? Colors.white70
-                                            : theme.colorScheme.onSurface.withOpacity(0.7),
+                                    child: ExpansionTile(
+                                      initiallyExpanded:
+                                          _searchCtrl.text.trim().isNotEmpty ||
+                                          _familyCtrl.text.trim().isNotEmpty,
+                                      tilePadding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 0,
                                       ),
-                                      filled: true,
-                                      fillColor: isDark
-                                          ? _cSurface.withOpacity(0.55)
-                                          : theme.colorScheme.surface,
-                                      labelStyle: TextStyle(
-                                        color: isDark
-                                            ? Colors.white70
-                                            : theme.colorScheme.onSurface.withOpacity(0.72),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: isDark
-                                              ? _cSecondary.withOpacity(0.35)
-                                              : theme.colorScheme.outline.withOpacity(0.38),
+                                      title: const Text(
+                                        'Filtros',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
                                         ),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _cSecondary,
-                                          width: 1.6,
+                                      leading: Icon(
+                                        Icons.tune_rounded,
+                                        color: isDark ? Colors.white70 : _cPrimary,
+                                      ),
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 2,
+                                            right: 2,
+                                            bottom: 8,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              TextField(
+                                                controller: _searchCtrl,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Buscar',
+                                                  hintText:
+                                                      'Descripción, SKU Config, HP o Lenovo',
+                                                  prefixIcon: Icon(
+                                                    Icons.search,
+                                                    color: isDark
+                                                        ? Colors.white70
+                                                        : theme.colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.7),
+                                                  ),
+                                                  filled: true,
+                                                  fillColor: isDark
+                                                      ? _cSurface.withOpacity(0.55)
+                                                      : theme
+                                                          .colorScheme.surface,
+                                                  labelStyle: TextStyle(
+                                                    color: isDark
+                                                        ? Colors.white70
+                                                        : theme.colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.72),
+                                                  ),
+                                                  hintStyle: TextStyle(
+                                                    color: isDark
+                                                        ? Colors.white54
+                                                        : theme.colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.55),
+                                                  ),
+                                                  enabledBorder:
+                                                      OutlineInputBorder(
+                                                    borderSide: BorderSide(
+                                                      color: isDark
+                                                          ? _cPrimary
+                                                              .withOpacity(0.35)
+                                                          : theme.colorScheme
+                                                              .outline
+                                                              .withOpacity(0.38),
+                                                    ),
+                                                  ),
+                                                  focusedBorder:
+                                                      const OutlineInputBorder(
+                                                    borderSide: BorderSide(
+                                                      color: _cPrimary,
+                                                      width: 1.6,
+                                                    ),
+                                                  ),
+                                                ),
+                                                onSubmitted: (_) {
+                                                  _offset = 0;
+                                                  _load();
+                                                },
+                                              ),
+                                              const SizedBox(height: 10),
+                                              TextField(
+                                                controller: _familyCtrl,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Familia',
+                                                  prefixIcon: Icon(
+                                                    Icons.category_outlined,
+                                                    color: isDark
+                                                        ? Colors.white70
+                                                        : theme.colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.7),
+                                                  ),
+                                                  filled: true,
+                                                  fillColor: isDark
+                                                      ? _cSurface.withOpacity(0.55)
+                                                      : theme
+                                                          .colorScheme.surface,
+                                                  labelStyle: TextStyle(
+                                                    color: isDark
+                                                        ? Colors.white70
+                                                        : theme.colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.72),
+                                                  ),
+                                                  enabledBorder:
+                                                      OutlineInputBorder(
+                                                    borderSide: BorderSide(
+                                                      color: isDark
+                                                          ? _cSecondary
+                                                              .withOpacity(0.35)
+                                                          : theme.colorScheme
+                                                              .outline
+                                                              .withOpacity(0.38),
+                                                    ),
+                                                  ),
+                                                  focusedBorder:
+                                                      const OutlineInputBorder(
+                                                    borderSide: BorderSide(
+                                                      color: _cSecondary,
+                                                      width: 1.6,
+                                                    ),
+                                                  ),
+                                                ),
+                                                onSubmitted: (_) {
+                                                  _offset = 0;
+                                                  _load();
+                                                },
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: FilledButton.icon(
+                                                      style: FilledButton
+                                                          .styleFrom(
+                                                        backgroundColor:
+                                                            _cPrimary,
+                                                        foregroundColor: isDark
+                                                            ? Colors.white
+                                                            : theme.colorScheme
+                                                                .onPrimary,
+                                                        minimumSize: Size(
+                                                          0,
+                                                          isPhone ? 42 : 46,
+                                                        ),
+                                                      ),
+                                                      onPressed: _loading
+                                                          ? null
+                                                          : () {
+                                                              _offset = 0;
+                                                              _load();
+                                                            },
+                                                      icon: const Icon(
+                                                        Icons.search,
+                                                      ),
+                                                      label: const Text(
+                                                        'Aplicar filtros',
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: OutlinedButton.icon(
+                                                      style: OutlinedButton
+                                                          .styleFrom(
+                                                        foregroundColor: isDark
+                                                            ? _cAccent
+                                                            : const Color(
+                                                                0xFF92400E,
+                                                              ),
+                                                        side: BorderSide(
+                                                          color: isDark
+                                                              ? _cAccent
+                                                                  .withOpacity(
+                                                                    0.65,
+                                                                  )
+                                                              : const Color(
+                                                                  0xFFB45309,
+                                                                ).withOpacity(
+                                                                  0.7,
+                                                                ),
+                                                        ),
+                                                        minimumSize: Size(
+                                                          0,
+                                                          isPhone ? 42 : 46,
+                                                        ),
+                                                      ),
+                                                      onPressed: _loading
+                                                          ? null
+                                                          : () {
+                                                              _searchCtrl.clear();
+                                                              _familyCtrl.clear();
+                                                              _offset = 0;
+                                                              _load();
+                                                            },
+                                                      icon: const Icon(
+                                                        Icons.clear_all,
+                                                      ),
+                                                      label: const Text(
+                                                        'Limpiar',
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    alignment: WrapAlignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 320,
+                                        child: TextField(
+                                          controller: _searchCtrl,
+                                          decoration: InputDecoration(
+                                            labelText: 'Buscar',
+                                            hintText: 'Descripción, SKU Config, HP o Lenovo',
+                                            prefixIcon: Icon(
+                                              Icons.search,
+                                              color: isDark
+                                                  ? Colors.white70
+                                                  : theme.colorScheme.onSurface.withOpacity(0.7),
+                                            ),
+                                            filled: true,
+                                            fillColor: isDark
+                                                ? _cSurface.withOpacity(0.55)
+                                                : theme.colorScheme.surface,
+                                            labelStyle: TextStyle(
+                                              color: isDark
+                                                  ? Colors.white70
+                                                  : theme.colorScheme.onSurface.withOpacity(0.72),
+                                            ),
+                                            hintStyle: TextStyle(
+                                              color: isDark
+                                                  ? Colors.white54
+                                                  : theme.colorScheme.onSurface.withOpacity(0.55),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isDark
+                                                    ? _cPrimary.withOpacity(0.35)
+                                                    : theme.colorScheme.outline.withOpacity(0.38),
+                                              ),
+                                            ),
+                                            focusedBorder: const OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: _cPrimary,
+                                                width: 1.6,
+                                              ),
+                                            ),
+                                          ),
+                                          onSubmitted: (_) {
+                                            _offset = 0;
+                                            _load();
+                                          },
                                         ),
                                       ),
-                                    ),
-                                    onSubmitted: (_) {
-                                      _offset = 0;
-                                      _load();
-                                    },
+                                      SizedBox(
+                                        width: 260,
+                                        child: TextField(
+                                          controller: _familyCtrl,
+                                          decoration: InputDecoration(
+                                            labelText: 'Familia',
+                                            prefixIcon: Icon(
+                                              Icons.category_outlined,
+                                              color: isDark
+                                                  ? Colors.white70
+                                                  : theme.colorScheme.onSurface.withOpacity(0.7),
+                                            ),
+                                            filled: true,
+                                            fillColor: isDark
+                                                ? _cSurface.withOpacity(0.55)
+                                                : theme.colorScheme.surface,
+                                            labelStyle: TextStyle(
+                                              color: isDark
+                                                  ? Colors.white70
+                                                  : theme.colorScheme.onSurface.withOpacity(0.72),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isDark
+                                                    ? _cSecondary.withOpacity(0.35)
+                                                    : theme.colorScheme.outline.withOpacity(0.38),
+                                              ),
+                                            ),
+                                            focusedBorder: const OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: _cSecondary,
+                                                width: 1.6,
+                                              ),
+                                            ),
+                                          ),
+                                          onSubmitted: (_) {
+                                            _offset = 0;
+                                            _load();
+                                          },
+                                        ),
+                                      ),
+                                      FilledButton.icon(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: _cPrimary,
+                                          foregroundColor: isDark
+                                              ? Colors.white
+                                              : theme.colorScheme.onPrimary,
+                                        ),
+                                        onPressed: _loading
+                                            ? null
+                                            : () {
+                                                _offset = 0;
+                                                _load();
+                                              },
+                                        icon: const Icon(Icons.search),
+                                        label: const Text('Aplicar filtros'),
+                                      ),
+                                      OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: isDark
+                                              ? _cAccent
+                                              : const Color(0xFF92400E),
+                                          side: BorderSide(
+                                            color: isDark
+                                                ? _cAccent.withOpacity(0.65)
+                                                : const Color(0xFFB45309).withOpacity(0.7),
+                                          ),
+                                        ),
+                                        onPressed: _loading
+                                            ? null
+                                            : () {
+                                                _searchCtrl.clear();
+                                                _familyCtrl.clear();
+                                                _offset = 0;
+                                                _load();
+                                              },
+                                        icon: const Icon(Icons.clear_all),
+                                        label: const Text('Limpiar'),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: _cPrimary,
-                                    foregroundColor: isDark
-                                        ? Colors.white
-                                        : theme.colorScheme.onPrimary,
-                                  ),
-                                  onPressed: _loading
-                                      ? null
-                                      : () {
-                                          _offset = 0;
-                                          _load();
-                                        },
-                                  icon: const Icon(Icons.search),
-                                  label: const Text('Aplicar filtros'),
-                                ),
-                                OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: isDark
-                                        ? _cAccent
-                                        : const Color(0xFF92400E),
-                                    side: BorderSide(
-                                      color: isDark
-                                          ? _cAccent.withOpacity(0.65)
-                                          : const Color(0xFFB45309).withOpacity(0.7),
-                                    ),
-                                  ),
-                                  onPressed: _loading
-                                      ? null
-                                      : () {
-                                          _searchCtrl.clear();
-                                          _familyCtrl.clear();
-                                          _offset = 0;
-                                          _load();
-                                        },
-                                  icon: const Icon(Icons.clear_all),
-                                  label: const Text('Limpiar'),
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -1703,30 +1982,60 @@ class _CotizacionesManagementScreenState
                                     : _buildDesktopDataTable(),
                           ),
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: _loading || _offset == 0
-                                  ? null
-                                  : () {
-                                      _offset = (_offset - _limit).clamp(0, _offset);
-                                      _load();
-                                    },
-                              child: const Text('Anterior'),
-                            ),
-                            const SizedBox(width: 12),
-                            TextButton(
-                              onPressed: _loading || (_offset + _limit) >= _total
-                                  ? null
-                                  : () {
-                                      _offset += _limit;
-                                      _load();
-                                    },
-                              child: const Text('Siguiente'),
-                            ),
-                          ],
-                        ),
+                        const SizedBox(height: 4),
+                        if (isMobile)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _loading || _offset == 0
+                                      ? null
+                                      : () {
+                                          _offset = (_offset - _limit).clamp(0, _offset);
+                                          _load();
+                                        },
+                                  child: const Text('Anterior'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton.tonal(
+                                  onPressed: _loading || (_offset + _limit) >= _total
+                                      ? null
+                                      : () {
+                                          _offset += _limit;
+                                          _load();
+                                        },
+                                  child: const Text('Siguiente'),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: _loading || _offset == 0
+                                    ? null
+                                    : () {
+                                        _offset = (_offset - _limit).clamp(0, _offset);
+                                        _load();
+                                      },
+                                child: const Text('Anterior'),
+                              ),
+                              const SizedBox(width: 12),
+                              TextButton(
+                                onPressed: _loading || (_offset + _limit) >= _total
+                                    ? null
+                                    : () {
+                                        _offset += _limit;
+                                        _load();
+                                      },
+                                child: const Text('Siguiente'),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                 ),

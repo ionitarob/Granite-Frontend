@@ -25,6 +25,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   String? _error;
   Timer? _refreshTimer;
   OverlayEntry? _edgeOverlay;
+  bool _autoFamilyScanInProgress = false;
+  final Set<int> _autoFamilyScannedOrderIds = <int>{};
 
   // Filters
   final TextEditingController _searchController = TextEditingController();
@@ -101,12 +103,104 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         _error = null;
         _loading = false;
       });
+
+      // Run family auto-assignment in background from queue context, so
+      // users do not need to open detail screen to trigger it.
+      unawaited(_autoAssignFamiliesFromQueue(orders));
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  bool _detailContainsMasterKeyword(OrderOpsDetail detail) {
+    final source = detail.sourceOrder;
+    if (source == null) return false;
+    final lines = source['lines'];
+    if (lines is! List) return false;
+
+    for (final raw in lines) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final description =
+          (row['DESCRIP1'] ?? row['description'] ?? '').toString().toUpperCase();
+      if (description.contains('MASTER')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _autoAssignFamiliesFromQueue(List<AgentOrder> orders) async {
+    if (_orderOpsService == null || _autoFamilyScanInProgress) return;
+
+    final candidates = orders
+        .where((o) {
+          final family = (o.family ?? '').trim();
+          return family.isEmpty && !_autoFamilyScannedOrderIds.contains(o.idnbr);
+        })
+        .take(25)
+        .toList(growable: false);
+
+    if (candidates.isEmpty) return;
+
+    _autoFamilyScanInProgress = true;
+    var assignedCount = 0;
+
+    try {
+      for (final order in candidates) {
+        _autoFamilyScannedOrderIds.add(order.idnbr);
+
+        try {
+          final detail = await _orderOpsService!.getAgentOrder(order.idnbr);
+          final currentFamily = (detail.agentOrder.family ?? '')
+              .trim()
+              .toUpperCase();
+
+          if (currentFamily.contains('MASTERIZ')) {
+            continue;
+          }
+          if (!_detailContainsMasterKeyword(detail)) {
+            continue;
+          }
+
+          final ok = await _orderOpsService!.updateAgentOrder(
+            detail.agentOrder.idnbr,
+            family: 'MASTERIZACIÓN',
+            reason: 'Autoasignación por línea de pedido con palabra MASTER',
+          );
+          if (ok) {
+            assignedCount += 1;
+          }
+        } catch (e) {
+          debugPrint(
+            'OrderQueueScreen auto family assign failed for ${order.idnbr}: $e',
+          );
+        }
+      }
+    } finally {
+      _autoFamilyScanInProgress = false;
+    }
+
+    if (assignedCount > 0 && mounted) {
+      debugPrint(
+        'OrderQueueScreen auto-assigned MASTERIZACION for $assignedCount order(s).',
+      );
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            assignedCount == 1
+                ? 'Familia autoasignada en 1 pedido'
+                : 'Familia autoasignada en $assignedCount pedidos',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      await _loadOrders(silent: true);
     }
   }
 
