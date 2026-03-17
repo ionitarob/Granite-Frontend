@@ -625,18 +625,73 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     final res = await client.get('/serials/printers?q=$encoded&limit=$limit');
     if (!res.ok) throw Exception('Error fetching printers (${res.statusCode})');
     final body = res.body;
-    if (body is Map && body['results'] is List) {
-      return (body['results'] as List)
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    } else if (body is List) {
+    // Normalize several possible backend shapes to a List<Map>
+    if (body is List) {
       return body
           .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
+          .map((e) => _normalizePrinterEntry(Map<String, dynamic>.from(e)))
           .toList();
     }
+
+    if (body is Map) {
+      // Common patterns: {'results': [...]}, {'printers': [...]}, {'data': [...]}
+      for (final key in ['results', 'printers', 'data']) {
+        if (body[key] is List) {
+          return (body[key] as List)
+              .whereType<Map>()
+              .map((e) => _normalizePrinterEntry(Map<String, dynamic>.from(e)))
+              .toList();
+        }
+      }
+
+      // As a last resort, if any value is a List, use the first one found.
+      for (final v in body.values) {
+        if (v is List) {
+          return v
+              .whereType<Map>()
+              .map((e) => _normalizePrinterEntry(Map<String, dynamic>.from(e)))
+              .toList();
+        }
+      }
+
+      // Unexpected shape: log for debug and return empty
+      if (kDebugMode) {
+        try {
+          debugPrint('Unexpected printers response shape: ${body.runtimeType} -> $body');
+        } catch (_) {}
+      }
+    }
     return [];
+  }
+
+  Map<String, dynamic> _normalizePrinterEntry(Map<String, dynamic> e) {
+    String? id;
+    try {
+      id = (e['id_printer'] ?? e['id'] ?? e['printer_id'] ?? e['idPrinter'])?.toString();
+    } catch (_) {
+      id = null;
+    }
+    String? name;
+    try {
+      name = (e['printer_name'] ?? e['name'] ?? e['printerName'])?.toString();
+    } catch (_) {
+      name = null;
+    }
+    String? ip;
+    try {
+      ip = (e['ip_address'] ?? e['ip'] ?? e['address'] ?? e['ip_address']?.toString())?.toString();
+    } catch (_) {
+      ip = null;
+    }
+    final out = <String, dynamic>{};
+    if (id != null && id.isNotEmpty) out['id_printer'] = int.tryParse(id) ?? id;
+    if (name != null) out['printer_name'] = name;
+    if (ip != null) out['ip_address'] = ip;
+    // preserve any other keys too
+    for (final kv in e.entries) {
+      if (!out.containsKey(kv.key)) out[kv.key.toString()] = kv.value;
+    }
+    return out;
   }
 
   Future<Map<String, dynamic>?> _getOrSelectPrinter(String title) async {
@@ -645,8 +700,15 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     List<Map<String, dynamic>> printers = [];
     try {
       printers = await _fetchPrinters();
-    } catch (_) {
+    } catch (e) {
       printers = [];
+      if (mounted) {
+        try {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error obteniendo impresoras: $e')),
+          );
+        } catch (_) {}
+      }
     }
 
     Map<String, dynamic>? selectedPrinter;
