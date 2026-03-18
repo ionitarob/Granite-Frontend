@@ -179,7 +179,16 @@ class ApiClient {
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         _cookies.clear();
         _accessToken = null;
-        await _storage.delete(key: _cookieStorageKey);
+        try {
+          await _storage.delete(key: _cookieStorageKey);
+        } catch (e) {
+          if (kDebugMode) {
+            try {
+              debugPrint('ApiClient.logout: failed clearing cookie storage: $e');
+            } catch (_) {}
+          }
+          // Do not fail logout because secure storage/keychain access failed.
+        }
         return ApiResult(true, resp.statusCode);
       }
       return ApiResult(false, resp.statusCode);

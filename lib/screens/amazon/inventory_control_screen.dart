@@ -31,6 +31,13 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
   late final Animation<double> _panelFade;
   late final Animation<double> _panelScale;
   OverlayEntry? _edgeOverlay;
+  // Registries
+  List<Map<String, dynamic>> _partsRegistry = [];
+  List<Map<String, dynamic>> _wplsRegistry = [];
+  bool _partsRegistryLoading = false;
+  bool _wplsRegistryLoading = false;
+  String? _partsRegistryError;
+  String? _wplsRegistryError;
 
   Future<void> _search() async {
     final query = _controller.text.trim();
@@ -125,8 +132,51 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
           },
         );
         overlay.insert(_edgeOverlay!);
+        // load registries
+        _fetchPartsRegistry(); // Load parts registry
+        _fetchWplsRegistry(); // Load WPLs registry
       }
     });
+  }
+
+  Future<void> _fetchPartsRegistry({String q = '', int limit = 1000, int offset = 0}) async {
+    setState(() { _partsRegistryLoading = true; _partsRegistryError = null; });
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final enc = Uri.encodeQueryComponent(q);
+      final res = await api.client.get('/amz/inventory/parts?q=$enc&limit=$limit&offset=$offset');
+      if (res.ok) {
+        final body = res.body;
+        List<dynamic> list = [];
+        if (body is Map && body['results'] is List) list = body['results'];
+        else if (body is List) list = body;
+        setState(() { _partsRegistry = list.whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList(); });
+      } else {
+        setState(() { _partsRegistryError = res.error ?? 'Failed to load parts'; });
+      }
+    } catch (e) {
+      setState(() { _partsRegistryError = e.toString(); });
+    } finally { setState(() { _partsRegistryLoading = false; }); }
+  }
+
+  Future<void> _fetchWplsRegistry({String q = '', int limit = 1000, int offset = 0}) async {
+    setState(() { _wplsRegistryLoading = true; _wplsRegistryError = null; });
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final enc = Uri.encodeQueryComponent(q);
+      final res = await api.client.get('/amz/inventory/wpls?q=$enc&limit=$limit&offset=$offset');
+      if (res.ok) {
+        final body = res.body;
+        List<dynamic> list = [];
+        if (body is Map && body['results'] is List) list = body['results'];
+        else if (body is List) list = body;
+        setState(() { _wplsRegistry = list.whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList(); });
+      } else {
+        setState(() { _wplsRegistryError = res.error ?? 'Failed to load wpls'; });
+      }
+    } catch (e) {
+      setState(() { _wplsRegistryError = e.toString(); });
+    } finally { setState(() { _wplsRegistryLoading = false; }); }
   }
 
   @override
@@ -355,7 +405,74 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
 
   Widget _buildResult() {
     if (_partInventory == null && _wplInventory == null) {
-      return const _EmptyPrompt(message: 'Enter a query to view inventory');
+      return FadeTransition(
+        opacity: _panelFade,
+        child: ScaleTransition(
+          scale: _panelScale,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(top: 6),
+            child: LayoutBuilder(builder: (ctx, constraints) {
+              final wide = constraints.maxWidth >= 900;
+              if (wide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _SectionHeader('Parts Registry'),
+                          const SizedBox(height: 8),
+                          _buildRegistryPanel(
+                            items: _partsRegistry,
+                            loading: _partsRegistryLoading,
+                            error: _partsRegistryError,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _SectionHeader('WPLs Registry'),
+                          const SizedBox(height: 8),
+                          _buildRegistryPanel(
+                            items: _wplsRegistry,
+                            loading: _wplsRegistryLoading,
+                            error: _wplsRegistryError,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionHeader('Parts Registry'),
+                  const SizedBox(height: 8),
+                  _buildRegistryPanel(
+                    items: _partsRegistry,
+                    loading: _partsRegistryLoading,
+                    error: _partsRegistryError,
+                  ),
+                  const SizedBox(height: 18),
+                  const _SectionHeader('WPLs Registry'),
+                  const SizedBox(height: 8),
+                  _buildRegistryPanel(
+                    items: _wplsRegistry,
+                    loading: _wplsRegistryLoading,
+                    error: _wplsRegistryError,
+                  ),
+                ],
+              );
+            }),
+          ),
+        ),
+      );
     }
     if (_partInventory != null) {
       return FadeTransition(
@@ -382,6 +499,62 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
       );
     }
     return const SizedBox.shrink();
+  }
+
+  Widget _buildRegistryPanel({
+    required List<Map<String, dynamic>> items,
+    required bool loading,
+    String? error,
+  }) {
+    if (loading) return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+    if (error != null) return _ErrorBanner(message: error);
+    if (items.isEmpty) return const Padding(
+      padding: EdgeInsets.all(12.0),
+      child: Text('No entries found.'),
+    );
+    // compute union of keys for columns (preserve insertion order roughly)
+    final colsSet = <String>{};
+    for (final row in items) {
+      for (final k in row.keys) colsSet.add(k);
+    }
+    final columns = colsSet.toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.04)),
+        ),
+        child: SizedBox(
+          height: 420, // constrain height so long registries scroll instead of overflowing
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width - 120),
+                child: DataTable(
+                  headingRowHeight: 40,
+                  dataRowHeight: 46,
+                  columns: columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 13)))).toList(),
+                  rows: items.map((r) {
+                    return DataRow(
+                      cells: columns.map((c) {
+                        final v = r[c];
+                        final s = v == null ? '' : (v is String ? v : v.toString());
+                        return DataCell(SelectableText(s, style: const TextStyle(fontSize: 13)));
+                      }).toList(),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -973,7 +1146,7 @@ class _GlassPanel extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
-              child,
+              Expanded(child: child),
             ],
           ),
         ),

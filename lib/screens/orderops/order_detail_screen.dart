@@ -77,6 +77,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   bool get _canEditOrderMeta => _isPrivilegedRole;
 
+  // Allow limited edits (proyecto and family) to clerks as well.
+  bool get _canEditProyectoOrFamily {
+    final role = _normalizedRole();
+    return role == 'admin' || role == 'chief' || role.contains('clerc');
+  }
+
   bool _isTabletWidth(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     return width >= 760 && width < 1200;
@@ -578,9 +584,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           const SizedBox(height: 6),
                           _buildMiniBadge('Prioridad: ${prioridadMeta.$1}', prioridadMeta.$2),
                           const SizedBox(height: 6),
-                                    _canEditOrderMeta
-                                        ? GestureDetector(
-                                            onTap: () => _showFamilyPicker(order.family ?? ''),
+                                    _canEditProyectoOrFamily
+                                      ? GestureDetector(
+                                        onTap: () => _showFamilyPicker(order.family ?? ''),
                                             child: _buildMiniBadge(
                                               'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
                                               order.family?.trim().isEmpty ?? true ? Colors.redAccent : Colors.tealAccent,
@@ -799,6 +805,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   bool _hasArchivosAttached() => _photos.isNotEmpty;
+  bool _hasXlsxAttached() {
+    return _photos.any((photo) {
+      final path = (photo.filePath.isNotEmpty ? photo.filePath : photo.fileName).toLowerCase();
+      return path.endsWith('.xlsx') || path.endsWith('.xls');
+    });
+  }
 
   bool _hasQualityEvidence() => _photos.any(_isImageFile);
 
@@ -948,13 +960,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
     }
 
-    return Scrollbar(
-      thumbVisibility: _showPersistentScrollbar(context),
-      child: ListView.builder(
-        itemCount: _observations.length,
-        itemBuilder: (context, index) {
+    final _roleDebug = _normalizedRole();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // DEBUG: show current normalized role and permission flag (remove after testing)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Text('role: $_roleDebug  |  canManage: ${_canManageObservations}', style: TextStyle(color: theme.hintColor, fontSize: 12)),
+        ),
+        Expanded(
+          child: Scrollbar(
+            thumbVisibility: _showPersistentScrollbar(context),
+            child: ListView.builder(
+              itemCount: _observations.length,
+              itemBuilder: (context, index) {
           final obs = _observations[index];
           final author = (obs.author ?? 'Sin autor').trim();
+          final canManage = _canManageObservations;
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Container(
@@ -964,19 +987,132 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: _panelItemBorder(theme)),
               ),
-              child: SelectableText(
-                '$author: ${obs.body}',
-                maxLines: 1,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(
+                          '$author - ${obs.createdAt != null ? DateFormat.yMd().add_Hm().format(obs.createdAt!) : ''}',
+                          style: TextStyle(color: theme.hintColor, fontSize: 11),
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(
+                          obs.body ?? '',
+                          style: const TextStyle(
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (canManage)
+                    Column(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 18),
+                          tooltip: 'Editar',
+                          onPressed: () => _editObservation(obs),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          tooltip: 'Eliminar',
+                          onPressed: () => _confirmDeleteObservation(obs),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ),
           );
         },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  bool get _canManageObservations {
+    final role = _normalizedRole();
+    return role == 'admin' ||
+        role == 'chief' ||
+        role == 'technician' ||
+        role.contains('clerc') ||
+        role.contains('tech');
+  }
+
+  Future<void> _editObservation(AgentOrderObservation obs) async {
+    if (!_canManageObservations || _orderOpsService == null || _detail == null) return;
+    final controller = TextEditingController(text: obs.body ?? '');
+    final updated = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editar observación'),
+        content: TextField(
+          controller: controller,
+          maxLines: null,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('Guardar')),
+        ],
       ),
     );
+    controller.dispose();
+    if (updated == null) return;
+    final text = updated.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _loading = true);
+    try {
+      final author = ApiService.instance?.currentUser?.username;
+      final ok = await _orderOpsService!.updateObservation(_detail!.agentOrder.idnbr, obs.id, text, author: author);
+      if (ok) {
+        await _loadData();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Observación actualizada')));
+      } else {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo actualizar la observación')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _confirmDeleteObservation(AgentOrderObservation obs) async {
+    if (!_canManageObservations || _orderOpsService == null || _detail == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar observación'),
+        content: const Text('¿Seguro que desea eliminar esta observación? Esta acción quedará registrada en el log.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _loading = true);
+    try {
+      final success = await _orderOpsService!.deleteObservation(_detail!.agentOrder.idnbr, obs.id);
+      if (success) {
+        await _loadData();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Observación eliminada')));
+      } else {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo eliminar la observación')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Widget _buildCard({
@@ -1139,6 +1275,32 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               foregroundColor: Colors.white,
             ),
           ),
+        // When order is finished and it's a CAMBIO DE SERIAL but no XLSX
+        // has been attached, show a small button to manually attach it.
+        if (order.estado.contains('5') &&
+            (order.family ?? '').trim().toUpperCase() == 'CAMBIO DE SERIAL' &&
+            !_hasXlsxAttached())
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.icon(
+              onPressed: () async {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Adjuntando Excel...')));
+                try {
+                  await _exportFinalSerialFileToSftpAndAttachArchivo();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Archivo adjuntado correctamente')));
+                    await _loadData();
+                  }
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adjuntando XLSX: $e')));
+                }
+              },
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Adjuntar XLSX'),
+            ),
+          ),
       ],
       child: Wrap(
         alignment: WrapAlignment.center,
@@ -1167,23 +1329,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _buildBadgeItem(
             'Proyecto',
             (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
-              ? (_activeProyectoName ?? order.proyecto)!
+                ? (_activeProyectoName ?? order.proyecto)!
                 : 'SIN PROYECTO',
             (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
                 ? Colors.indigoAccent
                 : Colors.grey,
-            onTap:
-                _canEditOrderMeta
-                ? () => _showProyectoPicker(
-                  _activeProyectoName ?? order.proyecto ?? '',
-                )
-                    : null,
+            onTap: _canEditProyectoOrFamily ? () => _showProyectoPicker(order.proyecto ?? '') : null,
           ),
           _buildBadgeItem(
             'Familia',
             order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!,
             order.family?.trim().isEmpty ?? true ? Colors.redAccent : Colors.tealAccent,
-            onTap: _canEditOrderMeta ? () => _showFamilyPicker(order.family ?? '') : null,
+            onTap: _canEditProyectoOrFamily ? () => _showFamilyPicker(order.family ?? '') : null,
           ),
         ],
       ),
@@ -1191,7 +1348,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _showFamilyPicker(String currentFamily) async {
-    if (!_canEditOrderMeta) return;
+    if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null) return;
     const extraFamilies = <String>[
       'SERIGRAFIADO',
@@ -1303,7 +1460,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _updateFamily(String family) async {
-    if (!_canEditOrderMeta) return;
+    if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null || _detail == null) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1341,7 +1498,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _showProyectoPicker(String currentProyecto) async {
-    if (!_canEditOrderMeta) return;
+    if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null) return;
 
     List<Proyecto> proyectos = [];
@@ -1469,7 +1626,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     int? proyectoId,
     String? reasonLabel,
   }) async {
-    if (!_canEditOrderMeta) return;
+    if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null || _detail == null) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1728,57 +1885,89 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (normalizedOrder.isEmpty) return;
 
     try {
-      final exportRes = await client.post(
-        '/serials/finish-order-upload',
-        jsonBody: {'nr_orden': normalizedOrder},
-      );
-      if (!exportRes.ok) {
-        debugPrint(
-          'OrderDetail: finish-order-upload failed (${exportRes.statusCode})',
-        );
-        return;
+      // Prefer using the explicit export endpoint to retrieve the XLSX bytes,
+      // then upload them into Archivos via multipart so the file is attached
+      // to the order immediately. After attaching, trigger the backend
+      // finish-order-upload to send the file to the SFTP as a final step.
+
+      final enc = Uri.encodeQueryComponent(normalizedOrder);
+      List<int>? bytes;
+      try {
+        final expRes = await client.getBytes('/serials/export-serial-changes?nr_orden=$enc');
+        if (expRes.ok && expRes.body is List<int>) {
+          bytes = List<int>.from(expRes.body as List<int>);
+        }
+      } catch (e) {
+        debugPrint('OrderDetail: export endpoint failed: $e');
+        bytes = null;
       }
 
-      String fileName = '$normalizedOrder.xlsx';
-      String? filePath;
+      final fileName = '$normalizedOrder.xlsx';
+      var attached = false;
 
-      if (exportRes.body is Map) {
-        final body = Map<String, dynamic>.from(exportRes.body as Map);
-        fileName =
-            _firstNonEmptyString(body, const [
+      if (bytes != null && bytes.isNotEmpty) {
+        try {
+          attached = await _orderOpsService!.uploadPhoto(
+            order.idnbr,
+            fileName,
+            bytes,
+          );
+          if (!attached) {
+            debugPrint('OrderDetail: uploadPhoto returned false for $fileName');
+          }
+        } catch (e) {
+          debugPrint('OrderDetail: uploadPhoto exception: $e');
+          attached = false;
+        }
+      }
+
+      // Regardless of whether the frontend attached the file, call the
+      // backend trigger so it can perform its SFTP publishing logic and
+      // return any canonical path we can register as an Archivo. If the
+      // frontend already uploaded the file via multipart, the backend
+      // should deduplicate or accept the existing file.
+      try {
+        final exportRes = await client.post(
+          '/serials/finish-order-upload',
+          jsonBody: {'nr_orden': normalizedOrder},
+        );
+
+        if (!exportRes.ok) {
+          debugPrint('OrderDetail: finish-order-upload failed (${exportRes.statusCode})');
+        } else {
+          // If backend returns a server-side path and we didn't attach via
+          // multipart, try to register that path in Archivos for the order.
+          if (!attached && exportRes.body is Map) {
+            final body = Map<String, dynamic>.from(exportRes.body as Map);
+            final filePath = _firstNonEmptyString(body, const [
+              'file_path',
+              'path',
+              'excel_path',
+              'export_path',
+              'archivo_path',
+              'relative_path',
+            ]);
+            final returnedName = _firstNonEmptyString(body, const [
               'file_name',
               'filename',
               'name',
               'excel_file',
-            ]) ??
-            fileName;
-        filePath = _firstNonEmptyString(body, const [
-          'file_path',
-          'path',
-          'excel_path',
-          'export_path',
-          'archivo_path',
-          'relative_path',
-        ]);
-      }
+            ]) ?? fileName;
 
-      if (filePath == null || filePath.isEmpty) {
-        // If backend doesn't return a path we cannot register an Archivo reliably.
-        debugPrint(
-          'OrderDetail: export completed but no file_path returned for Archivo registry.',
-        );
-        return;
-      }
-
-      final author = ApiService.instance?.currentUser?.username;
-      final attached = await _orderOpsService!.addArchivoManual(
-        order.idnbr,
-        fileName,
-        filePath,
-        author: author,
-      );
-      if (!attached) {
-        debugPrint('OrderDetail: addArchivoManual failed for $filePath');
+            if (filePath != null && filePath.isNotEmpty) {
+              final author = ApiService.instance?.currentUser?.username;
+              final ok = await _orderOpsService!.addArchivoManual(
+                order.idnbr,
+                returnedName,
+                filePath,
+                author: author,
+              );
+              if (!ok) debugPrint('OrderDetail: addArchivoManual failed for $filePath');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('OrderDetail: finish-order-upload exception: $e');
       }
     } catch (e) {
       debugPrint('OrderDetail: export/archive registration error: $e');
@@ -2578,6 +2767,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           tooltip: 'Subir archivo',
           onPressed: _uploadArchivo,
         ),
+        // Manual attach Excel for Cambio de Serial when order is finalized
+        if (_detail != null) ...[
+          Builder(builder: (ctx) {
+            final order = _detail!.agentOrder;
+            final family = (order.family ?? '').trim().toUpperCase();
+            final estado = (order.estado ?? '').toString();
+            final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
+            final expectedFileName = '$normalizedOrder.xlsx';
+            final alreadyAttached = archivoFiles.any((f) => (f.fileName ?? '').toLowerCase() == expectedFileName.toLowerCase() || (f.filePath ?? '').toLowerCase().contains(normalizedOrder.toLowerCase()));
+            final isFinished = estado.contains('5') || estado.contains('6');
+              if (family == 'CAMBIO DE SERIAL' && isFinished && !alreadyAttached) {
+              return IconButton(
+                icon: const Icon(Icons.attach_file, size: 20, color: Colors.amber),
+                tooltip: 'Adjuntar XLSX automáticamente',
+                onPressed: () async {
+                  // Automatic export and attach without manual input
+                  try {
+                    ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Adjuntando Excel...')));
+                    await _exportFinalSerialFileToSftpAndAttachArchivo();
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Archivo adjuntado correctamente')));
+                    // reload via parent context
+                    if (mounted) await _loadData();
+                  } catch (e) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error adjuntando XLSX: $e')));
+                  }
+                },
+              );
+            }
+            return const SizedBox.shrink();
+          }),
+        ],
       ],
       height: null,
       child: Column(
@@ -2654,6 +2875,69 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _promptAttachExcelManual() async {
+    if (_detail == null || _orderOpsService == null) return;
+    final order = _detail!.agentOrder;
+    final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
+    final defaultName = '$normalizedOrder.xlsx';
+
+    final pathCtrl = TextEditingController();
+    final nameCtrl = TextEditingController(text: defaultName);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adjuntar Excel manualmente'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pathCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Ruta de servidor (ej: /exports/ORDER123.xlsx)',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Nombre de archivo (opcional)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Adjuntar')),
+        ],
+      ),
+    );
+
+    nameCtrl.dispose();
+    final filePath = pathCtrl.text.trim();
+    pathCtrl.dispose();
+    if (ok != true) return;
+    if (filePath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Se requiere la ruta del archivo en el servidor.')));
+      return;
+    }
+
+    final fileName = nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : defaultName;
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Adjuntando archivo...')));
+      final author = ApiService.instance?.currentUser?.username;
+      final okAdd = await _orderOpsService!.addArchivoManual(order.idnbr, fileName, filePath, author: author);
+      if (okAdd) {
+        await _loadData();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Archivo adjuntado correctamente')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo adjuntar el archivo.')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adjuntando archivo: $e')));
+    }
   }
 
   Widget _buildArchivoThumbCard(AgentOrderPhoto file) {
@@ -3247,22 +3531,48 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       try {
         // Attach quality photos to the order only; do not register them
         // under the Proyecto even if the order is linked to one.
-        final success = await _orderOpsService?.uploadPhoto(
+        // Ensure filename indicates quality so frontend can classify it
+        String name = picked.name;
+        final dot = name.lastIndexOf('.');
+        final ext = (dot >= 0) ? name.substring(dot) : '.jpg';
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        if (!name.toLowerCase().startsWith('quality_')) {
+          name = 'quality_$timestamp$ext';
+        }
+
+        final attachment = MultipartAttachment(
+          fieldName: 'file',
+          fileName: name,
+          bytes: picked.bytes,
+        );
+
+        final res = await _orderOpsService?.uploadPhotos(
           widget.orderId,
-          picked.name,
-          picked.bytes,
+          [attachment],
           proyectoId: null,
           scope: 'quality',
         );
-        if (success == true) {
+
+        if (res == null) {
+          setState(() => _loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error al subir la foto (servicio)')),
+          );
+        } else if (res.ok) {
           await _loadData();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Foto guardada correctamente')),
           );
         } else {
           setState(() => _loading = false);
+          String bodyText = '';
+          try {
+            bodyText = res.body?.toString() ?? res.error ?? 'unknown';
+          } catch (_) {
+            bodyText = res.error ?? 'error';
+          }
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error al subir la foto')),
+            SnackBar(content: Text('Error al subir la foto: $bodyText')),
           );
         }
       } catch (e) {

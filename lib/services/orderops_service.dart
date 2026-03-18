@@ -427,6 +427,40 @@ class OrderOpsService {
     return result.ok;
   }
 
+  /// Update an existing observation (comment) on an agent order.
+  Future<bool> updateObservation(
+    int idnbr,
+    int observationId,
+    String bodyText, {
+    String? author,
+  }) async {
+    final body = <String, dynamic>{'body': bodyText};
+    if (author != null) body['author'] = author;
+
+    // Preferred nested endpoint
+    final result = await _client.patch(
+      '/orderops/agent-orders/$idnbr/observations/$observationId',
+      jsonBody: body,
+    );
+
+    // Fallback to flat endpoint for older backends
+    if (result.statusCode == 404 || result.statusCode == 405) {
+      final fallback = await _client.patch('/orderops/observations/$observationId', jsonBody: body);
+      return fallback.ok;
+    }
+
+    return result.ok;
+  }
+
+  /// Delete an observation (comment) from an agent order.
+  Future<bool> deleteObservation(int idnbr, int observationId) async {
+    final nested = await _client.delete('/orderops/agent-orders/$idnbr/observations/$observationId');
+    if (nested.ok) return true;
+
+    final flat = await _client.delete('/orderops/observations/$observationId');
+    return flat.ok;
+  }
+
   Future<List<AgentOrderPhoto>> getPhotos(int idnbr) async {
     final result = await _client.get('/orderops/agent-orders/$idnbr/photos');
     if (!result.ok) {

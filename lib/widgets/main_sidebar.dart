@@ -915,6 +915,7 @@ class _MainSidebarState extends State<MainSidebar> {
           'admin',
           'clerc',
           'technitian',
+          'operario',
         ].any((r) => (user?.role ?? '').toLowerCase().contains(r))) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
