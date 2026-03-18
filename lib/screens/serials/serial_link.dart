@@ -594,6 +594,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       _orderSerials = serials;
       _duplicateRows.clear();
     });
+    
 
     _disposeRowsLater(removed);
 
@@ -714,7 +715,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             _applyOrderData(
               order: Map<String, dynamic>.from(orderMap),
               serials: serials,
-              manualDouble: orderMap['manual_double'] == true,
+              manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true),
             );
           } catch (e) {
             _showSnack('Error registrando orden: $e');
@@ -795,7 +796,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             _applyOrderData(
               order: Map<String, dynamic>.from(orderMap),
               serials: serials,
-              manualDouble: orderMap['manual_double'] == true,
+              manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true),
             );
           } catch (e) {
             _showSnack('Error registrando orden: $e');
@@ -1526,6 +1527,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Match unidad / orden', style: theme.textTheme.titleLarge),
+          // (manualDouble state not shown in UI)
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1628,6 +1630,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                           child: TextField(
                             controller: row.serial,
                             focusNode: row.focus,
+                            textInputAction: TextInputAction.next,
                             decoration: InputDecoration(
                               labelText: 'Serial ${index + 1}',
                               errorText: _duplicateRows.contains(index)
@@ -1645,6 +1648,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                 }
                               }
                             },
+                            onEditingComplete: () {
+                              // Ensure Tab/Enter both move focus correctly
+                              if (manualDouble) {
+                                row.inventoryFocus.requestFocus();
+                              } else {
+                                if (index + 1 < _matchRows.length) {
+                                  _matchRows[index + 1].focus.requestFocus();
+                                } else {
+                                  FocusScope.of(context).nextFocus();
+                                }
+                              }
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1654,6 +1669,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                             controller: row.inventory,
                             focusNode: row.inventoryFocus,
                             readOnly: !manualDouble,
+                            enabled: manualDouble,
                             decoration: const InputDecoration(
                               labelText: 'Inventario/IMEI',
                             ),
@@ -1665,6 +1681,17 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                     if (index + 1 < _matchRows.length) {
                                       _matchRows[index + 1].focus
                                           .requestFocus();
+                                    } else {
+                                      FocusScope.of(context).unfocus();
+                                    }
+                                  }
+                                : null,
+                            onEditingComplete: manualDouble
+                                ? () {
+                                    if (index + 1 < _matchRows.length) {
+                                      _matchRows[index + 1].focus.requestFocus();
+                                    } else {
+                                      FocusScope.of(context).unfocus();
                                     }
                                   }
                                 : null,
