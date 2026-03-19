@@ -1454,7 +1454,12 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
+    final isVeryNarrow = MediaQuery.of(context).size.width < 450;
+
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 16,
+      runSpacing: 12,
       children: [
         Container(
           padding: const EdgeInsets.all(12),
@@ -1468,13 +1473,14 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
             color: theme.colorScheme.primary,
           ),
         ),
-        const SizedBox(width: 16),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Dashboard Igualdad',
-              style: theme.textTheme.headlineMedium?.copyWith(
+              style: (isVeryNarrow 
+                ? theme.textTheme.headlineSmall 
+                : theme.textTheme.headlineMedium)?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.onSurface,
               ),
@@ -1967,10 +1973,10 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         children: [
           // Main Content
           Padding(
-            padding: const EdgeInsets.only(
-              left: 60.0, // More space for sidebar
+            padding: EdgeInsets.only(
+              left: MediaQuery.of(context).size.width < 500 ? 12.0 : 60.0,
               top: 32,
-              right: 32,
+              right: 28,
               bottom: 32,
             ),
             child: Column(

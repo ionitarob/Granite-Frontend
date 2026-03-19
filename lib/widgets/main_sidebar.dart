@@ -1904,8 +1904,8 @@ class EdgeNavHandle extends StatefulWidget {
     this.user,
     this.width = 28,
     this.currentRoute,
-    this.showIndicator = false,
-    this.openOnHover = true,
+    this.showIndicator = true,
+    this.openOnHover = false,
   });
 
   @override
@@ -1930,7 +1930,7 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     final platform = defaultTargetPlatform;
     final isNativeMobile =
         platform == TargetPlatform.android || platform == TargetPlatform.iOS;
-    if (isNativeMobile) {
+    if (isNativeMobile || !widget.showIndicator) {
       return const SizedBox.shrink();
     }
 
@@ -1944,7 +1944,6 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Auto-resolve route if not provided, to fix overlay context issues
     final actualRoute =
         widget.currentRoute ?? ModalRoute.of(context)?.settings.name;
 
@@ -1965,38 +1964,31 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
           user: widget.user,
           currentRoute: actualRoute,
         ),
-        child: SizedBox(
+        child: Container(
           width: widget.width,
-          child: widget.showIndicator
-              ? Center(
-                  child: Container(
-                    width: 24,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.black.withOpacity(0.1),
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(12),
-                        bottomRight: Radius.circular(12),
-                      ),
-                      border: Border.all(
-                        color: isDark
-                            ? Colors.white.withOpacity(0.2)
-                            : Colors.black.withOpacity(0.1),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.chevron_right_rounded,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.7)
-                          : Colors.black.withOpacity(0.6),
-                      size: 20,
-                    ),
-                  ),
-                )
-              : null,
+          height: 48,
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withOpacity(0.1)
+                : Colors.black.withOpacity(0.1),
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(12),
+              bottomRight: Radius.circular(12),
+            ),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withOpacity(0.2)
+                  : Colors.black.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            Icons.chevron_right_rounded,
+            color: isDark
+                ? Colors.white.withOpacity(0.7)
+                : Colors.black.withOpacity(0.6),
+            size: 20,
+          ),
         ),
       ),
     );

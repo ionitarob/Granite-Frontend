@@ -300,6 +300,34 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
     });
   }
 
+  Future<void> _handleDsnSubmitted(String value) async {
+    final dsn = _dsnController.text.trim().toUpperCase();
+    if (dsn.startsWith('KSP')) {
+      final answer = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('¿Es un accesorio?'),
+          content: const Text('El DSN inicia con KSP. ¿Es un accesorio?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Sí'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      setState(() => _isAccessory = answer == true);
+    } else {
+      _isAccessory = false;
+    }
+    FocusScope.of(context).requestFocus(_upcFocus);
+  }
+
   void _triggerErrorOverlay({bool resetFields = false, String? error}) {
     if (resetFields) {
       _formKey.currentState?.reset();
@@ -396,7 +424,12 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
                   else
                     SafeArea(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(40, 20, 20, 20),
+                        padding: EdgeInsets.fromLTRB(
+                          MediaQuery.of(context).size.width < 500 ? 16 : 40,
+                          20,
+                          20,
+                          20,
+                        ),
                         child: _buildForm(
                           fontIn,
                           fontLbl,
@@ -537,83 +570,61 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
                         key: _formKey,
                         child: Column(
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _buildMacInput(
-                                    controller: _dsnController,
-                                    focusNode: _dsnFocus,
-                                    label: 'DSN',
-                                    icon: Icons.qr_code,
-                                    fontIn: fontIn,
-                                    autoFocus: true,
-                                    textInputAction: TextInputAction.next,
-                                    onSubmitted: (_) async {
-                                      final dsn = _dsnController.text
-                                          .trim()
-                                          .toUpperCase();
-                                      if (dsn.startsWith('KSP')) {
-                                        final answer = await showDialog<bool>(
-                                          context: context,
-                                          builder: (_) => AlertDialog(
-                                            title: const Text(
-                                              '¿Es un accesorio?',
-                                            ),
-                                            content: const Text(
-                                              'El DSN inicia con KSP. ¿Es un accesorio?',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.of(
-                                                  context,
-                                                ).pop(false),
-                                                child: const Text('No'),
-                                              ),
-                                              TextButton(
-                                                onPressed: () => Navigator.of(
-                                                  context,
-                                                ).pop(true),
-                                                child: const Text('Sí'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (!mounted) return;
-                                        setState(
-                                          () => _isAccessory = answer == true,
-                                        );
-                                      } else {
-                                        _isAccessory = false;
-                                      }
-                                      FocusScope.of(
-                                        context,
-                                      ).requestFocus(_upcFocus);
-                                    },
-                                    validator: (v) => (v == null || v.isEmpty)
-                                        ? 'Requerido'
-                                        : null,
+                            if (MediaQuery.of(context).size.width < 500) ...[
+                              _buildMacInput(
+                                controller: _dsnController,
+                                focusNode: _dsnFocus,
+                                label: 'DSN',
+                                icon: Icons.qr_code,
+                                fontIn: fontIn,
+                                autoFocus: true,
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (v) => _handleDsnSubmitted(v),
+                                validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                              ),
+                              const SizedBox(height: 16),
+                              _buildMacInput(
+                                controller: _upcController,
+                                focusNode: _upcFocus,
+                                label: 'UPC',
+                                icon: Icons.confirmation_number,
+                                fontIn: fontIn,
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => FocusScope.of(context).requestFocus(_fcFocus),
+                                validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                              ),
+                            ] else
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: _buildMacInput(
+                                      controller: _dsnController,
+                                      focusNode: _dsnFocus,
+                                      label: 'DSN',
+                                      icon: Icons.qr_code,
+                                      fontIn: fontIn,
+                                      autoFocus: true,
+                                      textInputAction: TextInputAction.next,
+                                      onSubmitted: (v) => _handleDsnSubmitted(v),
+                                      validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildMacInput(
-                                    controller: _upcController,
-                                    focusNode: _upcFocus,
-                                    label: 'UPC',
-                                    icon: Icons.confirmation_number,
-                                    fontIn: fontIn,
-                                    textInputAction: TextInputAction.next,
-                                    onSubmitted: (_) => FocusScope.of(
-                                      context,
-                                    ).requestFocus(_fcFocus),
-                                    validator: (v) => (v == null || v.isEmpty)
-                                        ? 'Requerido'
-                                        : null,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _buildMacInput(
+                                      controller: _upcController,
+                                      focusNode: _upcFocus,
+                                      label: 'UPC',
+                                      icon: Icons.confirmation_number,
+                                      fontIn: fontIn,
+                                      textInputAction: TextInputAction.next,
+                                      onSubmitted: (_) => FocusScope.of(context).requestFocus(_fcFocus),
+                                      validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               focusNode: _fcFocus,
@@ -711,6 +722,16 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
                             // Checks Grid
                             Builder(
                               builder: (_) {
+                                final screenWidth = MediaQuery.of(context).size.width;
+                                final isNarrow = screenWidth < 500;
+                                
+                                if (isNarrow) {
+                                  final allKeys = [..._leftKeys, ..._rightKeys];
+                                  return Column(
+                                    children: allKeys.map((key) => _boxedSwitch(key, fontLbl, switchScale)).toList(),
+                                  );
+                                }
+
                                 final maxLen = math.max(
                                   _leftKeys.length,
                                   _rightKeys.length,

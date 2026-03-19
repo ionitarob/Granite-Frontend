@@ -484,6 +484,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (isEnEjecucion) ...[
@@ -506,7 +507,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               _buildArchivosCard(theme),
               const SizedBox(height: 24),
               _buildLogCard(theme),
-              const SizedBox(height: 80), // bottom padding
+              const SizedBox(height: 32), // bottom padding
             ],
           ),
         ),
@@ -602,7 +603,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   ],
                 ),
                 headerTrailing: SizedBox(
-                  height: 26,
+                  height: 40,
                   child: ElevatedButton(
                               onPressed: order.estado.contains('5')
                         ? null
@@ -611,12 +612,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      minimumSize: const Size(0, 26),
+                      minimumSize: const Size(0, 40),
                     ),
                     child: const Text(
                       'Finalizar',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -782,6 +783,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return nbr;
   }
 
+  String _normalizeText(String s) {
+    var t = (s ?? '').toUpperCase();
+    // Replace common Spanish accents/characters with ASCII equivalents
+    t = t.replaceAll('Á', 'A').replaceAll('É', 'E').replaceAll('Í', 'I').replaceAll('Ó', 'O').replaceAll('Ú', 'U').replaceAll('Ñ', 'N');
+    // Remove any non-alphanumeric/space characters
+    t = t.replaceAll(RegExp(r'[^A-Z0-9 ]'), ' ');
+    // Collapse whitespace
+    t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return t;
+  }
+
   (String, Color) _mapPrioridad(String rawPrioridad) {
     if (rawPrioridad.isEmpty) return ('Baja', Colors.grey);
     var text = rawPrioridad;
@@ -812,7 +824,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  bool _hasQualityEvidence() => _photos.any(_isImageFile);
+  bool _hasQualityEvidence() => _photos.any((p) => _isImageFile(p) || _isPdfFile(p));
 
   Widget _buildMiniBadge(String value, Color color) {
     return Container(
@@ -1875,8 +1887,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (currentDetail == null || _orderOpsService == null) return;
 
     final order = currentDetail.agentOrder;
-    final family = (order.family ?? '').trim().toUpperCase();
-    if (family != 'CAMBIO DE SERIAL') return;
+    final family = (order.family ?? '').trim();
+    final nf = _normalizeText(family);
+    final isCambioSerial = nf.contains('CAMBIO') && nf.contains('SERIAL');
+    final isManipulacionEtq = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+    if (!isCambioSerial && !isManipulacionEtq) return;
 
     final client = ApiService.instance?.client;
     if (client == null) return;
@@ -1893,17 +1908,51 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final enc = Uri.encodeQueryComponent(normalizedOrder);
       List<int>? bytes;
       try {
-        final expRes = await client.getBytes('/serials/export-serial-changes?nr_orden=$enc');
-        if (expRes.ok && expRes.body is List<int>) {
-          bytes = List<int>.from(expRes.body as List<int>);
+        // Prefer different endpoints depending on family: for Manipulación use
+        // the matches/export endpoint, for Cambio de Serial prefer the
+        // export-serial-changes endpoint.
+        if (isManipulacionEtq) {
+          final rawOrder = Uri.encodeQueryComponent(order.orderNbr ?? normalizedOrder);
+          debugPrint('OrderDetail: requesting fallback/matches export for $rawOrder (manipulation)');
+          final fallbackRes = await client.getBytes('/serials/matches/export?num_orden=$rawOrder');
+          if (fallbackRes.ok && fallbackRes.body is List<int>) {
+            bytes = List<int>.from(fallbackRes.body as List<int>);
+          } else {
+            debugPrint('OrderDetail: matches export returned ${fallbackRes.statusCode} / ok=${fallbackRes.ok}');
+          }
+        } else {
+          debugPrint('OrderDetail: requesting export-serial-changes for $normalizedOrder');
+          final expRes = await client.getBytes('/serials/export-serial-changes?nr_orden=$enc');
+          if (expRes.ok && expRes.body is List<int>) {
+            bytes = List<int>.from(expRes.body as List<int>);
+          } else {
+            debugPrint('OrderDetail: export-serial-changes returned ${expRes.statusCode} / ok=${expRes.ok}');
+          }
         }
       } catch (e) {
-        debugPrint('OrderDetail: export endpoint failed: $e');
+        debugPrint('OrderDetail: export attempt exception: $e');
         bytes = null;
       }
 
       final fileName = '$normalizedOrder.xlsx';
       var attached = false;
+
+      // If the file is already attached to this order, skip exporting again.
+      final exists = _photos.any((p) {
+        final name = (p.fileName).trim();
+        final path = (p.filePath).trim();
+        if (name.isNotEmpty && name == fileName) return true;
+        if (path.isNotEmpty && path.endsWith(fileName)) return true;
+        return false;
+      });
+      if (exists) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Archivo $fileName ya existe; no se exporta.')),
+          );
+        }
+        return;
+      }
 
       if (bytes != null && bytes.isNotEmpty) {
         try {
@@ -1927,9 +1976,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       // frontend already uploaded the file via multipart, the backend
       // should deduplicate or accept the existing file.
       try {
+        final targetOrderNo = isManipulacionEtq 
+            ? (order.orderNbr ?? normalizedOrder) 
+            : normalizedOrder;
+
         final exportRes = await client.post(
           '/serials/finish-order-upload',
-          jsonBody: {'nr_orden': normalizedOrder},
+          jsonBody: {'nr_orden': targetOrderNo},
         );
 
         if (!exportRes.ok) {
@@ -2062,21 +2115,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
     }
 
-    return SizedBox(
-      width: double.infinity,
-      height: 860,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        maxHeight: 2500, // safety cap
+      ),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white24),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black45,
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            ),
-          ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
@@ -2771,13 +2817,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         if (_detail != null) ...[
           Builder(builder: (ctx) {
             final order = _detail!.agentOrder;
-            final family = (order.family ?? '').trim().toUpperCase();
+            final family = (order.family ?? '').trim();
             final estado = (order.estado ?? '').toString();
             final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
             final expectedFileName = '$normalizedOrder.xlsx';
-            final alreadyAttached = archivoFiles.any((f) => (f.fileName ?? '').toLowerCase() == expectedFileName.toLowerCase() || (f.filePath ?? '').toLowerCase().contains(normalizedOrder.toLowerCase()));
+            final lcExpected = expectedFileName.toLowerCase();
+            final alreadyAttached = archivoFiles.any((f) {
+              final fn = (f.fileName ?? '').toLowerCase();
+              final fp = (f.filePath ?? '').toLowerCase();
+              // Prefer explicit .xlsx attachments. If any archivo has .xlsx, treat as attached.
+              if (fn.endsWith('.xlsx') || fp.endsWith('.xlsx')) return true;
+              // Fall back to exact filename match.
+              if (fn == lcExpected) return true;
+              return false;
+            });
             final isFinished = estado.contains('5') || estado.contains('6');
-              if (family == 'CAMBIO DE SERIAL' && isFinished && !alreadyAttached) {
+            final nf = _normalizeText(family);
+            final isManipulacionEtq = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+            final isCambioSerial = nf.contains('CAMBIO') && nf.contains('SERIAL');
+            if (((isCambioSerial && isFinished) || isManipulacionEtq) && !alreadyAttached) {
               return IconButton(
                 icon: const Icon(Icons.attach_file, size: 20, color: Colors.amber),
                 tooltip: 'Adjuntar XLSX automáticamente',

@@ -44,6 +44,10 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
   final TextEditingController _descCtrl = TextEditingController();
   final TextEditingController _operarioCtrl = TextEditingController();
   // Focus nodes for auto navigation
+  final FocusNode _previFocus = FocusNode();
+  final FocusNode _clienteFocus = FocusNode();
+  final FocusNode _operarioFocus = FocusNode();
+  final FocusNode _descFocus = FocusNode();
   final FocusNode _serverSerialFocus = FocusNode();
   final FocusNode _pnFocus = FocusNode();
   final FocusNode _snFocus = FocusNode();
@@ -253,17 +257,28 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
     }
   }
 
-  void _seleccionarServidor(int idx) {
-    setState(() => _serverIndexActivo = idx);
+  void _seleccionarServidor(int index) {
+    setState(() => _serverIndexActivo = index);
     _focusPn();
   }
 
+  void _eliminarServidor(int index) {
+    setState(() {
+      _servidores.removeAt(index);
+      if (_servidores.isEmpty) {
+        _serverIndexActivo = -1;
+      } else if (_serverIndexActivo >= _servidores.length) {
+        _serverIndexActivo = _servidores.length - 1;
+      }
+    });
+  }
+
   void _focusPn() {
-    if (mounted) FocusScope.of(context).requestFocus(_pnFocus);
+    if (mounted) _pnFocus.requestFocus();
   }
 
   void _focusSn() {
-    if (mounted) FocusScope.of(context).requestFocus(_snFocus);
+    if (mounted) _snFocus.requestFocus();
   }
 
   Future<void> _scanPn() async {
@@ -547,73 +562,22 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
     final bool hayRegistrosConPiezas = _servidores.any(
       (s) => s.serverSerial.trim().isNotEmpty && s.piezas.isNotEmpty,
     );
-    return Scaffold(
-      extendBodyBehindAppBar: !widget.isEmbedded,
-      appBar: widget.isEmbedded
-          ? null
-          : AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              title: const Text(
-                'Registro Servidor',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
-              ),
-              centerTitle: true,
-              actions: [
-                IconButton(
-                  tooltip: 'Exportar PDF y registrar',
-                  onPressed: (_uploading || !_puedeSubir) ? null : _exportarPdf,
-                  icon: _uploading
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        )
-                      : const Icon(Icons.picture_as_pdf),
-                ),
-              ],
-            ),
-      body: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.surface,
-                  Theme.of(context).colorScheme.surfaceContainer,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: SafeArea(
-              child: Form(
-                key: _formKey,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
+    final Widget mainBody = Form(
+        key: _formKey,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
                     final isWide =
                         constraints.maxWidth > 900; // tablets / desktop
                     final isMedium =
                         constraints.maxWidth > 650; // landscape phones grandes
-                    final isVeryNarrow =
-                        constraints.maxWidth < 360; // teléfonos muy angostos
 
-                    Widget servidoresSection = Theme(
-                      data: Theme.of(
-                        context,
-                      ).copyWith(inputDecorationTheme: inputDecoration),
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                    final List<Widget> mainContent = [
+                      const SizedBox(height: 16),
                             GlassCard(
                               child: Padding(
                                 padding: const EdgeInsets.all(16.0),
                                 child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
@@ -626,13 +590,16 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                         ).colorScheme.onSurface,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 8),
                                     if (isWide || isMedium)
                                       Row(
                                         children: [
                                           Expanded(
                                             child: TextFormField(
                                               controller: _previCtrl,
+                                              focusNode: _previFocus,
+                                              textInputAction: TextInputAction.next,
+                                              onFieldSubmitted: (_) => _clienteFocus.requestFocus(),
                                               inputFormatters: [
                                                 OrderInputFormatter(),
                                               ],
@@ -658,11 +625,14 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                           Expanded(
                                             child: TextFormField(
                                               controller: _clienteCtrl,
+                                              focusNode: _clienteFocus,
                                               style: TextStyle(
                                                 color: Theme.of(
                                                   context,
                                                 ).textTheme.bodyMedium?.color,
                                               ),
+                                              textInputAction: TextInputAction.next,
+                                              onFieldSubmitted: (_) => (_hasCurrentUserOperario ? _descFocus : _operarioFocus).requestFocus(),
                                               decoration: const InputDecoration(
                                                 labelText: 'Cliente',
                                               ),
@@ -677,9 +647,13 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                       )
                                     else
                                       Column(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           TextFormField(
                                             controller: _previCtrl,
+                                            focusNode: _previFocus,
+                                            textInputAction: TextInputAction.next,
+                                            onFieldSubmitted: (_) => _clienteFocus.requestFocus(),
                                             inputFormatters: [
                                               OrderInputFormatter(),
                                             ],
@@ -703,11 +677,14 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                           const SizedBox(height: 8),
                                           TextFormField(
                                             controller: _clienteCtrl,
+                                            focusNode: _clienteFocus,
                                             style: TextStyle(
                                               color: Theme.of(
                                                 context,
                                               ).textTheme.bodyMedium?.color,
                                             ),
+                                            textInputAction: TextInputAction.next,
+                                            onFieldSubmitted: (_) => (_hasCurrentUserOperario ? _descFocus : _operarioFocus).requestFocus(),
                                             decoration: const InputDecoration(
                                               labelText: 'Cliente',
                                             ),
@@ -719,9 +696,10 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                           ),
                                         ],
                                       ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 8),
                                     TextFormField(
                                       controller: _operarioCtrl,
+                                      focusNode: _operarioFocus,
                                       readOnly: _hasCurrentUserOperario,
                                       enabled: !_hasCurrentUserOperario
                                           ? null
@@ -737,6 +715,8 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                                   : 1.0,
                                             ),
                                       ),
+                                      textInputAction: TextInputAction.next,
+                                      onFieldSubmitted: (_) => _descFocus.requestFocus(),
                                       decoration: InputDecoration(
                                         labelText: 'Operario',
                                         hintText: _hasCurrentUserOperario
@@ -749,14 +729,17 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                           : null,
                                       onChanged: (_) => setState(() {}),
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 8),
                                     TextFormField(
                                       controller: _descCtrl,
+                                      focusNode: _descFocus,
                                       style: TextStyle(
                                         color: Theme.of(
                                           context,
                                         ).textTheme.bodyMedium?.color,
                                       ),
+                                      textInputAction: TextInputAction.next,
+                                      onFieldSubmitted: (_) => _serverSerialFocus.requestFocus(),
                                       decoration: const InputDecoration(
                                         labelText: 'Descripción del trabajo',
                                       ),
@@ -771,11 +754,12 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             GlassCard(
                               child: Padding(
                                 padding: const EdgeInsets.all(16.0),
                                 child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
@@ -788,7 +772,7 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                         ).colorScheme.onSurface,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 8),
                                     Row(
                                       children: [
                                         Expanded(
@@ -856,11 +840,12 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             GlassCard(
                               child: Padding(
                                 padding: const EdgeInsets.all(16.0),
                                 child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
@@ -873,8 +858,9 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                         ).colorScheme.onSurface,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
-                                    if (!isVeryNarrow)
+                                    const SizedBox(height: 8),
+                                    // Responsive layout for P/N and S/N inputs
+                                    if (isWide || isMedium)
                                       Row(
                                         children: [
                                           Expanded(
@@ -886,17 +872,17 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                                   context,
                                                 ).textTheme.bodyMedium?.color,
                                               ),
-                                                textInputAction: TextInputAction.next,
-                                                onFieldSubmitted: (_) => _focusSn(),
-                                                decoration: InputDecoration(
-                                                  labelText: 'P/N',
-                                                  suffixIcon: IconButton(
-                                                    icon: const Icon(
-                                                      Icons.qr_code_scanner,
-                                                    ),
-                                                    onPressed: _scanPn,
+                                              textInputAction: TextInputAction.next,
+                                              onFieldSubmitted: (_) => _focusSn(),
+                                              decoration: InputDecoration(
+                                                labelText: 'P/N',
+                                                suffixIcon: IconButton(
+                                                  icon: const Icon(
+                                                    Icons.qr_code_scanner,
                                                   ),
+                                                  onPressed: _scanPn,
                                                 ),
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(width: 8),
@@ -909,22 +895,69 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                                   context,
                                                 ).textTheme.bodyMedium?.color,
                                               ),
-                                                textInputAction: TextInputAction.done,
-                                                onFieldSubmitted: (_) => _agregarPieza(),
-                                                decoration: InputDecoration(
-                                                  labelText: 'S/N',
-                                                  suffixIcon: IconButton(
-                                                    icon: const Icon(
-                                                      Icons.qr_code_scanner,
-                                                    ),
-                                                    onPressed: _scanSn,
+                                              textInputAction: TextInputAction.done,
+                                              onFieldSubmitted: (_) => _agregarPieza(),
+                                              decoration: InputDecoration(
+                                                labelText: 'S/N',
+                                                suffixIcon: IconButton(
+                                                  icon: const Icon(
+                                                    Icons.qr_code_scanner,
                                                   ),
+                                                  onPressed: _scanSn,
                                                 ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          TextFormField(
+                                            controller: _pnCtrl,
+                                            focusNode: _pnFocus,
+                                            style: TextStyle(
+                                              color: Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                            ),
+                                            textInputAction: TextInputAction.next,
+                                            onFieldSubmitted: (_) => _focusSn(),
+                                            decoration: InputDecoration(
+                                              labelText: 'P/N',
+                                              suffixIcon: IconButton(
+                                                icon: const Icon(
+                                                  Icons.qr_code_scanner,
+                                                ),
+                                                onPressed: _scanPn,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          TextFormField(
+                                            controller: _snCtrl,
+                                            focusNode: _snFocus,
+                                            style: TextStyle(
+                                              color: Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                            ),
+                                            textInputAction: TextInputAction.done,
+                                            onFieldSubmitted: (_) => _agregarPieza(),
+                                            decoration: InputDecoration(
+                                              labelText: 'S/N',
+                                              suffixIcon: IconButton(
+                                                icon: const Icon(
+                                                  Icons.qr_code_scanner,
+                                                ),
+                                                onPressed: _scanSn,
+                                              ),
                                             ),
                                           ),
                                         ],
                                       ),
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 12),
                                     if (_serverIndexActivo >= 0)
                                       GlassCard(
                                         elevation: 4,
@@ -933,9 +966,12 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                             .surfaceContainerHighest
                                             .withOpacity(0.3),
                                         child: Padding(
-                                          padding: const EdgeInsets.all(8.0),
-                                          child: _listaPiezas(
-                                            _servidores[_serverIndexActivo],
+                                          padding: const EdgeInsets.all(4.0),
+                                          child: SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: _listaPiezas(
+                                              _servidores[_serverIndexActivo],
+                                            ),
                                           ),
                                         ),
                                       )
@@ -955,11 +991,11 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                             if (!isWide &&
                                 !isMedium &&
                                 _serverIndexActivo >= 0) ...[
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 8),
                               // Preview se muestra debajo en teléfonos angostos
                               GlassCard(
                                 child: SizedBox(
-                                  height: 320,
+                                  height: 280,
                                   child: _previewBarcodes(
                                     _servidores[_serverIndexActivo],
                                   ),
@@ -967,7 +1003,7 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                               ),
                             ],
                             if (widget.isEmbedded) ...[
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 8),
                               SizedBox(
                                 width: double.infinity,
                                 child: FilledButton.icon(
@@ -993,15 +1029,35 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                                     _uploading
                                         ? 'Procesando...'
                                         : hayRegistrosConPiezas
-                                        ? 'Exportar PDF y Registrar'
+                                        ? 'Registrar y Finalizar'
                                         : 'Escanear Servidor',
                                   ),
                                 ),
                               ),
                             ],
-                          ],
-                        ),
-                      ),
+                            if (!widget.isEmbedded)
+                              const SizedBox(height: 80),
+                    ];
+
+                    Widget servidoresSection = Theme(
+                      data: Theme.of(
+                        context,
+                      ).copyWith(inputDecorationTheme: inputDecoration),
+                      child: widget.isEmbedded
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: mainContent,
+                            )
+                          : SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: mainContent,
+                              ),
+                            ),
                     );
 
                     Widget previewSection = Padding(
@@ -1027,39 +1083,63 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
                       ),
                     );
 
-                    if (isWide) {
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(flex: 3, child: servidoresSection),
-                          Expanded(flex: 2, child: previewSection),
-                        ],
-                      );
-                    } else if (isMedium) {
-                      // Landscape phone / tablet pequeño: fila pero preview más pequeño
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(flex: 5, child: servidoresSection),
-                          Expanded(flex: 4, child: previewSection),
-                        ],
-                      );
-                    } else {
-                      // Teléfono vertical: columna
-                      return servidoresSection; // preview ya incluido abajo si hay servidor
-                    }
-                  },
-                ),
+
+            if (isWide) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 7, child: servidoresSection),
+                  const VerticalDivider(width: 1),
+                  Expanded(flex: 4, child: previewSection),
+                ],
+              );
+            } else {
+              return servidoresSection;
+            }
+          },
+        ),
+      );
+
+    if (widget.isEmbedded) return mainBody;
+
+    return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          'Registro Servidor',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Exportar PDF y registrar',
+            onPressed: (_uploading || !_puedeSubir) ? null : _exportarPdf,
+            icon: _uploading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.picture_as_pdf),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Theme.of(context).colorScheme.surface, Theme.of(context).colorScheme.surfaceContainer],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
+            child: mainBody,
           ),
-          if (!widget.isEmbedded)
-            const Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: EdgeNavHandle(openOnHover: false),
-            ),
+          const Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: EdgeNavHandle(openOnHover: false),
+          ),
         ],
       ),
       floatingActionButton: widget.isEmbedded
@@ -1124,6 +1204,8 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
       elevation: selected ? 2 : 0,
       pressElevation: 3,
       onSelected: (_) => _seleccionarServidor(index),
+      deleteIcon: const Icon(Icons.cancel, size: 18),
+      onDeleted: () => _eliminarServidor(index),
       avatar: selected
           ? Icon(
               Icons.check,
@@ -1191,6 +1273,8 @@ class _RegistroServidorScreenState extends State<RegistroServidorScreen> {
       );
     }
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(12),
       itemCount: servidor.piezas.length,
       itemBuilder: (ctx, i) {

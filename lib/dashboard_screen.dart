@@ -491,10 +491,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     required List<Color> gradientColors,
     required bool isDark,
   }) {
+    final width = MediaQuery.of(context).size.width;
+    final isVeryNarrow = width < 420;
+
     return Expanded(
+      flex: isVeryNarrow ? 0 : 1,
       child: Container(
-        height: 100,
-        margin: const EdgeInsets.symmetric(horizontal: 6),
+        height: isVeryNarrow ? 85 : 100,
+        width: isVeryNarrow ? double.infinity : null,
+        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
           color: isDark
               ? const Color(0xFF1E1E2C).withOpacity(0.8)
@@ -540,18 +545,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: isVeryNarrow ? 12 : 13,
                       fontWeight: FontWeight.w500,
                       color: isDark ? Colors.white70 : Colors.black54,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     value,
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: isVeryNarrow ? 22 : 28,
                       fontWeight: FontWeight.bold,
                       color: isDark ? Colors.white : Colors.black87,
                       height: 1.0,
@@ -620,106 +625,121 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ],
         ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    theme.colorScheme.primary,
-                    theme.colorScheme.tertiary,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isVeryNarrow = constraints.maxWidth < 420;
+            return Wrap(
+              direction: Axis.horizontal,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        theme.colorScheme.primary,
+                        theme.colorScheme.tertiary,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.person_outline_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
-              ),
-              child: const Icon(
-                Icons.person_outline_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Asignación Actual',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.textTheme.bodySmall?.color,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    area,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              height: 50,
-              width: 1,
-              color: theme.dividerColor.withOpacity(0.1),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Rendimiento',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.textTheme.bodySmall?.color,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
+                SizedBox(width: isVeryNarrow ? 12 : 20),
+                SizedBox(
+                  width: isVeryNarrow ? (constraints.maxWidth - 60) : (constraints.maxWidth - 300) / 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$perf%',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: perf >= 90
-                              ? Colors.greenAccent
-                              : (perf >= 70
-                                    ? Colors.orangeAccent
-                                    : Colors.redAccent),
+                        'Asignación Actual',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.textTheme.bodySmall?.color,
+                          letterSpacing: 1.0,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        perf >= 0
-                            ? Icons.trending_up_rounded
-                            : Icons.trending_down_rounded, // Placeholder logic
-                        color: perf >= 90
-                            ? Colors.greenAccent
-                            : (perf >= 70
-                                  ? Colors.orangeAccent
-                                  : Colors.redAccent),
-                        size: 20,
+                      const SizedBox(height: 4),
+                      Text(
+                        area,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+                if (isVeryNarrow) const SizedBox(height: 12, width: double.infinity),
+                if (!isVeryNarrow)
+                  Container(
+                    height: 50,
+                    width: 1,
+                    color: theme.dividerColor.withOpacity(0.1),
+                  ),
+                if (!isVeryNarrow) const SizedBox(width: 20),
+                SizedBox(
+                  width: isVeryNarrow ? (constraints.maxWidth - 20) : (constraints.maxWidth - 300) / 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rendimiento',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.textTheme.bodySmall?.color,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            '$perf%',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: perf >= 90
+                                  ? Colors.greenAccent
+                                  : (perf >= 70
+                                        ? Colors.orangeAccent
+                                        : Colors.redAccent),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            perf >= 0
+                                ? Icons.trending_up_rounded
+                                : Icons.trending_down_rounded, // Placeholder logic
+                            color: perf >= 90
+                                ? Colors.greenAccent
+                                : (perf >= 70
+                                      ? Colors.orangeAccent
+                                      : Colors.redAccent),
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       );
     } else {
       // Admin / Supervisor View with Cards
-      // Using placeholders for values to match the requested look
+      final width = MediaQuery.of(context).size.width;
+      final isVeryNarrow = width < 520;
+
       block = SizedBox(
         width: double.infinity,
-        child: Row(
+        child: Wrap(
+          spacing: isVeryNarrow ? 8 : 0,
+          runSpacing: isVeryNarrow ? 8 : 0,
           children: [
             _buildMetricCard(
               title: 'Órdenes pendientes',
@@ -731,7 +751,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               isDark: isDark,
             ),
             _buildMetricCard(
-              title: 'Tus órdenes asignadas',
+              title: 'Órdenes asignadas',
               value: '0',
               gradientColors: [
                 const Color(0xFF2193b0),
@@ -780,7 +800,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // Central content area shared by desktop and mobile layouts.
-  // Central content area shared by desktop and mobile layouts.
   Widget _buildNavigationSelector(ThemeData theme, User u) {
     final allowed = _availableTabsFor(u);
 
@@ -814,24 +833,27 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return Center(
-      child: SegmentedButton<DashboardTab>(
-        segments: segments,
-        selected: {_currentTab},
-        onSelectionChanged: (s) {
-          final next = s.first;
-          setState(() => _currentTab = next);
-          if (next == DashboardTab.ordenes) {
-            _loadDashboardOrders(silent: true);
-          }
-        },
-        showSelectedIcon: false,
-        style: ButtonStyle(
-          visualDensity: VisualDensity.compact,
-          padding: WidgetStateProperty.all(
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          ),
-          shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SegmentedButton<DashboardTab>(
+          segments: segments,
+          selected: {_currentTab},
+          onSelectionChanged: (s) {
+            final next = s.first;
+            setState(() => _currentTab = next);
+            if (next == DashboardTab.ordenes) {
+              _loadDashboardOrders(silent: true);
+            }
+          },
+          showSelectedIcon: false,
+          style: ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            padding: WidgetStateProperty.all(
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
           ),
         ),
       ),
@@ -1576,7 +1598,7 @@ class DashboardSurface extends StatelessWidget {
               ),
             ],
           ),
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
