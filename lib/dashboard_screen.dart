@@ -7,18 +7,13 @@ import 'widgets/total_grading_widget.dart';
 import 'widgets/grading_hoy_widget.dart';
 import 'widgets/widget_grid.dart';
 import 'widgets/grading_series_widget.dart';
-import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'services/api_service.dart';
 import 'services/orderops_service.dart';
-import 'dart:async';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'models/user_model.dart';
 import 'models/agent_models.dart';
-import 'config.dart';
 import 'screens/orderops/order_detail_screen.dart';
 import 'widgets/kit_digital_stats_table.dart';
 import 'widgets/amz_bucket_distribution_widget.dart';
@@ -492,110 +487,111 @@ class _DashboardScreenState extends State<DashboardScreen>
     required bool isDark,
   }) {
     final width = MediaQuery.of(context).size.width;
-    final isVeryNarrow = width < 420;
+    final isVeryNarrow = width < 520;
 
-    return Expanded(
-      flex: isVeryNarrow ? 0 : 1,
-      child: Container(
-        height: isVeryNarrow ? 85 : 100,
-        width: isVeryNarrow ? double.infinity : null,
-        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        decoration: BoxDecoration(
+    final card = Container(
+      height: 100,
+      width: isVeryNarrow ? 160 : null,
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF1E1E2C).withOpacity(0.8)
+            : Colors.white.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
           color: isDark
-              ? const Color(0xFF1E1E2C).withOpacity(0.8)
-              : Colors.white.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withOpacity(0.05)
-                : Colors.black.withOpacity(0.05),
+              ? Colors.white.withOpacity(0.05)
+              : Colors.black.withOpacity(0.05),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Bottom Gradient Line
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
+                gradient: LinearGradient(colors: gradientColors),
+              ),
             ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            // Bottom Gradient Line
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 2,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(16),
+          ),
+          // Content
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: isVeryNarrow ? 12 : 13,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.white70 : Colors.black54,
                   ),
-                  gradient: LinearGradient(colors: gradientColors),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: isVeryNarrow ? 22 : 28,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                    height: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Subtle Glow
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 40,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(16),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    gradientColors.first.withOpacity(0.15),
+                    Colors.transparent,
+                  ],
                 ),
               ),
             ),
-            // Content
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: isVeryNarrow ? 12 : 13,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: isVeryNarrow ? 22 : 28,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
-                      height: 1.0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Subtle Glow
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 40,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(16),
-                  ),
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      gradientColors.first.withOpacity(0.15),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+
+    if (isVeryNarrow) return card;
+    return Expanded(child: card);
   }
 
   Widget _buildTopHeader(User u, ThemeData theme) {
     final isOperario = _isOperario(u);
     final isDark = theme.brightness == Brightness.dark;
+    final isVeryNarrow = MediaQuery.of(context).size.width < 520;
 
     Widget block;
 
@@ -627,7 +623,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final isVeryNarrow = constraints.maxWidth < 420;
+            final isVeryNarrowLayout = constraints.maxWidth < 420;
             return Wrap(
               direction: Axis.horizontal,
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -651,9 +647,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                     size: 28,
                   ),
                 ),
-                SizedBox(width: isVeryNarrow ? 12 : 20),
+                SizedBox(width: isVeryNarrowLayout ? 12 : 20),
                 SizedBox(
-                  width: isVeryNarrow ? (constraints.maxWidth - 60) : (constraints.maxWidth - 300) / 2,
+                  width: isVeryNarrowLayout ? (constraints.maxWidth - 60) : (constraints.maxWidth - 300) / 2,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -674,16 +670,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                 ),
-                if (isVeryNarrow) const SizedBox(height: 12, width: double.infinity),
-                if (!isVeryNarrow)
+                if (isVeryNarrowLayout) const SizedBox(height: 12, width: double.infinity),
+                if (!isVeryNarrowLayout)
                   Container(
                     height: 50,
                     width: 1,
                     color: theme.dividerColor.withOpacity(0.1),
                   ),
-                if (!isVeryNarrow) const SizedBox(width: 20),
+                if (!isVeryNarrowLayout) const SizedBox(width: 20),
                 SizedBox(
-                  width: isVeryNarrow ? (constraints.maxWidth - 20) : (constraints.maxWidth - 300) / 2,
+                  width: isVeryNarrowLayout ? (constraints.maxWidth - 20) : (constraints.maxWidth - 300) / 2,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -731,46 +727,74 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       );
     } else {
-      // Admin / Supervisor View with Cards
-      final width = MediaQuery.of(context).size.width;
-      final isVeryNarrow = width < 520;
-
-      block = SizedBox(
-        width: double.infinity,
-        child: Wrap(
-          spacing: isVeryNarrow ? 8 : 0,
-          runSpacing: isVeryNarrow ? 8 : 0,
-          children: [
-            _buildMetricCard(
-              title: 'Órdenes pendientes',
-              value: '0',
-              gradientColors: [
-                const Color(0xFFF12711),
-                const Color(0xFFF5AF19),
-              ], // Orange/Red
-              isDark: isDark,
-            ),
-            _buildMetricCard(
-              title: 'Órdenes asignadas',
-              value: '0',
-              gradientColors: [
-                const Color(0xFF2193b0),
-                const Color(0xFF6dd5ed),
-              ], // Blue
-              isDark: isDark,
-            ),
-            _buildMetricCard(
-              title: 'Incidencias',
-              value: '0',
-              gradientColors: [
-                const Color(0xFF833ab4),
-                const Color(0xFFfd1d1d),
-              ], // Pink/Red
-              isDark: isDark,
-            ),
-          ],
-        ),
-      );
+      block = isVeryNarrow
+          ? SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  _buildMetricCard(
+                    title: 'Órdenes pendientes',
+                    value: '0',
+                    gradientColors: [
+                      const Color(0xFFF12711),
+                      const Color(0xFFF5AF19),
+                    ],
+                    isDark: isDark,
+                  ),
+                  _buildMetricCard(
+                    title: 'Órdenes asignadas',
+                    value: '0',
+                    gradientColors: [
+                      const Color(0xFF2193b0),
+                      const Color(0xFF6dd5ed),
+                    ],
+                    isDark: isDark,
+                  ),
+                  _buildMetricCard(
+                    title: 'Incidencias',
+                    value: '0',
+                    gradientColors: [
+                      const Color(0xFF833ab4),
+                      const Color(0xFFfd1d1d),
+                    ],
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+            )
+          : Row(
+              children: [
+                _buildMetricCard(
+                  title: 'Órdenes pendientes',
+                  value: '0',
+                  gradientColors: [
+                    const Color(0xFFF12711),
+                    const Color(0xFFF5AF19),
+                  ],
+                  isDark: isDark,
+                ),
+                _buildMetricCard(
+                  title: 'Órdenes asignadas',
+                  value: '0',
+                  gradientColors: [
+                    const Color(0xFF2193b0),
+                    const Color(0xFF6dd5ed),
+                  ],
+                  isDark: isDark,
+                ),
+                _buildMetricCard(
+                  title: 'Incidencias',
+                  value: '0',
+                  gradientColors: [
+                    const Color(0xFF833ab4),
+                    const Color(0xFFfd1d1d),
+                  ],
+                  isDark: isDark,
+                ),
+              ],
+            );
     }
 
     return Column(
@@ -780,14 +804,14 @@ class _DashboardScreenState extends State<DashboardScreen>
           children: [
             Text(
               '${_greeting()}, ',
-              style: theme.textTheme.headlineSmall?.copyWith(
+              style: (isOperario ? theme.textTheme.headlineSmall : (isVeryNarrow ? theme.textTheme.titleMedium : theme.textTheme.headlineSmall))?.copyWith(
                 fontWeight: FontWeight.w400,
                 color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
               ),
             ),
             Text(
               _displayName(u),
-              style: theme.textTheme.headlineSmall?.copyWith(
+              style: (isOperario ? theme.textTheme.headlineSmall : (isVeryNarrow ? theme.textTheme.titleMedium : theme.textTheme.headlineSmall))?.copyWith(
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -832,9 +856,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
     }
 
+    final isVeryNarrow = MediaQuery.of(context).size.width < 520;
+
     return Center(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         child: SegmentedButton<DashboardTab>(
           segments: segments,
           selected: {_currentTab},
@@ -846,13 +872,15 @@ class _DashboardScreenState extends State<DashboardScreen>
             }
           },
           showSelectedIcon: false,
-          style: ButtonStyle(
-            visualDensity: VisualDensity.compact,
-            padding: WidgetStateProperty.all(
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          style: SegmentedButton.styleFrom(
+            visualDensity: isVeryNarrow ? VisualDensity.compact : VisualDensity.comfortable,
+            padding: EdgeInsets.symmetric(
+              horizontal: isVeryNarrow ? 8 : 12,
+              vertical: isVeryNarrow ? 6 : 8,
             ),
-            shape: WidgetStateProperty.all(
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            textStyle: TextStyle(
+              fontSize: isVeryNarrow ? 12 : 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -989,9 +1017,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                           title: 'Amazon',
                           icon: Icons.shopping_basket_rounded,
                           routes: const [
-                            ('Grading', '/amazon/grading'),
-                            ('Sorting', '/amazon/sorting'),
-                            ('Quality Check', '/amazon/quality'),
+                            ('Grading · Registro Grading', '/amazon/grading'),
+                            ('Grading · Sorting', '/amazon/sorting'),
+                            ('Grading · Quality Check', '/amazon/quality'),
+                            (
+                              'Grading · Herramientas · Cerrar Box',
+                              '/amazon/herramientas/closebox',
+                            ),
+                            (
+                              'Grading · Herramientas · Buscar Box',
+                              '/amazon/herramientas/findbox',
+                            ),
+                            (
+                              'Grading · Herramientas · Buscar DSN',
+                              '/amazon/herramientas/finddsn',
+                            ),
                             ('Inventory · Registro', '/amazon/inventory'),
                             (
                               'Inventory · Picking',
@@ -1002,18 +1042,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                               '/amazon/inventory/receiving',
                             ),
                             ('Inventory · ICQA', '/amazon/inventory/icqa'),
-                            (
-                              'Herramientas · Cerrar Box',
-                              '/amazon/herramientas/closebox',
-                            ),
-                            (
-                              'Herramientas · Buscar Box',
-                              '/amazon/herramientas/findbox',
-                            ),
-                            (
-                              'Herramientas · Buscar DSN',
-                              '/amazon/herramientas/finddsn',
-                            ),
                           ],
                         ),
                         _projectSection(
@@ -1341,7 +1369,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isMobileRoot = MediaQuery.of(context).size.width < 900;
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
 
@@ -1409,8 +1436,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
           ),
-          // Animated, interactive AI Sphere in bottom-right
-          _AispherePosition(bottomInset: isMobileRoot ? 106 : 20),
         ],
       ),
     );
@@ -1420,144 +1445,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 // Small widget that shows the animated AI sphere in the bottom-right.
 // It plays the provided Lottie animation and reacts to mouse hover by growing
 // slightly and adding a glow.
-class _AispherePosition extends StatelessWidget {
-  final double bottomInset;
 
-  const _AispherePosition({this.bottomInset = 20});
-
-  @override
-  Widget build(BuildContext context) {
-    // Provide a finite sized container so the inner Stack in _Aisphere has
-    // bounded constraints (it needs finite width/height to layout the chat
-    // panel above the sphere). The size covers the chat panel + sphere.
-    return Positioned(
-      right: 20,
-      bottom: bottomInset,
-      // make the wrapper compact so the sphere is clearly visible at
-      // bottom-right; the ChatPanel will still position itself above the
-      // sphere using the internal Stack.
-      child: SizedBox(width: 120, height: 120, child: _Aisphere()),
-    );
-  }
-}
-
-class _Aisphere extends StatefulWidget {
-  const _Aisphere();
-
-  @override
-  State<_Aisphere> createState() => _AisphereState();
-}
-
-class _AisphereState extends State<_Aisphere> {
-  bool _hover = false;
-  bool _chatOpen = false;
-  final GlobalKey<_ChatPanelState> _panelKey = GlobalKey<_ChatPanelState>();
-
-  void _setHover(bool v) {
-    // Schedule hover state changes after the current frame to avoid
-    // mutating widget tree during layout/device updates which can cause
-    // assertions like '!_debugDoingThisLayout' or mouse tracker errors.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() => _hover = v);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // size adjusts with hover (kept intentionally small)
-    final size = _hover ? 72.0 : 56.0;
-
-    return MouseRegion(
-      onEnter: (_) => _setHover(true),
-      onExit: (_) => _setHover(false),
-      cursor: SystemMouseCursors.click,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          if (_chatOpen)
-            Positioned(
-              right: 0,
-              bottom: 72.0,
-              child: ChatPanel(
-                key: _panelKey,
-                onClose: () => setState(() => _chatOpen = false),
-              ),
-            ),
-
-          // Only the sphere itself is gesture-aware now. The ChatPanel is a
-          // sibling so clicks inside it won't toggle the sphere or steal focus.
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: GestureDetector(
-              onTapDown: (_) => _setHover(true),
-              onTapUp: (_) => _setHover(false),
-              onTapCancel: () => _setHover(false),
-              onTap: () => WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                final newOpen = !_chatOpen;
-                setState(() => _chatOpen = newOpen);
-                if (newOpen) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!mounted) return;
-                    _panelKey.currentState?.requestFocus();
-                  });
-                }
-              }),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      Colors.blue.shade700.withAlpha(220),
-                      Colors.black.withAlpha(10),
-                    ],
-                    center: const Alignment(-0.4, -0.6),
-                    radius: 0.9,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blueAccent.withAlpha(_hover ? 80 : 40),
-                      blurRadius: _hover ? 10 : 4,
-                      spreadRadius: _hover ? 1 : 0,
-                    ),
-                  ],
-                ),
-                child: AnimatedScale(
-                  duration: const Duration(milliseconds: 180),
-                  scale: _hover ? 1.06 : 1.0,
-                  child: Padding(
-                    padding: const EdgeInsets.all(2.0),
-                    child: ClipOval(
-                      child: Material(
-                        color: Colors.transparent,
-                        child: SizedBox.expand(
-                          child: Center(
-                            child: LottieBuilder.asset(
-                              'lib/assets/AI Sphere.json',
-                              fit: BoxFit.contain,
-                              repeat: true,
-                              animate: true,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class DashboardSurface extends StatelessWidget {
   final Widget child;
@@ -1648,388 +1536,4 @@ class DashboardSurface extends StatelessWidget {
   }
 }
 
-class ChatPanel extends StatefulWidget {
-  final VoidCallback? onClose;
-  const ChatPanel({super.key, this.onClose});
 
-  @override
-  State<ChatPanel> createState() => _ChatPanelState();
-}
-
-class _ChatPanelState extends State<ChatPanel> {
-  final List<Map<String, String>> _messages = [];
-  final TextEditingController _controller = TextEditingController();
-  final ScrollController _scroll = ScrollController();
-  final FocusNode _focus = FocusNode();
-  bool _sending = false;
-  http.Client? _httpClient;
-  StreamSubscription<String>? _streamSub;
-  bool _aborted = false;
-
-  // Called by parent to move keyboard focus into the input field.
-  void requestFocus() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _focus.requestFocus();
-    });
-  }
-
-  Future<void> _send() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    setState(() {
-      _messages.add({'role': 'user', 'text': text});
-      _sending = true;
-      _controller.clear();
-    });
-    // schedule scrolling after this frame to avoid changing layout during
-    // the current frame which can trigger rendering assertions.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_scroll.hasClients) {
-        try {
-          _scroll.animateTo(
-            _scroll.position.maxScrollExtent + 120,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-          );
-        } catch (_) {}
-      }
-    });
-
-    try {
-      // Use centralized backend base URL so the app respects `kBackendBaseUrl`.
-      final uri = Uri.parse('$kBackendBaseUrl/ask');
-      // Prepare client/request to read streamed SSE (server-sent events)
-      _httpClient = http.Client();
-      final req = http.Request('POST', uri)
-        ..headers['Content-Type'] = 'application/json'
-        ..body = json.encode({'prompt': text});
-
-      // Add an empty assistant entry that we'll fill progressively
-      int assistantIndex = -1;
-      setState(() {
-        _messages.add({'role': 'assistant', 'text': ''});
-        assistantIndex = _messages.length - 1;
-      });
-
-      final streamed = await _httpClient!
-          .send(req)
-          .timeout(const Duration(seconds: 20));
-      if (streamed.statusCode != 200) {
-        final body = await streamed.stream.bytesToString();
-        setState(() {
-          _messages[assistantIndex]['text'] =
-              'Error ${streamed.statusCode}: $body';
-          _sending = false;
-        });
-        return;
-      }
-
-      // Listen to the byte stream, decode UTF8 and parse SSE events separated by "\n\n"
-      final decoder = streamed.stream.transform(utf8.decoder);
-      String buffer = '';
-      _aborted = false;
-      _streamSub = decoder.listen(
-        (chunk) {
-          if (_aborted) return;
-          buffer += chunk;
-          // Extract complete events separated by double-newline
-          while (true) {
-            final idx = buffer.indexOf('\n\n');
-            if (idx < 0) break;
-            final event = buffer.substring(0, idx);
-            buffer = buffer.substring(idx + 2);
-            // Each event may have multiple lines. We only process lines that start with 'data:'
-            for (final line in event.split('\n')) {
-              if (line.trim().isEmpty) continue;
-              if (line.startsWith('data:')) {
-                var chunkText = line.substring(5).trim();
-                // Server may escape newlines as literal '\\n' — unescape those
-                chunkText = chunkText.replaceAll('\\n', '\n');
-                // Handle [DONE] sentinel
-                if (chunkText.trim() == '[DONE]') {
-                  continue;
-                }
-                // Append chunk to assistant message
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  final prev = _messages[assistantIndex]['text'] ?? '';
-                  _messages[assistantIndex]['text'] = prev + chunkText;
-                  // keep UI responsive by updating state
-                  setState(() {});
-                  // auto-scroll
-                  if (_scroll.hasClients) {
-                    try {
-                      _scroll.animateTo(
-                        _scroll.position.maxScrollExtent + 120,
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOut,
-                      );
-                    } catch (_) {}
-                  }
-                });
-              }
-            }
-          }
-        },
-        onDone: () async {
-          // If there's leftover buffer with a final event, process it quickly
-          if (buffer.isNotEmpty && !_aborted) {
-            for (final line in buffer.split('\n')) {
-              if (line.startsWith('data:')) {
-                var chunkText = line.substring(5).trim();
-                chunkText = chunkText.replaceAll('\\n', '\n');
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  final prev = _messages[assistantIndex]['text'] ?? '';
-                  _messages[assistantIndex]['text'] = prev + chunkText;
-                  setState(() {});
-                });
-              }
-            }
-          }
-          _httpClient?.close();
-          _httpClient = null;
-          _streamSub = null;
-          if (!mounted) return;
-          setState(() {
-            _sending = false;
-          });
-        },
-        onError: (e) {
-          if (!mounted) return;
-          setState(() {
-            _messages.add({'role': 'assistant', 'text': 'Stream error: $e'});
-            _sending = false;
-          });
-        },
-        cancelOnError: true,
-      );
-    } catch (e) {
-      setState(() {
-        _messages.add({'role': 'assistant', 'text': 'Network error: $e'});
-        _sending = false;
-      });
-    } finally {
-      // final state is set in onDone/onError of the stream; but ensure flag is clear if something left it on
-      if (mounted) setState(() => _sending = false);
-    }
-    // after assistant reply, schedule scroll-to-bottom after the frame completes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_scroll.hasClients) {
-        try {
-          _scroll.animateTo(
-            _scroll.position.maxScrollExtent + 120,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-          );
-        } catch (_) {}
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _scroll.dispose();
-    _focus.dispose();
-    _streamSub?.cancel();
-    _httpClient?.close();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      elevation: 12,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 360,
-        height: 480,
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          children: [
-            // Header with Sentinel name and close
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 10.0,
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(child: Text('S')),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Sentinel',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: widget.onClose,
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-
-            // Messages list
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: ListView.builder(
-                  controller: _scroll,
-                  itemCount: _messages.length,
-                  itemBuilder: (ctx, i) {
-                    final m = _messages[i];
-                    final isUser = m['role'] == 'user';
-                    final bubbleColor = isUser
-                        ? theme.colorScheme.primary
-                        : theme.dividerColor.withAlpha(30);
-                    final textColor = isUser
-                        ? Colors.white
-                        : theme.textTheme.bodyMedium?.color ?? Colors.black87;
-                    return Align(
-                      alignment: isUser
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: 240),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(
-                            vertical: 6,
-                            horizontal: 4,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 10,
-                            horizontal: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            color: bubbleColor,
-                            borderRadius: BorderRadius.only(
-                              topLeft: const Radius.circular(16),
-                              topRight: const Radius.circular(16),
-                              bottomLeft: Radius.circular(isUser ? 16 : 4),
-                              bottomRight: Radius.circular(isUser ? 4 : 16),
-                            ),
-                          ),
-                          child: Text(
-                            m['text'] ?? '',
-                            style: TextStyle(color: textColor),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-
-            const Divider(height: 1),
-
-            // Input row
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color:
-                            theme.inputDecorationTheme.fillColor ??
-                            theme.cardColor.withAlpha(20),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Focus(
-                              onKey: (node, event) {
-                                // Send on Enter, allow Shift+Enter to insert newline
-                                if (event is RawKeyDownEvent &&
-                                    event.logicalKey ==
-                                        LogicalKeyboardKey.enter) {
-                                  final isShift = event.isShiftPressed;
-                                  if (!isShift) {
-                                    _send();
-                                    return KeyEventResult.handled;
-                                  } else {
-                                    // Insert newline at cursor
-                                    final sel = _controller.selection;
-                                    final textBefore = _controller.text
-                                        .substring(0, sel.start);
-                                    final textAfter = _controller.text
-                                        .substring(sel.end);
-                                    final newText = '$textBefore\n$textAfter';
-                                    final newPos = ('$textBefore\n').length;
-                                    _controller.text = newText;
-                                    _controller.selection =
-                                        TextSelection.collapsed(offset: newPos);
-                                    return KeyEventResult.handled;
-                                  }
-                                }
-                                return KeyEventResult.ignored;
-                              },
-                              child: TextField(
-                                focusNode: _focus,
-                                controller: _controller,
-                                decoration: const InputDecoration(
-                                  border: InputBorder.none,
-                                  hintText: 'Message',
-                                ),
-                                minLines: 1,
-                                maxLines: 4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _sending
-                      ? const SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : GestureDetector(
-                          onTap: _send,
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.send,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// _DashboardTile removed — widgets area now uses a draggable, persistent WidgetGrid.

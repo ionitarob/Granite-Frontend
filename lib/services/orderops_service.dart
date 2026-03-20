@@ -681,4 +681,28 @@ class OrderOpsService {
     final result = await _client.delete('/orderops/catalog/cotizaciones/$id');
     return result.ok;
   }
+
+  /// Manually trigger SFTP/MSSQL order ingestion with real-time updates.
+  Stream<Map<String, dynamic>> ingestOrders() async* {
+    final streamedResponse = await _client.streamPost('/amz/orders/ingest');
+
+    if (streamedResponse.statusCode != 200) {
+      throw Exception('Failed to sync orders: ${streamedResponse.statusCode}');
+    }
+
+    await for (final line in streamedResponse.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (line.startsWith('data: ')) {
+        final data = line.substring(6).trim();
+        if (data.isNotEmpty) {
+          try {
+            yield json.decode(data) as Map<String, dynamic>;
+          } catch (e) {
+            if (kDebugMode) print('Error decoding stream data: $e');
+          }
+        }
+      }
+    }
+  }
 }

@@ -22,6 +22,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   OrderOpsService? _orderOpsService;
   List<AgentOrder> _orders = [];
   bool _loading = true;
+  bool _syncingOrders = false;
+  double _syncProgress = 0.0;
+  String _syncMessage = '';
   String? _error;
   Timer? _refreshTimer;
   OverlayEntry? _edgeOverlay;
@@ -204,6 +207,65 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     }
   }
 
+  Future<void> _handleSyncOrders() async {
+    if (_orderOpsService == null || _syncingOrders) return;
+
+    setState(() {
+      _syncingOrders = true;
+      _syncProgress = 0.0;
+      _syncMessage = 'Iniciando sincronización...';
+    });
+
+    try {
+      final stream = _orderOpsService!.ingestOrders();
+      await for (final update in stream) {
+        if (mounted) {
+          setState(() {
+            if (update.containsKey('percent')) {
+              _syncProgress = (update['percent'] as num).toDouble() / 100.0;
+            }
+            if (update.containsKey('message')) {
+              _syncMessage = update['message'] as String;
+            }
+            if (update.containsKey('error')) {
+              throw Exception(update['error']);
+            }
+          });
+        }
+        if (update['done'] == true) {
+          break;
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pedidos sincronizados correctamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadOrders(silent: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _syncingOrders = false;
+          _syncProgress = 0.0;
+          _syncMessage = '';
+        });
+      }
+    }
+  }
+
   void _onOrderTap(AgentOrder order) {
     Navigator.of(context)
         .push(
@@ -371,6 +433,62 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   const SizedBox(height: 24),
                   _buildSearchBar(theme),
                   const SizedBox(height: 16),
+                  if (_syncingOrders)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.tealAccent,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _syncMessage,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white70,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${(_syncProgress * 100).toInt()}%',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.tealAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: _syncProgress,
+                              minHeight: 10,
+                              backgroundColor: Colors.white12,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.tealAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   Expanded(
                     child: Center(
                       child: ConstrainedBox(
@@ -390,7 +508,11 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
 
   Widget _buildHeader(ThemeData theme) {
     final isMobile = MediaQuery.of(context).size.width < 800;
-    
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    final user = apiService.currentUser;
+    final role = user?.role.toLowerCase() ?? '';
+    final canSync = role == 'admin' || role == 'chief';
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -398,17 +520,33 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
           child: Text(
             'Cola de Pedidos',
             overflow: TextOverflow.ellipsis,
-            style: isMobile 
-              ? theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
-                )
-              : theme.textTheme.headlineLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
-                ),
+            style: isMobile
+                ? theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  )
+                : theme.textTheme.headlineLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
           ),
         ),
+        if (canSync)
+          if (_syncingOrders)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.sync_alt_rounded, color: Colors.tealAccent),
+              onPressed: _handleSyncOrders,
+              tooltip: 'Sincronizar Pedidos (SFTP)',
+            ),
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: () => _loadOrders(),

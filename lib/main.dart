@@ -11,6 +11,8 @@ import 'services/api_service.dart';
 import 'config.dart';
 import 'dashboard_screen.dart';
 import 'screens/amazon/amazon_grading_screen.dart';
+import 'screens/amazon/amazon_proyectos_dashboard.dart';
+import 'screens/amazon/amazon_batch_registration.dart';
 import 'screens/amazon/sorting_screen.dart';
 import 'screens/amazon/amz_close_box_screen.dart';
 import 'screens/amazon/amz_find_box_screen.dart';
@@ -196,6 +198,11 @@ class MainApp extends StatelessWidget {
                 '/amazon/quality/unsellable': (_) =>
                     const UnsellableGradingForm(),
                 // Amazon grading and tools (wired from the main sidebar)
+                '/amazon/proyectos': (_) => const AmazonProyectosDashboard(),
+                '/amazon/proyectos/batch/registration': (context) {
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  return AmazonBatchRegistration(batch: args);
+                },
                 '/amazon/grading': (_) => const AmazonGradingScreen(),
                 '/amazon/sorting': (_) => const SortingScreen(),
                 '/amazon/herramientas/closebox': (_) =>

@@ -523,7 +523,7 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
             Align(
               alignment: Alignment.center,
               child: Text(
-                'Grading Amazon',
+                'Registro Grading Amazon',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,

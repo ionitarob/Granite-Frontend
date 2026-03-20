@@ -82,104 +82,119 @@ class _MainSidebarState extends State<MainSidebar> {
                     highlight: highlight,
                     isDark: isDark,
                   ),
-                  const SizedBox(height: 18),
-                  if ([
-                    'admin',
-                    'clerc',
-                    'chief',
-                    'technitian',
-                    'technician',
-                  ].any(
-                    (r) => (user?.role ?? '').toLowerCase().contains(r),
-                  )) ...[
-                    const SidebarSectionHeader(title: 'ADMIN'),
-                    const SizedBox(height: 8),
-                    SidebarExpansionTile(
-                      title: 'Recursos Humanos',
-                      icon: Icons.people_alt_rounded,
-                      highlight: highlight,
-                      textPrimary: textPrimary,
-                      initiallyExpanded: [
-                        '/hr/fichaje',
-                        '/hr/alta_empleado',
-                        '/hr/registro_fichaje',
-                        '/hr/asignacion_trabajo',
-                        '/hr/gestion_empleado',
-                      ].contains(routeName),
-                      children: [
-                        _SidebarTile(
-                          label: 'Fichaje',
-                          icon: Icons.access_time_rounded,
-                          selected: routeName == '/hr/fichaje',
-                          onTap: () => _navigate(
-                            context,
-                            '/hr/fichaje',
-                            closeOverlay: !permanent,
-                          ),
-                          highlight: highlight,
-                          textPrimary: textPrimary,
-                          isDark: isDark,
-                        ),
-                        _SidebarTile(
-                          label: 'Alta Empleado',
-                          icon: Icons.person_add_rounded,
-                          selected: routeName == '/hr/alta_empleado',
-                          onTap: () => _navigate(
-                            context,
-                            '/hr/alta_empleado',
-                            closeOverlay: !permanent,
-                          ),
-                          highlight: highlight,
-                          textPrimary: textPrimary,
-                          isDark: isDark,
-                        ),
-                        _SidebarTile(
-                          label: 'Registro Fichajes',
-                          icon: Icons.format_list_bulleted_rounded,
-                          selected: routeName == '/hr/registro_fichaje',
-                          onTap: () => _navigate(
-                            context,
-                            '/hr/registro_fichaje',
-                            closeOverlay: !permanent,
-                          ),
-                          highlight: highlight,
-                          textPrimary: textPrimary,
-                          isDark: isDark,
-                        ),
-                        _SidebarTile(
-                          label: 'Asignación Trabajo',
-                          icon: Icons.work_outline_rounded,
-                          selected: routeName == '/hr/asignacion_trabajo',
-                          onTap: () => _navigate(
-                            context,
-                            '/hr/asignacion_trabajo',
-                            closeOverlay: !permanent,
-                          ),
-                          highlight: highlight,
-                          textPrimary: textPrimary,
-                          isDark: isDark,
-                        ),
-                        _SidebarTile(
-                          label: 'Gestión Empleado',
-                          icon: Icons.manage_accounts_rounded,
-                          selected: routeName == '/hr/gestion_empleado',
-                          onTap: () => _navigate(
-                            context,
-                            '/hr/gestion_empleado',
-                            closeOverlay: !permanent,
-                          ),
-                          highlight: highlight,
-                          textPrimary: textPrimary,
-                          isDark: isDark,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                  ],
                 ],
               ),
             ),
           ),
+          if ([
+            'admin',
+            'clerc',
+            'chief',
+            'technitian',
+            'technician',
+          ].any(
+            (r) => (user?.role ?? '').toLowerCase().contains(r),
+          )) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(
+                      thickness: 0.6,
+                      height: 1,
+                      color: textMuted.withOpacity(0.12),
+                    ),
+                  ),
+                  const SidebarSectionHeader(title: 'ADMIN'),
+                  const SizedBox(height: 8),
+                  SidebarExpansionTile(
+                    title: 'Recursos Humanos',
+                    icon: Icons.people_alt_rounded,
+                    highlight: highlight,
+                    textPrimary: textPrimary,
+                    initiallyExpanded: [
+                      '/hr/fichaje',
+                      '/hr/alta_empleado',
+                      '/hr/registro_fichaje',
+                      '/hr/asignacion_trabajo',
+                      '/hr/gestion_empleado',
+                    ].contains(routeName),
+                    children: [
+                      _SidebarTile(
+                        label: 'Fichaje',
+                        icon: Icons.access_time_rounded,
+                        selected: routeName == '/hr/fichaje',
+                        onTap: () => _navigate(
+                          context,
+                          '/hr/fichaje',
+                          closeOverlay: !permanent,
+                        ),
+                        highlight: highlight,
+                        textPrimary: textPrimary,
+                        isDark: isDark,
+                      ),
+                      _SidebarTile(
+                        label: 'Alta Empleado',
+                        icon: Icons.person_add_rounded,
+                        selected: routeName == '/hr/alta_empleado',
+                        onTap: () => _navigate(
+                          context,
+                          '/hr/alta_empleado',
+                          closeOverlay: !permanent,
+                        ),
+                        highlight: highlight,
+                        textPrimary: textPrimary,
+                        isDark: isDark,
+                      ),
+                      _SidebarTile(
+                        label: 'Registro Fichajes',
+                        icon: Icons.format_list_bulleted_rounded,
+                        selected: routeName == '/hr/registro_fichaje',
+                        onTap: () => _navigate(
+                          context,
+                          '/hr/registro_fichaje',
+                          closeOverlay: !permanent,
+                        ),
+                        highlight: highlight,
+                        textPrimary: textPrimary,
+                        isDark: isDark,
+                      ),
+                      _SidebarTile(
+                        label: 'Asignación Trabajo',
+                        icon: Icons.work_outline_rounded,
+                        selected: routeName == '/hr/asignacion_trabajo',
+                        onTap: () => _navigate(
+                          context,
+                          '/hr/asignacion_trabajo',
+                          closeOverlay: !permanent,
+                        ),
+                        highlight: highlight,
+                        textPrimary: textPrimary,
+                        isDark: isDark,
+                      ),
+                      _SidebarTile(
+                        label: 'Gestión Empleado',
+                        icon: Icons.manage_accounts_rounded,
+                        selected: routeName == '/hr/gestion_empleado',
+                        onTap: () => _navigate(
+                          context,
+                          '/hr/gestion_empleado',
+                          closeOverlay: !permanent,
+                        ),
+                        highlight: highlight,
+                        textPrimary: textPrimary,
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: 12),
           Divider(height: 1, thickness: .6, color: textMuted.withOpacity(0.18)),
@@ -451,6 +466,11 @@ class _MainSidebarState extends State<MainSidebar> {
       final entries = <({String label, IconData icon, String route})>[
         // Amazon
         (
+          label: 'Amazon · Proyectos',
+          icon: Icons.assignment_turned_in_rounded,
+          route: '/amazon/proyectos',
+        ),
+        (
           label: 'Amazon · Grading',
           icon: Icons.grade_rounded,
           route: '/amazon/grading',
@@ -673,6 +693,7 @@ class _MainSidebarState extends State<MainSidebar> {
         routeName != null && routes.contains(routeName);
 
     const amazonRoutes = [
+      '/amazon/proyectos',
       '/amazon/grading',
       '/amazon/sorting',
       '/amazon/quality',
@@ -689,6 +710,17 @@ class _MainSidebarState extends State<MainSidebar> {
       '/amazon/inventory/picking',
       '/amazon/inventory/receiving',
       '/amazon/inventory/icqa',
+    ];
+    const gradingRoutes = [
+      '/amazon/grading',
+      '/amazon/sorting',
+      '/amazon/quality',
+      '/amazon/herramientas/closebox',
+      '/amazon/herramientas/findbox',
+      '/amazon/herramientas/finddsn',
+    ];
+    const amazonProyectosRoutes = [
+      '/amazon/proyectos',
     ];
     const amazonToolsRoutes = [
       '/amazon/herramientas/closebox',
@@ -731,7 +763,9 @@ class _MainSidebarState extends State<MainSidebar> {
     ];
 
     final amazonExpanded = routeIn(amazonRoutes);
+    final amazonProyectosExpanded = routeIn(amazonProyectosRoutes);
     final inventoryExpanded = routeIn(inventoryRoutes);
+    final gradingExpanded = routeIn(gradingRoutes);
     final amazonToolsExpanded = routeIn(amazonToolsRoutes);
     final igualdadExpanded = routeIn(igualdadRoutes);
     final igualdadRegExpanded = routeIn(igualdadRegRoutes);
@@ -744,6 +778,72 @@ class _MainSidebarState extends State<MainSidebar> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SidebarSectionHeader(title: 'PROYECTOS'),
+        if ([
+          'chief',
+          'admin',
+          'clerc',
+          'technitian',
+          'operario',
+        ].any((r) => (user?.role ?? '').toLowerCase().contains(r))) ...[
+          SidebarExpansionTile(
+            title: 'Ordenes CF',
+            icon: Icons.psychology_rounded,
+            highlight: highlight,
+            textPrimary: textPrimary,
+            initiallyExpanded: orderOpsExpanded,
+            children: [
+              _SidebarTile(
+                label: 'Cola de Pedidos',
+                icon: Icons.list_alt_rounded,
+                selected: isRoute('/orderops/queue'),
+                onTap: () => _navigate(
+                  context,
+                  '/orderops/queue',
+                  closeOverlay: !permanent,
+                ),
+                highlight: highlight,
+                textPrimary: textPrimary,
+                isDark: isDark,
+              ),
+              if (canAccessOrderOpsProyectos)
+                _SidebarTile(
+                  label: 'Proyectos',
+                  icon: Icons.assignment_rounded,
+                  selected: isRoute('/orderops/proyectos'),
+                  onTap: () => _navigate(
+                    context,
+                    '/orderops/proyectos',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                ),
+              if ((user?.role == 'admin' || user?.role == 'chief'))
+                _SidebarTile(
+                  label: 'Tabla Cotizaciones',
+                  icon: Icons.table_chart_rounded,
+                  selected: isRoute('/orderops/cotizaciones'),
+                  onTap: () => _navigate(
+                    context,
+                    '/orderops/cotizaciones',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Divider(
+              thickness: 0.6,
+              height: 1,
+              color: textMuted.withOpacity(0.12),
+            ),
+          ),
+        ],
         SidebarExpansionTile(
           title: 'Amazon',
           icon: Icons.shopping_basket_rounded,
@@ -751,44 +851,133 @@ class _MainSidebarState extends State<MainSidebar> {
           textPrimary: textPrimary,
           initiallyExpanded: amazonExpanded,
           children: [
-            _SidebarTile(
-              label: 'Grading',
+            SidebarExpansionTile(
+              title: 'Grading',
               icon: Icons.grade_rounded,
-              selected: isRoute('/amazon/grading'),
-              onTap: () => _navigate(
-                context,
-                '/amazon/grading',
-                closeOverlay: !permanent,
-              ),
               highlight: highlight,
               textPrimary: textPrimary,
-              isDark: isDark,
+              initiallyExpanded: gradingExpanded,
+              nested: true,
+              children: [
+                _SidebarTile(
+                  label: 'Registro Grading',
+                  icon: Icons.grade_rounded,
+                  selected: isRoute('/amazon/grading'),
+                  onTap: () => _navigate(
+                    context,
+                    '/amazon/grading',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                  nested: true,
+                ),
+                _SidebarTile(
+                  label: 'Sorting',
+                  icon: Icons.sort_rounded,
+                  selected: isRoute('/amazon/sorting'),
+                  onTap: () => _navigate(
+                    context,
+                    '/amazon/sorting',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                  nested: true,
+                ),
+                _SidebarTile(
+                  label: 'Quality Check',
+                  icon: Icons.search_off_rounded,
+                  selected: isRoute('/amazon/quality'),
+                  onTap: () => _navigate(
+                    context,
+                    '/amazon/quality',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                  nested: true,
+                ),
+                SidebarExpansionTile(
+                  title: 'Herramientas',
+                  icon: Icons.build_rounded,
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  initiallyExpanded: amazonToolsExpanded,
+                  nested: true,
+                  children: [
+                    _SidebarTile(
+                      label: 'Cerrar Box',
+                      icon: Icons.close_rounded,
+                      selected: isRoute('/amazon/herramientas/closebox'),
+                      onTap: () => _navigate(
+                        context,
+                        '/amazon/herramientas/closebox',
+                        closeOverlay: !permanent,
+                      ),
+                      highlight: highlight,
+                      textPrimary: textPrimary,
+                      isDark: isDark,
+                      nested: true,
+                    ),
+                    _SidebarTile(
+                      label: 'Buscar Box',
+                      icon: Icons.find_in_page_rounded,
+                      selected: isRoute('/amazon/herramientas/findbox'),
+                      onTap: () => _navigate(
+                        context,
+                        '/amazon/herramientas/findbox',
+                        closeOverlay: !permanent,
+                      ),
+                      highlight: highlight,
+                      textPrimary: textPrimary,
+                      isDark: isDark,
+                      nested: true,
+                    ),
+                    _SidebarTile(
+                      label: 'Buscar DSN',
+                      icon: Icons.search_rounded,
+                      selected: isRoute('/amazon/herramientas/finddsn'),
+                      onTap: () => _navigate(
+                        context,
+                        '/amazon/herramientas/finddsn',
+                        closeOverlay: !permanent,
+                      ),
+                      highlight: highlight,
+                      textPrimary: textPrimary,
+                      isDark: isDark,
+                      nested: true,
+                    ),
+                  ],
+                ),
+              ],
             ),
-            _SidebarTile(
-              label: 'Sorting',
-              icon: Icons.sort_rounded,
-              selected: isRoute('/amazon/sorting'),
-              onTap: () => _navigate(
-                context,
-                '/amazon/sorting',
-                closeOverlay: !permanent,
-              ),
+            SidebarExpansionTile(
+              title: 'Proyectos',
+              icon: Icons.assignment_turned_in_rounded,
               highlight: highlight,
               textPrimary: textPrimary,
-              isDark: isDark,
-            ),
-            _SidebarTile(
-              label: 'Quality Check',
-              icon: Icons.search_off_rounded,
-              selected: isRoute('/amazon/quality'),
-              onTap: () => _navigate(
-                context,
-                '/amazon/quality',
-                closeOverlay: !permanent,
-              ),
-              highlight: highlight,
-              textPrimary: textPrimary,
-              isDark: isDark,
+              initiallyExpanded: amazonProyectosExpanded,
+              nested: true,
+              children: [
+                _SidebarTile(
+                  label: 'Dashboard',
+                  icon: Icons.dashboard_rounded,
+                  selected: isRoute('/amazon/proyectos'),
+                  onTap: () => _navigate(
+                    context,
+                    '/amazon/proyectos',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                  nested: true,
+                ),
+              ],
             ),
             SidebarExpansionTile(
               title: 'Inventory',
@@ -856,126 +1045,8 @@ class _MainSidebarState extends State<MainSidebar> {
                 ),
               ],
             ),
-            SidebarExpansionTile(
-              title: 'Herramientas',
-              icon: Icons.build_rounded,
-              highlight: highlight,
-              textPrimary: textPrimary,
-              initiallyExpanded: amazonToolsExpanded,
-              nested: true,
-              children: [
-                _SidebarTile(
-                  label: 'Cerrar Box',
-                  icon: Icons.close_rounded,
-                  selected: isRoute('/amazon/herramientas/closebox'),
-                  onTap: () => _navigate(
-                    context,
-                    '/amazon/herramientas/closebox',
-                    closeOverlay: !permanent,
-                  ),
-                  highlight: highlight,
-                  textPrimary: textPrimary,
-                  isDark: isDark,
-                  nested: true,
-                ),
-                _SidebarTile(
-                  label: 'Buscar Box',
-                  icon: Icons.find_in_page_rounded,
-                  selected: isRoute('/amazon/herramientas/findbox'),
-                  onTap: () => _navigate(
-                    context,
-                    '/amazon/herramientas/findbox',
-                    closeOverlay: !permanent,
-                  ),
-                  highlight: highlight,
-                  textPrimary: textPrimary,
-                  isDark: isDark,
-                  nested: true,
-                ),
-                _SidebarTile(
-                  label: 'Buscar DSN',
-                  icon: Icons.search_rounded,
-                  selected: isRoute('/amazon/herramientas/finddsn'),
-                  onTap: () => _navigate(
-                    context,
-                    '/amazon/herramientas/finddsn',
-                    closeOverlay: !permanent,
-                  ),
-                  highlight: highlight,
-                  textPrimary: textPrimary,
-                  isDark: isDark,
-                  nested: true,
-                ),
-              ],
-            ),
           ],
         ),
-        if ([
-          'chief',
-          'admin',
-          'clerc',
-          'technitian',
-          'operario',
-        ].any((r) => (user?.role ?? '').toLowerCase().contains(r))) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Divider(
-              thickness: 0.6,
-              height: 1,
-              color: textMuted.withOpacity(0.12),
-            ),
-          ),
-          SidebarExpansionTile(
-            title: 'Ordenes CF',
-            icon: Icons.psychology_rounded,
-            highlight: highlight,
-            textPrimary: textPrimary,
-            initiallyExpanded: orderOpsExpanded,
-            children: [
-              _SidebarTile(
-                label: 'Cola de Pedidos',
-                icon: Icons.list_alt_rounded,
-                selected: isRoute('/orderops/queue'),
-                onTap: () => _navigate(
-                  context,
-                  '/orderops/queue',
-                  closeOverlay: !permanent,
-                ),
-                highlight: highlight,
-                textPrimary: textPrimary,
-                isDark: isDark,
-              ),
-              if (canAccessOrderOpsProyectos)
-                _SidebarTile(
-                  label: 'Proyectos',
-                  icon: Icons.assignment_rounded,
-                  selected: isRoute('/orderops/proyectos'),
-                  onTap: () => _navigate(
-                    context,
-                    '/orderops/proyectos',
-                    closeOverlay: !permanent,
-                  ),
-                  highlight: highlight,
-                  textPrimary: textPrimary,
-                  isDark: isDark,
-                ),
-              if ((user?.role == 'admin' || user?.role == 'chief'))
-                _SidebarTile(
-                  label: 'Tabla Cotizaciones',
-                  icon: Icons.table_chart_rounded,
-                  selected: isRoute('/orderops/cotizaciones'),
-                  onTap: () => _navigate(
-                    context,
-                    '/orderops/cotizaciones',
-                    closeOverlay: !permanent,
-                  ),
-                  highlight: highlight,
-                  textPrimary: textPrimary,
-                  isDark: isDark,
-                ),
-            ],
-          ),
-        ],
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Divider(
@@ -1098,6 +1169,14 @@ class _MainSidebarState extends State<MainSidebar> {
             ),
           ],
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
         SidebarExpansionTile(
           title: 'Serials',
           icon: Icons.qr_code_rounded,
@@ -1173,6 +1252,14 @@ class _MainSidebarState extends State<MainSidebar> {
             ),
           ],
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
         SidebarExpansionTile(
           title: 'Xiaomi',
           icon: Icons.phone_android_rounded,
@@ -1234,6 +1321,14 @@ class _MainSidebarState extends State<MainSidebar> {
             ),
           ],
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
         SidebarExpansionTile(
           title: 'Servidores',
           icon: Icons.dns_rounded,
@@ -1268,6 +1363,14 @@ class _MainSidebarState extends State<MainSidebar> {
               isDark: isDark,
             ),
           ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
         ),
         SidebarExpansionTile(
           title: 'Sentinel AI',
@@ -1306,6 +1409,14 @@ class _MainSidebarState extends State<MainSidebar> {
               isDark: isDark,
             ),
           ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
         ),
         if (user != null && (user.role == 'admin' || user.role == 'chief')) ...[
           SidebarExpansionTile(
@@ -2195,30 +2306,39 @@ class GlobalMobileSidebarDock extends StatelessWidget {
     required List<Widget> Function(BuildContext dialogContext) buildItems,
     required String? currentRoute,
   }) async {
-    if (_MobileDockMenuState.isOpen) return;
-
     final navContext = rootNavigatorKey?.currentContext;
     if (navContext == null) return;
+
+    if (_MobileDockMenuState.isOpen) {
+      final isSame = _MobileDockMenuState.currentTitle == title;
+      Navigator.of(navContext).pop();
+      if (isSame) return;
+      // Small delay to allow the previous dialog to clean up its state
+      await Future.delayed(const Duration(milliseconds: 120));
+    }
 
     final anchorBox = anchorContext.findRenderObject() as RenderBox?;
     if (anchorBox == null || !anchorBox.hasSize) return;
 
     final screen = MediaQuery.of(navContext).size;
     final anchorTopLeft = anchorBox.localToGlobal(Offset.zero);
+    final anchorCenterX = anchorTopLeft.dx + (anchorBox.size.width / 2);
     final menuWidth = (screen.width - 24).clamp(286.0, 332.0);
     const screenPadding = 12.0;
-    final anchorCenterX = anchorTopLeft.dx + (anchorBox.size.width / 2);
 
-    final left = (anchorCenterX - (menuWidth * 0.72)).clamp(
+    final left = (anchorCenterX - (menuWidth / 2)).clamp(
       screenPadding,
       screen.width - menuWidth - screenPadding,
     );
+    // The beak (arrow) should be centered on the anchor
+    final beakLeft = (anchorCenterX - left - 6).clamp(12.0, menuWidth - 24.0);
     final bottom = (screen.height - anchorTopLeft.dy + 14).clamp(
       104.0,
       screen.height - 90,
     );
 
     _MobileDockMenuState.isOpen = true;
+    _MobileDockMenuState.currentTitle = title;
     _MobileDockMenuState.openedAt = DateTime.now();
     String? selectedRoute;
     try {
@@ -2319,7 +2439,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                         ),
                       ),
                       Positioned(
-                        right: 26,
+                        left: beakLeft,
                         bottom: -7,
                         child: Transform.rotate(
                           angle: 0.785398,
@@ -2362,6 +2482,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
       );
     } finally {
       _MobileDockMenuState.isOpen = false;
+      _MobileDockMenuState.currentTitle = null;
     }
 
     if (selectedRoute == null) return;
@@ -2470,26 +2591,89 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           currentRoute: currentRoute,
           routePrefixes: const ['/amazon/'],
           children: [
-            _menuRouteTile(
+            _menuExpandableGroup(
               dialogContext: dialogCtx,
               title: 'Grading',
               icon: Icons.grade_rounded,
-              route: '/amazon/grading',
               currentRoute: currentRoute,
+              routePrefixes: const [
+                '/amazon/grading',
+                '/amazon/sorting',
+                '/amazon/quality',
+                '/amazon/herramientas/'
+              ],
+              nested: true,
+              children: [
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Registro Grading',
+                  icon: Icons.grade_rounded,
+                  route: '/amazon/grading',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Sorting',
+                  icon: Icons.sort_rounded,
+                  route: '/amazon/sorting',
+                  currentRoute: currentRoute,
+                ),
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Quality Check',
+                  icon: Icons.search_rounded,
+                  route: '/amazon/quality',
+                  currentRoute: currentRoute,
+                ),
+                _menuExpandableGroup(
+                  dialogContext: dialogCtx,
+                  title: 'Herramientas',
+                  icon: Icons.build_rounded,
+                  currentRoute: currentRoute,
+                  routePrefixes: const ['/amazon/herramientas/'],
+                  nested: true,
+                  children: [
+                    _menuRouteTile(
+                      dialogContext: dialogCtx,
+                      title: 'Cerrar Box',
+                      icon: Icons.close_rounded,
+                      route: '/amazon/herramientas/closebox',
+                      currentRoute: currentRoute,
+                    ),
+                    _menuRouteTile(
+                      dialogContext: dialogCtx,
+                      title: 'Buscar Box',
+                      icon: Icons.find_in_page_rounded,
+                      route: '/amazon/herramientas/findbox',
+                      currentRoute: currentRoute,
+                    ),
+                    _menuRouteTile(
+                      dialogContext: dialogCtx,
+                      title: 'Buscar DSN',
+                      icon: Icons.search_rounded,
+                      route: '/amazon/herramientas/finddsn',
+                      currentRoute: currentRoute,
+                    ),
+                  ],
+                ),
+              ],
             ),
-            _menuRouteTile(
+            _menuExpandableGroup(
               dialogContext: dialogCtx,
-              title: 'Sorting',
-              icon: Icons.sort_rounded,
-              route: '/amazon/sorting',
+              title: 'Proyectos',
+              icon: Icons.assignment_turned_in_rounded,
               currentRoute: currentRoute,
-            ),
-            _menuRouteTile(
-              dialogContext: dialogCtx,
-              title: 'Quality Check',
-              icon: Icons.search_rounded,
-              route: '/amazon/quality',
-              currentRoute: currentRoute,
+              routePrefixes: const ['/amazon/proyectos'],
+              nested: true,
+              children: [
+                _menuRouteTile(
+                  dialogContext: dialogCtx,
+                  title: 'Dashboard',
+                  icon: Icons.dashboard_rounded,
+                  route: '/amazon/proyectos',
+                  currentRoute: currentRoute,
+                ),
+              ],
             ),
             _menuExpandableGroup(
               dialogContext: dialogCtx,
@@ -2525,37 +2709,6 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   title: 'ICQA',
                   icon: Icons.check_circle_rounded,
                   route: '/amazon/inventory/icqa',
-                  currentRoute: currentRoute,
-                ),
-              ],
-            ),
-            _menuExpandableGroup(
-              dialogContext: dialogCtx,
-              title: 'Herramientas',
-              icon: Icons.build_rounded,
-              currentRoute: currentRoute,
-              routePrefixes: const ['/amazon/herramientas/'],
-              nested: true,
-              children: [
-                _menuRouteTile(
-                  dialogContext: dialogCtx,
-                  title: 'Cerrar Box',
-                  icon: Icons.close_rounded,
-                  route: '/amazon/herramientas/closebox',
-                  currentRoute: currentRoute,
-                ),
-                _menuRouteTile(
-                  dialogContext: dialogCtx,
-                  title: 'Buscar Box',
-                  icon: Icons.find_in_page_rounded,
-                  route: '/amazon/herramientas/findbox',
-                  currentRoute: currentRoute,
-                ),
-                _menuRouteTile(
-                  dialogContext: dialogCtx,
-                  title: 'Buscar DSN',
-                  icon: Icons.search_rounded,
-                  route: '/amazon/herramientas/finddsn',
                   currentRoute: currentRoute,
                 ),
               ],
@@ -3097,6 +3250,7 @@ class _MobileDockButton extends StatelessWidget {
 
 class _MobileDockMenuState {
   static bool isOpen = false;
+  static String? currentTitle;
   static DateTime openedAt = DateTime.fromMillisecondsSinceEpoch(0);
   static DateTime? lastNavAt;
   static String? lastNavRoute;
