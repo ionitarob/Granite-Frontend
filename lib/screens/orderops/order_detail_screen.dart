@@ -424,7 +424,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             onPressed: () => Navigator.of(context).pop(),
           ),
           actions: [
-            IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
+            IconButton(
+              icon: const Icon(Icons.refresh), 
+              focusNode: FocusNode(canRequestFocus: false),
+              onPressed: _loadData,
+            ),
           ],
         ),
         body: Stack(
@@ -1024,12 +1028,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     Column(
                       children: [
                         IconButton(
+                          icon: const Icon(Icons.copy, size: 14),
+                          focusNode: FocusNode(canRequestFocus: false),
+                          tooltip: 'Copiar',
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: obs.body ?? ''));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Observación copiada')),
+                            );
+                          },
+                        ),
+                        IconButton(
                           icon: const Icon(Icons.edit, size: 18),
+                          focusNode: FocusNode(canRequestFocus: false),
                           tooltip: 'Editar',
                           onPressed: () => _editObservation(obs),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18),
+                          focusNode: FocusNode(canRequestFocus: false),
                           tooltip: 'Eliminar',
                           onPressed: () => _confirmDeleteObservation(obs),
                         ),
@@ -1982,7 +1999,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
         final exportRes = await client.post(
           '/serials/finish-order-upload',
-          jsonBody: {'nr_orden': targetOrderNo},
+          jsonBody: {
+            'nr_orden': targetOrderNo,
+            'familia': (order.family ?? '').trim().toUpperCase(),
+          },
         );
 
         if (!exportRes.ok) {
@@ -2488,6 +2508,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         IconButton(
           icon: const Icon(Icons.add_circle_outline, color: Colors.tealAccent),
           tooltip: 'Añadir Servicio Manual',
+          focusNode: FocusNode(canRequestFocus: false),
           onPressed: _showAddServiceDialog,
         ),
       ],
@@ -2574,6 +2595,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                 color: Colors.redAccent,
                                 size: 18,
                               ),
+                              focusNode: FocusNode(canRequestFocus: false),
                               onPressed: () => _removeManualService(svc),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
@@ -2756,6 +2778,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             color: Colors.tealAccent,
           ),
           tooltip: 'Adjuntar foto',
+          focusNode: FocusNode(canRequestFocus: false),
           onPressed: _takePhoto,
         ),
       ],
@@ -2811,6 +2834,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             color: Colors.tealAccent,
           ),
           tooltip: 'Subir archivo',
+          focusNode: FocusNode(canRequestFocus: false),
           onPressed: _uploadArchivo,
         ),
         // Manual attach Excel for Cambio de Serial when order is finalized
@@ -2839,6 +2863,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               return IconButton(
                 icon: const Icon(Icons.attach_file, size: 20, color: Colors.amber),
                 tooltip: 'Adjuntar XLSX automáticamente',
+                focusNode: FocusNode(canRequestFocus: false),
                 onPressed: () async {
                   // Automatic export and attach without manual input
                   try {
@@ -4246,6 +4271,7 @@ class _CatalogSearchDialogState extends State<CatalogSearchDialog> {
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.send),
+                  focusNode: FocusNode(canRequestFocus: false),
                   onPressed: () => _performSearch(_searchController.text),
                 ),
               ),
@@ -4267,6 +4293,7 @@ class _CatalogSearchDialogState extends State<CatalogSearchDialog> {
                       ),
                       trailing: IconButton(
                         icon: const Icon(Icons.add, color: Colors.tealAccent),
+                        focusNode: FocusNode(canRequestFocus: false),
                         onPressed: () => _addService(item),
                       ),
                     );

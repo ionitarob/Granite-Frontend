@@ -246,22 +246,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     }
   }
 
-  Future<bool> _canExtractMatchesExcel(String numOrden) async {
-    final client = _clientOrNull();
-    if (client == null) return false;
-    try {
-      final res = await client.getBytes(
-        '$_basePath/matches/export?num_orden=${Uri.encodeQueryComponent(numOrden)}',
-      );
-      if (!res.ok || res.body is! List<int>) return false;
-      final bytes = res.body as List<int>;
-      // Heuristic: consider an export valid only if the returned file is
-      // reasonably large (avoid treating tiny/empty files as a valid export).
-      return bytes.length > 512;
-    } catch (_) {
-      return false;
-    }
-  }
 
   Future<void> _completeOrderAndAttach(String numOrden) async {
     final removed = _resizeMatchRows(0);
@@ -321,10 +305,13 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           )
           .toList();
 
+      final bool hasInventoryCodes = serials.any(
+        (s) => (s['inventory_code'] ?? s['inventory'] ?? '').toString().trim().isNotEmpty,
+      );
       _applyOrderData(
         order: Map<String, dynamic>.from(orderMap),
         serials: serials,
-        manualDouble: orderMap['manual_double'] == true,
+        manualDouble: (orderMap['manual_double'] == true) || hasInventoryCodes,
       );
     } catch (e) {
       _showSnack('Error refrescando orden: $e');
@@ -619,8 +606,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     return (units: parsedUnits, doubleEntry: doubleEntry);
   }
 
-  bool get _isManualDouble =>
-      _orderInfo?['manual'] == true && _orderInfo?['manual_double'] == true;
+  bool get _isManualDouble => _orderInfo?['manual_double'] == true;
 
   Future<({int units, bool doubleEntry})?> _promptManualUnits(
     String numOrden,
@@ -796,7 +782,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             _applyOrderData(
               order: Map<String, dynamic>.from(orderMap),
               serials: serials,
-              manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true),
+              manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true) || serials.any((s) => (s['inventory_code'] ?? s['inventory'] ?? '').toString().trim().isNotEmpty),
             );
           } catch (e) {
             _showSnack('Error registrando orden: $e');
@@ -852,10 +838,13 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             },
           )
           .toList();
+      final bool hasInventoryCodes = serials.any(
+        (s) => (s['inventory_code'] ?? s['inventory'] ?? '').toString().trim().isNotEmpty,
+      );
       _applyOrderData(
         order: order,
         serials: serials,
-        manualDouble: order['manual_double'] == true,
+        manualDouble: (order['manual_double'] == true) || hasInventoryCodes,
       );
     } catch (e) {
       _showSnack('Error obteniendo orden: $e');
@@ -1557,7 +1546,23 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          if (_orderInfo != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: SwitchListTile(
+                title: const Text('Modo Registro Doble (Serial + Código)'),
+                subtitle: const Text('Habilitar para escanear dos campos por unidad'),
+                value: _isManualDouble,
+                activeColor: theme.colorScheme.primary,
+                onChanged: (val) {
+                  setState(() {
+                    _orderInfo!['manual_double'] = val;
+                  });
+                },
+              ),
+            ),
+          const SizedBox(height: 8),
           if (_orderInfo != null) ...[
             Card(
               child: Padding(

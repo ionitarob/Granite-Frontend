@@ -69,6 +69,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   bool _generatingLabels = false;
   bool _registeringBox = false;
   bool _checkingOrder = false;
+  bool _isShowingPrinterDialog = false;
 
   List<LabelOperatorOption> _operators = const [];
   LabelOperatorOption? _selectedOperator;
@@ -115,6 +116,12 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       await _loadOperators();
       if (initialOrder.isNotEmpty && !_configLocked) {
         await _triggerOrderResumeSearch(order: initialOrder);
+      }
+      // Ensure focus on order field if it's empty, or on box number if order is set
+      if (initialOrder.isEmpty) {
+        _orderFocus.requestFocus();
+      } else if (!_configLocked) {
+        _boxNumberFocus.requestFocus();
       }
     });
   }
@@ -696,8 +703,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
 
   Future<Map<String, dynamic>?> _getOrSelectPrinter(String title) async {
     if (_cachedPrinter != null) return _cachedPrinter;
+    if (_isShowingPrinterDialog) return null; // Avoid concurrent dialogs
 
-    List<Map<String, dynamic>> printers = [];
+    _isShowingPrinterDialog = true;
+    try {
+      List<Map<String, dynamic>> printers = [];
     try {
       printers = await _fetchPrinters();
     } catch (e) {
@@ -799,11 +809,13 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     } else {
       throw Exception('No printer selected or provided');
     }
-
     setState(() {
       _cachedPrinter = result;
     });
     return result;
+    } finally {
+      _isShowingPrinterDialog = false;
+    }
   }
 
   Future<void> _printFinalLabel() async {
@@ -2330,6 +2342,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       _boxTimer?.cancel();
       _boxElapsed = Duration.zero;
     });
+    _boxNumberFocus.requestFocus();
   }
 
   Future<void> _finalizeOrderAndUpload(String orderNr) async {
@@ -3628,7 +3641,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                               : TextInputAction.next,
                           onChanged: (_) => _onSerialChanged(entry),
                           onSubmitted: (_) async {
-                            final isValid = await _validateEntryForSubmit(
+                            if (entry.submitting) return; 
+                            entry.submitting = true;
+                            try {
+                              final isValid = await _validateEntryForSubmit(
                               entry,
                               box,
                             );
@@ -3952,7 +3968,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                 context,
                               ).requestFocus(entry.focusNode);
                             }
-                          },
+                          } finally {
+                            entry.submitting = false;
+                          }
+                        },
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -4714,6 +4733,7 @@ class _BoxEntryField {
   bool isValid = false;
   bool isInvalid = false;
   String? errorMessage;
+  bool submitting = false;
 
   void dispose() {
     controller.dispose();

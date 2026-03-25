@@ -134,25 +134,39 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
     } catch (_) {}
   }
 
-  Future<void> _processRegistration() async {
+  Future<void> _processRegistration({bool reprintOnly = false}) async {
     final dsn = _dsnCtrl.text.trim().toUpperCase();
     if (dsn.isEmpty || _submitting) return;
 
     setState(() {
       _submitting = true;
-      _macCtrl.clear();
+      if (!reprintOnly) _macCtrl.clear();
     });
 
     try {
       final api = Provider.of<ApiService>(context, listen: false);
       final res = await api.client.post(
         '/amz/batches/${widget.batch['id']}/register',
-        jsonBody: {'dsn': dsn},
+        jsonBody: {
+          'dsn': dsn,
+          'reprint_only': reprintOnly,
+        },
       );
 
         if (res.ok) {
           final mac = res.body['mac'];
           setState(() => _macCtrl.text = mac ?? 'N/A');
+
+          if (reprintOnly) {
+             ScaffoldMessenger.of(context).showSnackBar(
+               SnackBar(
+                 content: Text('Etiqueta para $dsn reimpresa'),
+                 backgroundColor: Colors.blue.shade800,
+                 duration: const Duration(seconds: 2),
+               ),
+             );
+             return;
+          }
 
           // Determine if QC is needed for this unit (SMART LOGIC)
           final qcPct = (widget.batch['qc_percentage'] ?? 0).toDouble();
@@ -179,16 +193,34 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
           }
         } else {
           final error = res.body['error'] ?? 'Error en el registro';
+          final details = res.body['details'];
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(error),
-              backgroundColor: Colors.red.shade900,
-              duration: const Duration(seconds: 5),
-              action: null,
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(error, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  if (details != null) Text(details.toString(), style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+              backgroundColor: res.statusCode == 409 ? Colors.orange.shade900 : Colors.red.shade900,
+              duration: const Duration(seconds: 6),
+              action: res.statusCode == 409 
+                ? SnackBarAction(
+                    label: 'SOLO REIMPRIMIR', 
+                    textColor: Colors.white,
+                    onPressed: () => _processRegistration(reprintOnly: true),
+                  )
+                : null,
             ),
           );
-          _dsnCtrl.clear();
-          _dsnFocus.requestFocus();
+          
+          if (res.statusCode != 409) {
+            _dsnCtrl.clear();
+            _dsnFocus.requestFocus();
+          }
         }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,6 +231,49 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _showReprintDialog() async {
+    final ctrl = TextEditingController();
+    final dsn = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reimprimir Etiqueta'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Introduce el DSN de la unidad que deseas reimprimir:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                labelText: 'ESCANEAR DSN',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.qr_code_2_rounded),
+              ),
+              autofocus: true,
+              onSubmitted: (val) => Navigator.pop(ctx, val.trim().toUpperCase()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCELAR'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim().toUpperCase()),
+            child: const Text('REIMPRIMIR'),
+          ),
+        ],
+      ),
+    );
+
+    if (dsn != null && dsn.isNotEmpty) {
+      _dsnCtrl.text = dsn;
+      _processRegistration(reprintOnly: true);
     }
   }
 
@@ -428,31 +503,68 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
               ),
             ),
             const SizedBox(height: 64),
-            SizedBox(
-              width: double.infinity,
-              height: 72,
-              child: ElevatedButton(
-                onPressed: _submitting ? null : _processRegistration,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade800,
-                  foregroundColor: Colors.white,
-                  elevation: 8,
-                  shadowColor: Colors.orange.withOpacity(0.4),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                child: _submitting
-                    ? const CupertinoActivityIndicator(color: Colors.white)
-                    : const Text(
-                        'REGISTRAR & IMPRIMIR',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 72,
+                    child: ElevatedButton(
+                      onPressed: _submitting ? null : _processRegistration,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange.shade800,
+                        foregroundColor: Colors.white,
+                        elevation: 8,
+                        shadowColor: Colors.orange.withOpacity(0.4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
                         ),
                       ),
-              ),
+                      child: _submitting
+                          ? const CupertinoActivityIndicator(color: Colors.white)
+                          : const Text(
+                              'REGISTRAR & IMPRIMIR',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 1,
+                  child: SizedBox(
+                    height: 72,
+                    child: OutlinedButton(
+                    onPressed: _submitting ? null : _showReprintDialog,
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.orange.withOpacity(0.5), width: 2),
+                        foregroundColor: Colors.orange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.print_rounded, size: 24),
+                          Text(
+                            'REIMPRIMIR',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
