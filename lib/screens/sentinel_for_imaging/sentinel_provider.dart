@@ -10,6 +10,7 @@ import 'voice_service.dart';
 
 class SentinelProvider extends ChangeNotifier {
   final SentinelService _service = SentinelService();
+  SentinelService get service => _service;
   // Voice Control
   final VoiceService _voiceService = VoiceService();
   bool _voiceEnabled = false; // "voice service will only work in this screen"

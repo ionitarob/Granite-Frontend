@@ -29,6 +29,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
   List<ProjectFund> _funds = [];
   List<Transaction> _history = [];
   List<MasterService> _masterServices = [];
+  final _masterServicesNotifier = ValueNotifier<List<MasterService>>([]);
   List<String> _manufacturers = [];
   bool _loading = true;
 
@@ -84,8 +85,10 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     });
   }
 
-  Future<void> _loadAllData() async {
-    setState(() => _loading = true);
+  Future<void> _loadAllData({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() => _loading = true);
+    }
     try {
       final results = await Future.wait([
         _analisisService.getFunds(),
@@ -99,6 +102,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
           _funds = results[0] as List<ProjectFund>;
           _history = results[1] as List<Transaction>;
           _masterServices = results[2] as List<MasterService>;
+          _masterServicesNotifier.value = _masterServices;
           _manufacturers = results[3] as List<String>;
           _loading = false;
         });
@@ -157,7 +161,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && _funds.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
@@ -545,11 +549,20 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
           isWide: isWide,
         );
       case 'funds':
-        return _DashboardFunds(funds: _funds, onRefresh: _loadAllData);
+        return _DashboardFunds(
+          funds: _funds,
+          onRefresh: () => _loadAllData(showLoader: false),
+        );
       case 'master_list':
-        return _DashboardMasterServices(
-          services: _masterServices,
-          onRefresh: _loadAllData,
+        return ValueListenableBuilder<List<MasterService>>(
+          valueListenable: _masterServicesNotifier,
+          builder: (context, services, _) {
+            return _DashboardMasterServices(
+              services: services,
+              masterServicesNotifier: _masterServicesNotifier,
+              onRefresh: () => _loadAllData(showLoader: false),
+            );
+          },
         );
       case 'efficiency':
         return _DashboardEfficiency(
@@ -1268,10 +1281,12 @@ class _DashboardFunds extends StatelessWidget {
 
 class _DashboardMasterServices extends StatelessWidget {
   final List<MasterService> services;
+  final ValueNotifier<List<MasterService>> masterServicesNotifier;
   final VoidCallback onRefresh;
 
   const _DashboardMasterServices({
     required this.services,
+    required this.masterServicesNotifier,
     required this.onRefresh,
   });
 
@@ -1374,38 +1389,44 @@ class _DashboardMasterServices extends StatelessWidget {
                   Icons.list_alt_rounded,
                 ),
                 Flexible(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(24),
-                    shrinkWrap: true,
-                    itemCount: services.length,
-                    itemBuilder: (ctx, i) {
-                      final s = services[i];
-                      return _buildDialogRow(
-                        context: ctx,
-                        title: s.servicio,
-                        subtitle:
-                            'Precio actual: ${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
-                        trailingWidget: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF43A047),
-                              ),
+                  child: ValueListenableBuilder<List<MasterService>>(
+                    valueListenable: masterServicesNotifier,
+                    builder: (context, latestServices, _) {
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(24),
+                        shrinkWrap: true,
+                        itemCount: latestServices.length,
+                        itemBuilder: (ctx, i) {
+                          final s = latestServices[i];
+                          return _buildDialogRow(
+                            context: ctx,
+                            title: s.servicio,
+                            subtitle:
+                                'Precio actual: ${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
+                            trailingWidget: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF43A047),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 16,
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.chevron_right_rounded, size: 16),
-                          ],
-                        ),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _showEditPriceDialog(context, s);
-                        },
-                        onLongPress: () {
-                          Navigator.pop(ctx);
-                          _showDeleteConfirm(context, s);
+                            onTap: () {
+                              _showEditPriceDialog(context, s);
+                            },
+                            onLongPress: () {
+                              _showDeleteConfirm(context, s);
+                            },
+                          );
                         },
                       );
                     },
@@ -1527,13 +1548,32 @@ class _DashboardMasterServices extends StatelessWidget {
                           elevation: 0,
                         ),
                         onPressed: () async {
-                          final price = double.tryParse(controller.text);
+                          // Allow both dot and comma as decimal separator
+                          final cleanText =
+                              controller.text.trim().replaceAll(',', '.');
+                          final price = double.tryParse(cleanText);
                           if (price != null) {
-                            await const AnalisisService()
-                                .updateMasterServicioPrice(s.id, price);
-                            onRefresh();
+                            try {
+                              await const AnalisisService()
+                                  .updateMasterServicioPrice(s.id, price);
+                              onRefresh();
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            }
+                          } else {
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Precio no válido'),
+                                ),
+                              );
+                            }
                           }
-                          if (ctx.mounted) Navigator.pop(ctx);
                         },
                         child: const Text(
                           'Actualizar',
@@ -2122,7 +2162,7 @@ class _FilterDataDialogState extends State<_FilterDataDialog> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _selectedMonth = DateFormat('MMM').format(now);
+    _selectedMonth = DateFormat('MMM', 'en_US').format(now);
     _selectedYear = DateFormat('yyyy').format(now);
   }
 
@@ -2193,9 +2233,19 @@ class _FilterDataDialogState extends State<_FilterDataDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
+        String msg = 'Error al exportar: $e';
+        if (e.toString().contains('Permission denied')) {
+          msg = 'Error de permisos: No se pudo escribir el archivo en esa ubicación.';
+        } else if (e.toString().contains('AnalisisService')) {
+          msg = 'Error del servidor: No se pudo obtener el archivo Excel.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(label: 'OK', onPressed: () {}),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -2210,7 +2260,7 @@ class _FilterDataDialogState extends State<_FilterDataDialog> {
 
     if (_exportType == 'current_month') {
       final now = DateTime.now();
-      qMonth = DateFormat('MMM').format(now);
+      qMonth = DateFormat('MMM', 'en_US').format(now);
       qYear = DateFormat('yyyy').format(now);
     } else if (_exportType == 'specific_month') {
       qMonth = _selectedMonth;

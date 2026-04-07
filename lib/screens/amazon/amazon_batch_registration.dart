@@ -30,6 +30,9 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
   List<dynamic> _qcTemplates = [];
   WebSocketChannel? _metricsChannel;
   bool _connectingWS = false;
+  int? _lastAlertedShuttleStart;
+  bool _hasAlertedCurrentShuttle = false;
+  bool _shuttleSubmitting = false;
 
   final _random = math.Random();
 
@@ -84,6 +87,7 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
             if (data['type'] == 'batch_metrics_update' && mounted) {
               setState(() {
                 _metrics = data['metrics'];
+                _checkShuttleMilestone();
               });
             }
           } catch (e) {
@@ -119,7 +123,12 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
       final res = await api.client.get(
         '/amz/batches/${widget.batch['id']}/metrics',
       );
-      if (res.ok && mounted) setState(() => _metrics = res.body);
+      if (res.ok && mounted) {
+        setState(() {
+          _metrics = res.body;
+          _checkShuttleMilestone();
+        });
+      }
     } catch (_) {}
   }
 
@@ -132,6 +141,93 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
       if (res.ok && mounted)
         setState(() => _qcTemplates = res.body['results'] ?? []);
     } catch (_) {}
+  }
+
+  Future<void> _toggleShuttle(String action) async {
+    if (_shuttleSubmitting) return;
+
+    int resumeCount = 0;
+    if (action == 'start') {
+      final TextEditingController ctrl = TextEditingController(text: '0');
+      final bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AmazonTheme(
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF0A0A1A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: Colors.blueAccent, width: 1),
+            ),
+            title: const Text('INICIAR O REANUDAR SHUTTLE', 
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ingresa las unidades que ya están en el shuttle (0 si es nuevo):', 
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: ctrl,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w900, fontSize: 32),
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    suffixText: 'UN',
+                    suffixStyle: const TextStyle(color: Colors.white24, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('CANCELAR', style: TextStyle(color: Colors.white24)),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('ACEPTAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirm != true) return;
+      resumeCount = int.tryParse(ctrl.text) ?? 0;
+    }
+
+    setState(() => _shuttleSubmitting = true);
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final res = await api.client.post(
+        '/amz/batches/${widget.batch['id']}/shuttle',
+        jsonBody: {'action': action, 'resume_count': resumeCount},
+      );
+      if (res.ok) {
+        // Broadcast will update metrics via WS, but let's fetch for safety
+        await _fetchMetrics();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${res.body['error']}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error de conexión')),
+      );
+    } finally {
+      if (mounted) setState(() => _shuttleSubmitting = false);
+    }
   }
 
   Future<void> _processRegistration({bool reprintOnly = false}) async {
@@ -572,9 +668,10 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
     );
   }
 
-  Widget _buildMetricsSidebar() {
-    if (_metrics == null)
+   Widget _buildMetricsSidebar() {
+    if (_metrics == null) {
       return const Center(child: CircularProgressIndicator());
+    }
 
     final totalUnits = (_metrics!['total_units'] as num? ?? 0).toDouble();
     final qcUnitsDone = (_metrics!['qc_units_done'] as num? ?? 0).toDouble();
@@ -596,81 +693,173 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
     final dailyProdProgress = (prodGoal > 0) ? (prodDoneToday / prodGoal) : 0.0;
 
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _MetricIndicator(
-                title: 'PRODUCCIÓN',
-                totalValue: totalProdProgress.clamp(0.0, 1.0),
-                dailyValue: dailyProdProgress.clamp(0.0, 1.0),
-                totalLabel: '${(totalProdProgress * 100).toStringAsFixed(1)}% Total',
-                dailyLabel: '${(dailyProdProgress * 100).toStringAsFixed(1)}% Hoy',
-                targetLabel: 'Hoy: ${prodDoneToday.toInt()} / ${prodGoal.toInt()} UN\nTotal: ${prodDoneTotal.toInt()} / ${totalUnits.toInt()}',
-                color: dailyProdProgress >= 1.0 
-                    ? const Color(0xFF64B5F6) // Softer Premium Blue
-                    : const Color(0xFFFFB74D), // Softer Premium Orange
-              ),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              child: _MetricIndicator(
-                title: 'CALIDAD (QC)',
-                totalValue: totalQCProgress.clamp(0.0, 1.0),
-                dailyValue: dailyQCProgress.clamp(0.0, 1.0),
-                totalLabel: '${(totalQCProgress * 100).toStringAsFixed(1)}% Total',
-                dailyLabel: '${(dailyQCProgress * 100).toStringAsFixed(1)}% Hoy',
-                targetLabel: 'Hoy: ${qcUnitsDoneToday.toInt()}/${dailyQCTarget}\nTotal: ${qcUnitsDone.toInt()}/${qcReqUnitsTotal}',
-                color: dailyQCProgress >= 1.0
-                    ? const Color(0xFF81C784) // Softer Premium Green
-                    : const Color(0xFFFFB74D),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.04),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Row(
             children: [
-              const Text(
-                'ESTADÍSTICAS EN VIVO',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  letterSpacing: 1,
-                  color: Colors.white38,
+              Expanded(
+                child: _MetricIndicator(
+                  title: 'PRODUCCIÓN',
+                  totalValue: totalProdProgress.clamp(0.0, 1.0),
+                  dailyValue: dailyProdProgress.clamp(0.0, 1.0),
+                  totalLabel: '${(totalProdProgress * 100).toStringAsFixed(1)}% Total',
+                  dailyLabel: '${(dailyProdProgress * 100).toStringAsFixed(1)}% Hoy',
+                  targetLabel: 'Hoy: ${prodDoneToday.toInt()} / ${prodGoal.toInt()} UN\nTotal: ${prodDoneTotal.toInt()} / ${totalUnits.toInt()}',
+                  color: dailyProdProgress >= 1.0 
+                      ? const Color(0xFF64B5F6) // Softer Premium Blue
+                      : const Color(0xFFFFB74D), // Softer Premium Orange
                 ),
               ),
-              const Divider(height: 32, thickness: 1, color: Colors.white10),
-              _buildMetricRow('Total Lote', '${_metrics!['total_units']} UN'),
-              const SizedBox(height: 12),
-              _buildMetricRow(
-                'Registros',
-                '${_metrics!['registered_units']} UN',
-              ),
-              const SizedBox(height: 12),
-              _buildMetricRow(
-                'QC Realizados',
-                '${_metrics!['qc_units_done']} UN',
-              ),
-              const SizedBox(height: 12),
-              _buildMetricRow(
-                'Estado Lote',
-                'EN PROCESO',
-                color: Colors.greenAccent,
+              const SizedBox(width: 24),
+              Expanded(
+                child: _MetricIndicator(
+                  title: 'CALIDAD (QC)',
+                  totalValue: totalQCProgress.clamp(0.0, 1.0),
+                  dailyValue: dailyQCProgress.clamp(0.0, 1.0),
+                  totalLabel: '${(totalQCProgress * 100).toStringAsFixed(1)}% Total',
+                  dailyLabel: '${(dailyQCProgress * 100).toStringAsFixed(1)}% Hoy',
+                  targetLabel: 'Hoy: ${qcUnitsDoneToday.toInt()}/${dailyQCTarget}\nTotal: ${qcUnitsDone.toInt()}/${qcReqUnitsTotal}',
+                  color: dailyQCProgress >= 1.0
+                      ? const Color(0xFF81C784) // Softer Premium Green
+                      : const Color(0xFFFFB74D),
+                ),
               ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ESTADÍSTICAS EN VIVO',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                    letterSpacing: 1,
+                    color: Colors.white38,
+                  ),
+                ),
+                const Divider(height: 32, thickness: 1, color: Colors.white10),
+                _buildMetricRow('Total Lote', '${_metrics!['total_units']} UN'),
+                const SizedBox(height: 12),
+                _buildMetricRow(
+                  'Registros',
+                  '${_metrics!['registered_units']} UN',
+                ),
+                const SizedBox(height: 12),
+                _buildMetricRow(
+                  'QC Realizados',
+                  '${_metrics!['qc_units_done']} UN',
+                ),
+                const SizedBox(height: 12),
+                _buildMetricRow(
+                  'Estado Lote',
+                  'EN PROCESO',
+                  color: Colors.greenAccent,
+                ),
+                const Divider(height: 32, thickness: 1, color: Colors.white10),
+                
+                // SHUTTLE SECTION
+                Row(
+                  children: [
+                    Icon(
+                      Icons.local_shipping_rounded, 
+                      size: 16, 
+                      color: _metrics!['is_shuttle_active'] == true ? Colors.blueAccent : Colors.white24
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'SHUTTLE ACTUAL',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        letterSpacing: 1,
+                        color: _metrics!['is_shuttle_active'] == true ? Colors.white : Colors.white24,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (_metrics!['is_shuttle_active'] == true) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: (_metrics!['shuttle_units'] as num? ?? 0) / 480,
+                      backgroundColor: Colors.white10,
+                      valueColor: const AlwaysStoppedAnimation(Colors.blueAccent),
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'PROGRESO',
+                        style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${_metrics!['shuttle_units']} / 480',
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                  if (_metrics!['shuttle_user'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Iniciado por: ${_metrics!['shuttle_user']}',
+                      style: const TextStyle(color: Colors.white24, fontSize: 10, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _shuttleSubmitting ? null : () => _toggleShuttle('close'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent.withOpacity(0.1),
+                        side: const BorderSide(color: Colors.redAccent),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: _shuttleSubmitting 
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                        : const Text('CERRAR SHUTTLE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ] else ...[
+                  const Text(
+                    'No hay un shuttle activo para este lote.',
+                    style: TextStyle(color: Colors.white24, fontSize: 11),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _shuttleSubmitting ? null : () => _toggleShuttle('start'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent.withOpacity(0.1),
+                        side: const BorderSide(color: Colors.blueAccent),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: _shuttleSubmitting 
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                        : const Text('INICIAR O REANUDAR SHUTTLE', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -696,6 +885,85 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
           ),
         ),
       ],
+    );
+  }
+
+  void _checkShuttleMilestone() {
+    if (_metrics == null) return;
+    
+    final bool active = _metrics!['is_shuttle_active'] ?? false;
+    final int units = (_metrics!['shuttle_units'] as num? ?? 0).toInt();
+    final int startTotal = (_metrics!['shuttle_start_total'] as num? ?? 0).toInt();
+
+    if (!active) {
+      _hasAlertedCurrentShuttle = false;
+      return;
+    }
+
+    // If the shuttle start total changed (meaning a new shuttle was started)
+    if (startTotal != _lastAlertedShuttleStart) {
+      _lastAlertedShuttleStart = startTotal;
+      _hasAlertedCurrentShuttle = false;
+    }
+
+    if (units >= 480 && !_hasAlertedCurrentShuttle) {
+      _hasAlertedCurrentShuttle = true;
+      _showShuttleMilestoneAlert(units, startTotal);
+    }
+  }
+
+  void _showShuttleMilestoneAlert(int units, int count) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AmazonTheme(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF0A0A1A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+              side: const BorderSide(color: Colors.blueAccent, width: 2),
+            ),
+            title: const Column(
+              children: [
+                Icon(Icons.local_shipping_rounded, color: Colors.blueAccent, size: 64),
+                SizedBox(height: 16),
+                Text(
+                  '¡SHUTTLE COMPLETADO!',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('IGNORAR', style: TextStyle(color: Colors.white38)),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _toggleShuttle('close');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text(
+                  'CERRAR Y CONTINUAR',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

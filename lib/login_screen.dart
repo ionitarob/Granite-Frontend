@@ -213,10 +213,8 @@ class _LoginScreenState extends State<LoginScreen>
   bool _remember = false;
   bool _loading = false;
   bool _obscurePassword = true;
-  bool _capsLock = false;
-  String? _usernameError;
-  String? _passwordError;
-  final FocusNode _keyboardFocus = FocusNode();
+   String? _usernameError;
+   String? _passwordError;
   late final FocusNode _usernameFocus;
   late final FocusNode _passwordFocus;
   late final AnimationController _titleController;
@@ -254,9 +252,6 @@ class _LoginScreenState extends State<LoginScreen>
     _usernameFocus = FocusNode()..addListener(() => setState(() {}));
     _passwordFocus = FocusNode()..addListener(() => setState(() {}));
     // Ensure RawKeyboardListener receives key events
-    _keyboardFocus.requestFocus();
-
-    // Fetch update information from backend
     _fetchUpdateInfo();
 
     _titleController = AnimationController(
@@ -265,11 +260,42 @@ class _LoginScreenState extends State<LoginScreen>
     )..repeat();
   }
 
+  Future<void> _checkAutoLogin() async {
+    // Only auto-login if no update is required
+    if (_updateAvailable) return;
+
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    // Don't set the main _loading state so the user can still type/login manually 
+    // if auto-login takes too long or fails silently.
+    try {
+      debugPrint('[AutoLogin] Attempting auto-login...');
+      final loggedIn = await apiService.tryAutoLogin();
+      debugPrint('[AutoLogin] Auto-login result: $loggedIn');
+      if (loggedIn && mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        );
+      }
+    } catch (e) {
+      debugPrint('[AutoLogin] Error during auto-login: $e');
+    } finally {
+      // Focus the appropriate field if we are still on the login screen
+      if (mounted && apiService.currentUser == null) {
+        if (_usernameController.text.isEmpty) {
+          _usernameFocus.requestFocus();
+        } else {
+          _passwordFocus.requestFocus();
+        }
+      }
+    }
+  }
+
   Future<void> _fetchUpdateInfo() async {
     setState(() {
       _updatesLoading = true;
       _updateError = false;
     });
+    final apiService = Provider.of<ApiService>(context, listen: false);
     try {
       // Read local package version to report to the backend
       try {
@@ -279,7 +305,6 @@ class _LoginScreenState extends State<LoginScreen>
         _clientVersion = null;
       }
 
-      final apiService = Provider.of<ApiService>(context, listen: false);
       // Build path with optional version and platform query params.
       final platformStr = () {
         if (Platform.isAndroid) return 'android';
@@ -335,6 +360,11 @@ class _LoginScreenState extends State<LoginScreen>
         if (url != null) {
           _startDownload(url);
           _showUpdatesDialog(context);
+        }
+      } else {
+        // Only trigger auto-login if NO update is required and check finished
+        if (mounted && apiService.currentUser == null) {
+           _checkAutoLogin();
         }
       }
     }
@@ -909,18 +939,9 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Stack(
         children: [
-          AnimatedBackground(),
-          // Keyboard listener for CapsLock hint (platform dependent)
-          RawKeyboardListener(
-            focusNode: _keyboardFocus,
-            onKey: (event) {
-              if (event.logicalKey == LogicalKeyboardKey.capsLock &&
-                  event is RawKeyDownEvent) {
-                setState(() => _capsLock = !_capsLock);
-              }
-            },
-            child: SafeArea(
-              child: Center(
+          const AnimatedBackground(),
+          SafeArea(
+            child: Center(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.symmetric(
                     horizontal: horizontalPadding,
@@ -1131,19 +1152,6 @@ class _LoginScreenState extends State<LoginScreen>
                                       if (!_loading) _onLoginPressed();
                                     },
                                   ),
-                                  if (_capsLock) ...[
-                                    const SizedBox(height: 6),
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        'Bloq Mayús activado',
-                                        style: TextStyle(
-                                          color: Colors.amber.shade700,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
                                   if (_passwordError != null) ...[
                                     const SizedBox(height: 6),
                                     Align(
@@ -1336,17 +1344,16 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
 
                       SizedBox(height: isPhone ? 12 : 18),
-                      // Updates area integrated into main view logic now
+                      // Updates area
                       if (_updateError) _buildUpdatesCard(theme, colorScheme),
                     ],
                   ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
   }
 }
 

@@ -154,7 +154,8 @@ class MasterService {
     return MasterService(
       id: json['id'] as int? ?? 0,
       servicio: ProjectFund._parseString(json['servicio']) ?? '',
-      pvd: ProjectFund._parseDouble(json['pvd']),
+      pvd: ProjectFund._parseDouble(json['PVD']) ??
+          ProjectFund._parseDouble(json['pvd']),
     );
   }
 }

@@ -58,6 +58,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   bool _loading = true;
   bool _isArchivoDropActive = false;
+  bool _isExporting = false;
   String? _error;
 
   final TextEditingController _obsController = TextEditingController();
@@ -422,6 +423,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.of(context).pop(),
+            focusNode: FocusNode(canRequestFocus: false),
           ),
           actions: [
             IconButton(
@@ -748,6 +750,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
+        focusNode: FocusNode(canRequestFocus: false),
         child: content,
       ),
     );
@@ -1753,6 +1756,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _statusOption(String code, String label, Color color, String current) {
     final isSelected = current.contains(code);
     return ListTile(
+      focusNode: FocusNode(canRequestFocus: false),
       leading: Container(
         width: 12,
         height: 12,
@@ -1899,62 +1903,51 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _exportFinalSerialFileToSftpAndAttachArchivo() async {
-    if (!mounted) return;
-    final currentDetail = _detail;
-    if (currentDetail == null || _orderOpsService == null) return;
-
-    final order = currentDetail.agentOrder;
-    final family = (order.family ?? '').trim();
-    final nf = _normalizeText(family);
-    final isCambioSerial = nf.contains('CAMBIO') && nf.contains('SERIAL');
-    final isManipulacionEtq = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
-    if (!isCambioSerial && !isManipulacionEtq) return;
-
-    final client = ApiService.instance?.client;
-    if (client == null) return;
-
-    final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
-    if (normalizedOrder.isEmpty) return;
-
+    if (!mounted || _isExporting) return;
+    
+    setState(() => _isExporting = true);
+    
     try {
-      // Prefer using the explicit export endpoint to retrieve the XLSX bytes,
-      // then upload them into Archivos via multipart so the file is attached
-      // to the order immediately. After attaching, trigger the backend
-      // finish-order-upload to send the file to the SFTP as a final step.
+      final currentDetail = _detail;
+      if (currentDetail == null || _orderOpsService == null) return;
+
+      final order = currentDetail.agentOrder;
+      final family = (order.family ?? '').trim();
+      final nf = _normalizeText(family);
+      final isCambioSerial = nf.contains('CAMBIO') && nf.contains('SERIAL');
+      final isManipulacionEtq = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+      if (!isCambioSerial && !isManipulacionEtq) return;
+
+      final client = ApiService.instance?.client;
+      if (client == null) return;
+
+      final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
+      if (normalizedOrder.isEmpty) return;
 
       final enc = Uri.encodeQueryComponent(normalizedOrder);
       List<int>? bytes;
+      
+      // Step 1: Export bytes
       try {
-        // Prefer different endpoints depending on family: for Manipulación use
-        // the matches/export endpoint, for Cambio de Serial prefer the
-        // export-serial-changes endpoint.
         if (isManipulacionEtq) {
           final rawOrder = Uri.encodeQueryComponent(order.orderNbr ?? normalizedOrder);
-          debugPrint('OrderDetail: requesting fallback/matches export for $rawOrder (manipulation)');
           final fallbackRes = await client.getBytes('/serials/matches/export?num_orden=$rawOrder');
           if (fallbackRes.ok && fallbackRes.body is List<int>) {
             bytes = List<int>.from(fallbackRes.body as List<int>);
-          } else {
-            debugPrint('OrderDetail: matches export returned ${fallbackRes.statusCode} / ok=${fallbackRes.ok}');
           }
         } else {
-          debugPrint('OrderDetail: requesting export-serial-changes for $normalizedOrder');
           final expRes = await client.getBytes('/serials/export-serial-changes?nr_orden=$enc');
           if (expRes.ok && expRes.body is List<int>) {
             bytes = List<int>.from(expRes.body as List<int>);
-          } else {
-            debugPrint('OrderDetail: export-serial-changes returned ${expRes.statusCode} / ok=${expRes.ok}');
           }
         }
       } catch (e) {
-        debugPrint('OrderDetail: export attempt exception: $e');
-        bytes = null;
+        debugPrint('OrderDetail: export bytes error: $e');
       }
 
       final fileName = '$normalizedOrder.xlsx';
-      var attached = false;
-
-      // If the file is already attached to this order, skip exporting again.
+      
+      // Step 2: Check existence
       final exists = _photos.any((p) {
         final name = (p.fileName).trim();
         final path = (p.filePath).trim();
@@ -1971,6 +1964,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         return;
       }
 
+      // Step 3: Upload to Archivos
+      bool attached = false;
       if (bytes != null && bytes.isNotEmpty) {
         try {
           attached = await _orderOpsService!.uploadPhoto(
@@ -1978,20 +1973,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             fileName,
             bytes,
           );
-          if (!attached) {
-            debugPrint('OrderDetail: uploadPhoto returned false for $fileName');
-          }
         } catch (e) {
           debugPrint('OrderDetail: uploadPhoto exception: $e');
-          attached = false;
         }
       }
 
-      // Regardless of whether the frontend attached the file, call the
-      // backend trigger so it can perform its SFTP publishing logic and
-      // return any canonical path we can register as an Archivo. If the
-      // frontend already uploaded the file via multipart, the backend
-      // should deduplicate or accept the existing file.
+      // Step 4: Finish order (SFTP)
       try {
         final targetOrderNo = isManipulacionEtq 
             ? (order.orderNbr ?? normalizedOrder) 
@@ -2005,45 +1992,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           },
         );
 
-        if (!exportRes.ok) {
-          debugPrint('OrderDetail: finish-order-upload failed (${exportRes.statusCode})');
-        } else {
-          // If backend returns a server-side path and we didn't attach via
-          // multipart, try to register that path in Archivos for the order.
-          if (!attached && exportRes.body is Map) {
-            final body = Map<String, dynamic>.from(exportRes.body as Map);
-            final filePath = _firstNonEmptyString(body, const [
-              'file_path',
-              'path',
-              'excel_path',
-              'export_path',
-              'archivo_path',
-              'relative_path',
-            ]);
-            final returnedName = _firstNonEmptyString(body, const [
-              'file_name',
-              'filename',
-              'name',
-              'excel_file',
-            ]) ?? fileName;
+        if (exportRes.ok && !attached && exportRes.body is Map) {
+          final body = Map<String, dynamic>.from(exportRes.body as Map);
+          final filePath = _firstNonEmptyString(body, const [
+            'file_path', 'path', 'excel_path', 'export_path', 'archivo_path', 'relative_path',
+          ]);
+          final returnedName = _firstNonEmptyString(body, const [
+            'file_name', 'filename', 'name', 'excel_file',
+          ]) ?? fileName;
 
-            if (filePath != null && filePath.isNotEmpty) {
-              final author = ApiService.instance?.currentUser?.username;
-              final ok = await _orderOpsService!.addArchivoManual(
-                order.idnbr,
-                returnedName,
-                filePath,
-                author: author,
-              );
-              if (!ok) debugPrint('OrderDetail: addArchivoManual failed for $filePath');
-            }
+          if (filePath != null && filePath.isNotEmpty) {
+            await _orderOpsService!.addArchivoManual(
+              order.idnbr,
+              returnedName,
+              filePath,
+              author: ApiService.instance?.currentUser?.username,
+            );
           }
         }
       } catch (e) {
         debugPrint('OrderDetail: finish-order-upload exception: $e');
       }
     } catch (e) {
-      debugPrint('OrderDetail: export/archive registration error: $e');
+      debugPrint('OrderDetail: export whole process catch: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
     }
   }
 
@@ -3028,6 +3003,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final isPdf = _isPdfFile(file);
     return InkWell(
       borderRadius: BorderRadius.circular(10),
+      focusNode: FocusNode(canRequestFocus: false),
       onTap: () {
         if (isImage) {
           _showPhotoPreview(file);
@@ -3100,6 +3076,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 top: 6,
                 child: InkWell(
                   onTap: () => _openOrderFile(file),
+                  focusNode: FocusNode(canRequestFocus: false),
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
                     padding: const EdgeInsets.all(5),
@@ -3120,6 +3097,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 top: 6,
                 child: InkWell(
                   onTap: () => _deleteArchivo(file),
+                  focusNode: FocusNode(canRequestFocus: false),
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
                     padding: const EdgeInsets.all(5),

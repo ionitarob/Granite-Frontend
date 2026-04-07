@@ -7,6 +7,7 @@ import 'device_detail_screen.dart';
 import '../../services/api_service.dart';
 import '../../widgets/main_sidebar.dart';
 import 'sentinel_theme.dart';
+import 'sentinel_stats_dashboard.dart';
 
 class SentinelDashboard extends StatefulWidget {
   const SentinelDashboard({super.key});
@@ -62,6 +63,9 @@ class _SentinelDashboardState extends State<SentinelDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = Provider.of<SentinelProvider>(context);
+    final sentinelService = provider.service;
+
     // Using a dark theme for the dashboard to give it a "command center" feel
     return Theme(
       data: ThemeData.dark().copyWith(
@@ -73,32 +77,63 @@ class _SentinelDashboardState extends State<SentinelDashboard> {
           surface: Color(0xFF2C2C2C),
         ),
       ),
-      child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        body: Row(
-          children: [
-            // Device List Section
-            Expanded(
-              flex: 3,
-              child: Container(
-                decoration: const BoxDecoration(
-                  border: Border(right: BorderSide(color: Colors.white10)),
-                ),
-                child: _DeviceList(),
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
               ),
-            ),
-            // Right Panel: Topology & Events
-            Expanded(
-              flex: 4,
-              child: Column(
-                children: [
-                  _SwitchSelector(),
-                  const Divider(height: 1, color: Colors.white10),
-                  Expanded(child: _PortMap()),
+              child: TabBar(
+                indicatorColor: Colors.cyanAccent,
+                labelColor: Colors.cyanAccent,
+                unselectedLabelColor: Colors.white.withOpacity(0.5),
+                indicatorWeight: 3,
+                tabs: const [
+                  Tab(text: 'MESA DE TRABAJO'),
+                  Tab(text: 'ESTADÍSTICAS'),
                 ],
               ),
             ),
-          ],
+          ),
+          body: TabBarView(
+            children: [
+              // Tab 1: Workspace
+              Row(
+                children: [
+                  // Device List Section
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        border: Border(right: BorderSide(color: Colors.white10)),
+                      ),
+                      child: _DeviceList(),
+                    ),
+                  ),
+                  // Right Panel: Topology & Events
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      children: [
+                        _SwitchSelector(),
+                        const Divider(height: 1, color: Colors.white10),
+                        Expanded(child: _PortMap()),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // Tab 2: Statistics
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: SentinelStatsDashboard(service: sentinelService),
+              ),
+            ],
+          ),
         ),
       ),
     );

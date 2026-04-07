@@ -612,4 +612,15 @@ class SentinelService {
       ),
     ];
   }
+  Future<Map<String, dynamic>> fetchStats({int days = 7}) async {
+    final api = ApiService.instance;
+    if (api == null) throw Exception('ApiService not initialized');
+
+    final res = await api.client.get('/sentinel/api/stats/?days=$days');
+    if (!res.ok) {
+      throw Exception('Failed to load stats: ${res.error}');
+    }
+
+    return Map<String, dynamic>.from(res.body is Map ? res.body : {});
+  }
 }

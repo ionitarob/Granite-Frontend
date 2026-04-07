@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../api_client.dart';
 import '../models/user_model.dart';
 import '../config.dart';
@@ -17,8 +17,7 @@ class ApiService extends ChangeNotifier {
   static ApiService? instance;
 
   final ApiClient client;
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
-
+  
   static const _refreshTokenKey = 'refresh_token_v1';
 
   String? _refreshToken;
@@ -58,14 +57,60 @@ class ApiService extends ChangeNotifier {
 
   Future<void> _loadRefreshIfExists() async {
     try {
-      final t = await _storage.read(key: _refreshTokenKey);
+      debugPrint('[ApiService] reading refresh token from shared_preferences');
+      final prefs = await SharedPreferences.getInstance();
+      final t = prefs.getString(_refreshTokenKey);
       if (t != null && t.isNotEmpty) {
         _refreshToken = t;
-        // We don't automatically exchange refresh -> access here because
-        // not all backends implement a refresh endpoint. Client code can
-        // call `refreshAccessToken()` explicitly if desired.
+        debugPrint('[ApiService] loaded refresh token (${t.length} chars)');
+      } else {
+        debugPrint('[ApiService] refresh token is null/empty in shared_preferences');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ApiService] error reading from shared_preferences: $e');
+    }
+  }
+
+  /// Attempts to automatically log in the user using persisted credentials.
+  /// Returns true if the user is successfully authenticated.
+  Future<bool> tryAutoLogin() async {
+    debugPrint('[ApiService] tryAutoLogin start');
+    // 1. Ensure any persisted refresh token is loaded
+    await _loadRefreshIfExists();
+    
+    // 2. Load persisted cookies (useful for session-based auth)
+    await client.loadSessionFromStorage();
+
+    // 3. If we already have a valid access token (from storage), use it!
+    if (client.hasAccessToken && !client.isTokenExpired()) {
+      debugPrint('[ApiService] has valid access token from storage');
+      final res = await client.me();
+      if (res.ok && res.body != null) {
+        _currentUser = User.fromJson(Map<String, dynamic>.from(res.body));
+        notifyListeners();
+        debugPrint('[ApiService] auto-login successful (stored token)');
+        return true;
+      }
+    }
+
+    // 4. Fallback: If we have a refresh token, try to get a fresh access token
+    if (_refreshToken != null && _refreshToken!.isNotEmpty) {
+      debugPrint('[ApiService] found refresh token, attempting refresh');
+      final success = await refreshAccessToken();
+      debugPrint('[ApiService] refreshAccessToken success: $success');
+      if (success) {
+        final res = await client.me();
+        if (res.ok && res.body != null) {
+          _currentUser = User.fromJson(Map<String, dynamic>.from(res.body));
+          notifyListeners();
+          debugPrint('[ApiService] auto-login successful (refreshed)');
+          return true;
+        }
+      }
+    }
+
+    debugPrint('[ApiService] auto-login failed');
+    return false;
   }
 
   void _handleUnauthorizedResponse(ApiResult result) {
@@ -102,7 +147,8 @@ class ApiService extends ChangeNotifier {
     sessionExpiring.value = false;
     client.clearSession();
     try {
-      await _storage.delete(key: _refreshTokenKey);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_refreshTokenKey);
     } catch (_) {}
     _refreshToken = null;
     _forcedLogoutTriggered = false;
@@ -122,25 +168,39 @@ class ApiService extends ChangeNotifier {
   /// If `persistRefresh` is true and the server returned a refresh token
   /// (common key names: 'refresh', 'refresh_token'), persist it.
   Future<ApiResult> login(String username, String password, {bool persistRefresh = false, bool persistCookies = false}) async {
+    debugPrint('[ApiService] login attempt for: $username (persist: $persistRefresh)');
     final res = await client.login(username, password, persistSession: persistCookies);
     if (res.ok && res.body != null) {
+      debugPrint('[ApiService] login success. Body type: ${res.body.runtimeType}');
       try {
         if (res.body is Map) {
           final mb = res.body as Map;
+          debugPrint('[ApiService] login body keys: ${mb.keys.toList()}');
           final refresh = (mb['refresh'] ?? mb['refresh_token'] ?? mb['refreshToken']);
           if (refresh != null && refresh is String && refresh.isNotEmpty) {
             _refreshToken = refresh;
+            debugPrint('[ApiService] found refresh token in response (${refresh.length} chars)');
             if (persistRefresh) {
-              await _storage.write(key: _refreshTokenKey, value: _refreshToken!);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString(_refreshTokenKey, _refreshToken!);
+              debugPrint('[ApiService] refresh token persisted to shared_preferences');
             }
+          } else {
+            debugPrint('[ApiService] NO REFRESH TOKEN FOUND in response body');
           }
+        } else {
+          debugPrint('[ApiService] response body is not a Map: ${res.body}');
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[ApiService] error parsing login response: $e');
+      }
       // After a successful login schedule token refresh/warnings if the
       // client exposes an access token expiry (JWT 'exp' claim).
       try {
         _scheduleTokenTimers();
       } catch (_) {}
+    } else {
+      debugPrint('[ApiService] login failed. Status: ${res.statusCode}, Error: ${res.error}');
     }
     return res;
   }
@@ -158,7 +218,8 @@ class ApiService extends ChangeNotifier {
     if (res.ok) {
       _refreshToken = null;
       try {
-        await _storage.delete(key: _refreshTokenKey);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_refreshTokenKey);
       } catch (_) {}
       // Clear current user on successful logout
       _currentUser = null;
@@ -173,10 +234,22 @@ class ApiService extends ChangeNotifier {
   Future<bool> refreshAccessToken() async {
     if (_refreshToken == null || _refreshToken!.isEmpty) return false;
     try {
-      final ok = await client.refreshAccessToken(_refreshToken!);
-      if (ok) {
-        // Reset expired/expiring flags and reschedule timers based on the
-        // new access token expiry that the ApiClient parsed.
+      final resultMap = await client.refreshAccessToken(_refreshToken!);
+      if (resultMap != null) {
+        // If the backend rotated the refresh token, update it and persist it
+        final newRefresh = resultMap['refresh_token'];
+        if (newRefresh != null && newRefresh.isNotEmpty) {
+          _refreshToken = newRefresh;
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_refreshTokenKey, _refreshToken!);
+            debugPrint('[ApiService] rotated refresh token persisted');
+          } catch (e) {
+            debugPrint('[ApiService] error persisting rotated token: $e');
+          }
+        }
+
+        // Reset expired/expiring flags and reschedule timers
         sessionExpired.value = false;
         sessionExpiring.value = false;
         notifyListeners();

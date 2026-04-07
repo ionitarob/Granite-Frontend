@@ -96,9 +96,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   String _normalizedInitialOrder() {
     final initial = widget.initialOrderNumber?.trim() ?? '';
     if (initial.isEmpty) return '';
-    final normalized = initial
-        .toUpperCase()
-        .replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final normalized = initial.toUpperCase().replaceAll(
+      RegExp(r'[^A-Z0-9]'),
+      '',
+    );
     if (normalized.length == 9) {
       return '${normalized.substring(0, 2)}-${normalized.substring(2, 7)}-${normalized.substring(7, 9)}';
     }
@@ -664,7 +665,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       // Unexpected shape: log for debug and return empty
       if (kDebugMode) {
         try {
-          debugPrint('Unexpected printers response shape: ${body.runtimeType} -> $body');
+          debugPrint(
+            'Unexpected printers response shape: ${body.runtimeType} -> $body',
+          );
         } catch (_) {}
       }
     }
@@ -674,7 +677,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   Map<String, dynamic> _normalizePrinterEntry(Map<String, dynamic> e) {
     String? id;
     try {
-      id = (e['id_printer'] ?? e['id'] ?? e['printer_id'] ?? e['idPrinter'])?.toString();
+      id = (e['id_printer'] ?? e['id'] ?? e['printer_id'] ?? e['idPrinter'])
+          ?.toString();
     } catch (_) {
       id = null;
     }
@@ -686,7 +690,12 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     }
     String? ip;
     try {
-      ip = (e['ip_address'] ?? e['ip'] ?? e['address'] ?? e['ip_address']?.toString())?.toString();
+      ip =
+          (e['ip_address'] ??
+                  e['ip'] ??
+                  e['address'] ??
+                  e['ip_address']?.toString())
+              ?.toString();
     } catch (_) {
       ip = null;
     }
@@ -708,111 +717,111 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     _isShowingPrinterDialog = true;
     try {
       List<Map<String, dynamic>> printers = [];
-    try {
-      printers = await _fetchPrinters();
-    } catch (e) {
-      printers = [];
-      if (mounted) {
-        try {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error obteniendo impresoras: $e')),
-          );
-        } catch (_) {}
+      try {
+        printers = await _fetchPrinters();
+      } catch (e) {
+        printers = [];
+        if (mounted) {
+          try {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error obteniendo impresoras: $e')),
+            );
+          } catch (_) {}
+        }
       }
-    }
 
-    Map<String, dynamic>? selectedPrinter;
-    final txtIp = TextEditingController();
+      Map<String, dynamic>? selectedPrinter;
+      final txtIp = TextEditingController();
 
-    if (!mounted) return null;
+      if (!mounted) return null;
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 560,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (printers.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                    'No se encontraron impresoras en el servidor. Puedes introducir una IP manualmente.',
-                  ),
-                )
-              else
-                Column(
-                  children: printers
-                      .map(
-                        (p) => RadioListTile<Map<String, dynamic>>(
-                          value: p,
-                          groupValue: selectedPrinter,
-                          title: Text(
-                            p['printer_name']?.toString() ??
-                                p['ip_address']?.toString() ??
-                                'Impresora',
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (printers.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'No se encontraron impresoras en el servidor. Puedes introducir una IP manualmente.',
+                    ),
+                  )
+                else
+                  Column(
+                    children: printers
+                        .map(
+                          (p) => RadioListTile<Map<String, dynamic>>(
+                            value: p,
+                            groupValue: selectedPrinter,
+                            title: Text(
+                              p['printer_name']?.toString() ??
+                                  p['ip_address']?.toString() ??
+                                  'Impresora',
+                            ),
+                            subtitle: Text(p['ip_address']?.toString() ?? ''),
+                            onChanged: (v) {
+                              selectedPrinter = v;
+                              (c as Element).markNeedsBuild();
+                            },
                           ),
-                          subtitle: Text(p['ip_address']?.toString() ?? ''),
-                          onChanged: (v) {
-                            selectedPrinter = v;
-                            (c as Element).markNeedsBuild();
-                          },
-                        ),
-                      )
-                      .toList(),
+                        )
+                        .toList(),
+                  ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: txtIp,
+                  decoration: const InputDecoration(
+                    labelText:
+                        'IP de impresora (opcional, sobreescribe selección)',
+                  ),
                 ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: txtIp,
-                decoration: const InputDecoration(
-                  labelText:
-                      'IP de impresora (opcional, sobreescribe selección)',
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('Confirmar'),
-          ),
-        ],
-      ),
-    );
+      );
 
-    final manualIp = txtIp.text.trim().isNotEmpty ? txtIp.text.trim() : null;
-    txtIp.dispose();
+      final manualIp = txtIp.text.trim().isNotEmpty ? txtIp.text.trim() : null;
+      txtIp.dispose();
 
-    if (ok != true) return null;
+      if (ok != true) return null;
 
-    final result = <String, dynamic>{};
-    if (manualIp != null) {
-      result['printer_ip'] = manualIp;
-    } else if (selectedPrinter != null) {
-      if (selectedPrinter!['id_printer'] != null) {
-        result['printer_id'] = selectedPrinter!['id_printer'];
-      } else if (selectedPrinter!['ip_address'] != null)
-        result['printer_ip'] = selectedPrinter!['ip_address'];
-    } else if (printers.isNotEmpty) {
-      final first = printers.first;
-      if (first['id_printer'] != null) {
-        result['printer_id'] = first['id_printer'];
-      } else if (first['ip_address'] != null)
-        result['printer_ip'] = first['ip_address'];
-    } else {
-      throw Exception('No printer selected or provided');
-    }
-    setState(() {
-      _cachedPrinter = result;
-    });
-    return result;
+      final result = <String, dynamic>{};
+      if (manualIp != null) {
+        result['printer_ip'] = manualIp;
+      } else if (selectedPrinter != null) {
+        if (selectedPrinter!['id_printer'] != null) {
+          result['printer_id'] = selectedPrinter!['id_printer'];
+        } else if (selectedPrinter!['ip_address'] != null)
+          result['printer_ip'] = selectedPrinter!['ip_address'];
+      } else if (printers.isNotEmpty) {
+        final first = printers.first;
+        if (first['id_printer'] != null) {
+          result['printer_id'] = first['id_printer'];
+        } else if (first['ip_address'] != null)
+          result['printer_ip'] = first['ip_address'];
+      } else {
+        throw Exception('No printer selected or provided');
+      }
+      setState(() {
+        _cachedPrinter = result;
+      });
+      return result;
     } finally {
       _isShowingPrinterDialog = false;
     }
@@ -2238,8 +2247,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
           setState(() {
             entry.isValid = false;
             entry.isInvalid = true;
-            entry.errorMessage =
-                'Entrada sospechosa: parece máscara y no S/N.';
+            entry.errorMessage = 'Entrada sospechosa: parece máscara y no S/N.';
           });
         } else {
           setState(() {
@@ -3626,8 +3634,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                           controller: entry.controller,
                           focusNode: entry.focusNode,
                           decoration: InputDecoration(
-                            labelText: 'Nuevo Serial',
-                            hintText: 'Ingresa el S/N actual',
+                            labelText: 'Serial Viejo',
+                            hintText: 'Ingresa el S/N ',
                             isDense: true,
                             errorText: entry.errorMessage,
                           ),
@@ -3636,26 +3644,97 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                               RegExp(r'[A-Za-z0-9_\/\-#]'),
                             ),
                           ],
-                          textInputAction: index == box.entries.length - 1
-                              ? TextInputAction.done
-                              : TextInputAction.next,
+                          textInputAction: TextInputAction
+                              .none, // Prevent automatic focus jumps
                           onChanged: (_) => _onSerialChanged(entry),
                           onSubmitted: (_) async {
-                            if (entry.submitting) return; 
+                            if (entry.submitting) return;
                             entry.submitting = true;
                             try {
                               final isValid = await _validateEntryForSubmit(
-                              entry,
-                              box,
-                            );
-                            if (!isValid) return;
+                                entry,
+                                box,
+                              );
+                              if (!isValid) return;
 
-                            // success: play success sound then register this S/N immediately
-                            SoundPlayer.playSuccess();
+                              // success: play success sound then register this S/N immediately
+                              SoundPlayer.playSuccess();
 
-                            // Check if we are updating an existing registry or creating a new one
-                            if (entry.registered && entry.registryId != null) {
-                      // UPDATE EXISTING REGISTRY
+                              // Check if we are updating an existing registry or creating a new one
+                              if (entry.registered &&
+                                  entry.registryId != null) {
+                                // UPDATE EXISTING REGISTRY
+                                try {
+                                  final client2 = _clientOrNull();
+                                  if (client2 == null) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Servicio API no disponible',
+                                        ),
+                                      ),
+                                    );
+                                    if (!mounted) return;
+                                    FocusScope.of(
+                                      context,
+                                    ).requestFocus(entry.focusNode);
+                                    return;
+                                  }
+
+                                  final id = entry.registryId!;
+                                  final payload = <String, dynamic>{
+                                    'serial_old': entry.controller.text.trim(),
+                                  };
+
+                                  final resp = await client2.put(
+                                    '/serials/serial-changes/$id',
+                                    jsonBody: payload,
+                                  );
+
+                                  if (resp.ok) {
+                                    // update registeredMappings
+                                    final newVal = entry.controller.text.trim();
+                                    for (final m in _registeredMappings) {
+                                      if (m['id'] == id) {
+                                        m['old'] = newVal;
+                                      }
+                                    }
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('S/N actualizado'),
+                                      ),
+                                    );
+                                    // Do not auto-advance focus on edit; stay here or let user move
+                                  } else {
+                                    final err = resp.body is Map
+                                        ? (resp.body['error']?.toString() ??
+                                              resp.error ??
+                                              'Error')
+                                        : (resp.error ?? 'Error');
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Error actualizando: $err',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Error actualizando S/N: $e',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                                return;
+                              }
+
+                              // Attempt to register this single S/N immediately so data is persisted even if the app closes
                               try {
                                 final client2 = _clientOrNull();
                                 if (client2 == null) {
@@ -3674,304 +3753,254 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                   return;
                                 }
 
-                                final id = entry.registryId!;
-                                final payload = <String, dynamic>{
+                                final currentUser =
+                                    ApiService.instance?.currentUser;
+                                final usuario = currentUser != null
+                                    ? (currentUser.nombre?.isNotEmpty == true
+                                          ? currentUser.nombre
+                                          : currentUser.username)
+                                    : null;
+                                final startStr = box.startTime != null
+                                    ? DateFormat(
+                                        'yyyy-MM-dd HH:mm:ss',
+                                      ).format(box.startTime!)
+                                    : null;
+                                final endStr = DateFormat(
+                                  'yyyy-MM-dd HH:mm:ss',
+                                ).format(DateTime.now());
+
+                                final audit = <String, dynamic>{
+                                  'nr_orden': _orderController.text.trim(),
+                                  'nr_sku': _skuController.text.trim(),
+                                  'nr_unidades': _plannedUnits,
+                                  'tipo_etiqueta': _selectedType?.displayName,
+                                  'fecha': DateFormat(
+                                    'yyyy-MM-dd',
+                                  ).format(_productionDate),
+                                  'fecha_inicio': startStr,
+                                  'fecha_finalizacion': endStr,
+                                  'usuario': usuario,
+                                  'tipo_etiqueta_id': _selectedType?.id,
+                                  'nr_box': box.boxNumber,
+                                  'nr_unidades_box': box.units,
+                                  'ean': _ean ?? '',
                                   'serial_old': entry.controller.text.trim(),
+                                  'serial_new': entry.label,
                                 };
 
-                                final resp = await client2.put(
-                                  '/serials/serial-changes/$id',
-                                  jsonBody: payload,
+                                final resp = await client2.post(
+                                  '/serials/add_registry',
+                                  jsonBody: audit,
                                 );
-
                                 if (resp.ok) {
-                                  // update registeredMappings
-                                  final newVal = entry.controller.text.trim();
-                                  for (final m in _registeredMappings) {
-                                    if (m['id'] == id) {
-                                      m['old'] = newVal;
+                                  entry.registered = true;
+                                  entry.isValid = true;
+                                  // capture backend id if returned so the entry can be edited later
+                                  int? returnedId;
+                                  if (resp.body is Map &&
+                                      resp.body['id'] != null) {
+                                    try {
+                                      returnedId = (resp.body['id'] as num)
+                                          .toInt();
+                                    } catch (_) {
+                                      returnedId = null;
                                     }
                                   }
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('S/N actualizado'),
-                                    ),
-                                  );
-                                  // Do not auto-advance focus on edit; stay here or let user move
+                                  entry.registryId = returnedId;
+                                  try {
+                                    final Map<String, dynamic> map = {
+                                      'old': entry.controller.text.trim(),
+                                      'new': entry.label,
+                                    };
+                                    if (returnedId != null)
+                                      map['id'] = returnedId;
+                                    _registeredMappings.add(map);
+                                  } catch (_) {}
+
+                                  // If last entry, finalize box similar to previous flow
+                                  if (index == box.entries.length - 1) {
+                                    final endTime = DateTime.now();
+                                    box.endTime = endTime;
+                                    _boxTimer?.cancel();
+                                    _boxElapsed = Duration.zero;
+                                    setState(() {
+                                      _consumedLabels.addAll(box.labels);
+                                      _history.add(
+                                        BoxHistoryEntry(
+                                          boxNumber: box.boxNumber,
+                                          units: box.units,
+                                          submittedAt: DateTime.now(),
+                                          lastLabel: box.entries.isNotEmpty
+                                              ? box.entries.last.label
+                                              : null,
+                                          records: box.entries.map((e) {
+                                            return {
+                                              'serial_old': e.controller.text
+                                                  .trim(),
+                                              'serial_new': e.label,
+                                              'nr_box': box.boxNumber,
+                                              'nr_unidades_box': box.units,
+                                              'fecha': DateFormat(
+                                                'yyyy-MM-dd',
+                                              ).format(_productionDate),
+                                              'fecha_finalizacion': DateFormat(
+                                                'yyyy-MM-dd HH:mm:ss',
+                                              ).format(DateTime.now()),
+                                              'nr_sku': _skuController.text
+                                                  .trim(),
+                                              'nr_orden': _orderController.text
+                                                  .trim(),
+                                              'id': e.registryId,
+                                            };
+                                          }).toList(),
+                                        ),
+                                      );
+                                      _activeBox?.dispose();
+                                      _activeBox = null;
+                                      final nextBox = int.tryParse(
+                                        box.boxNumber,
+                                      );
+                                      if (nextBox != null) {
+                                        _boxNumberController.text =
+                                            (nextBox + 1).toString();
+                                      } else {
+                                        _boxNumberController.clear();
+                                      }
+                                      _boxUnitsController.clear();
+                                      if (_consumedLabels.length >=
+                                          _plannedUnits) {
+                                        _completionMessage =
+                                            'Se registraron todas las $_plannedUnits unidades.';
+                                      } else {
+                                        // If order not complete, focus on box number for next box
+                                        _boxNumberFocus.requestFocus();
+                                      }
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Caja ${box.boxNumber} registrada.',
+                                        ),
+                                      ),
+                                    );
+                                    try {
+                                      final newSerials = box.labels;
+                                      final oldSerials = box.entries
+                                          .map((e) => e.controller.text.trim())
+                                          .toList();
+                                      await _printForBox(
+                                        box.boxNumber,
+                                        newSerials,
+                                        oldSerials,
+                                        box.units,
+                                      );
+                                    } catch (_) {}
+
+                                    // Check backend and trigger logic
+                                    // debugPrint(
+                                    //   'DEBUG: (Single) Calling _checkAndTriggerCompletion...',
+                                    // );
+                                    if (mounted &&
+                                        await _checkAndTriggerCompletion()) {
+                                      // debugPrint('DEBUG: (Single) Completion MET.');
+                                      if (!mounted) return;
+                                      final doPrint = await showDialog<bool>(
+                                        context: context,
+                                        builder: (dctx) => AlertDialog(
+                                          title: const Text(
+                                            'Proceso completado',
+                                          ),
+                                          content: const Text(
+                                            'Se registraron todas las unidades. ¿Deseas imprimir una etiqueta final con todos los S/N?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.of(dctx).pop(false),
+                                              child: const Text('No'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () =>
+                                                  Navigator.of(dctx).pop(true),
+                                              child: const Text('Sí, imprimir'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      // debugPrint(
+                                      //   'DEBUG: (Single) Print dialog closed. doPrint=$doPrint',
+                                      // );
+                                      if (doPrint == true)
+                                        await _printFinalLabel();
+
+                                      if (!mounted) {
+                                        // debugPrint(
+                                        //   'DEBUG: (Single) Not mounted after print.',
+                                        // );
+                                        return;
+                                      }
+                                      // debugPrint(
+                                      //   'DEBUG: (Single) Showing reset dialog...',
+                                      // );
+
+                                      await showDialog<void>(
+                                        context: context,
+                                        builder: (dctx) => AlertDialog(
+                                          title: const Text(
+                                            'Proceso completado',
+                                          ),
+                                          content: Text(
+                                            'Se registraron todas las $_plannedUnits unidades. El flujo se reiniciará.',
+                                          ),
+                                          actions: [
+                                            FilledButton(
+                                              onPressed: () =>
+                                                  Navigator.of(dctx).pop(),
+                                              child: const Text('Aceptar'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      // debugPrint('DEBUG: (Single) Reset dialog closed.');
+                                      if (!mounted) return;
+                                      // debugPrint('DEBUG: (Single) Resetting workflow...');
+                                      _resetWorkflow();
+                                    }
+                                  } else {
+                                    FocusScope.of(context).requestFocus(
+                                      box.entries[index + 1].focusNode,
+                                    );
+                                  }
                                 } else {
-                                  final err = resp.body is Map
-                                      ? (resp.body['error']?.toString() ??
-                                            resp.error ??
-                                            'Error')
-                                      : (resp.error ?? 'Error');
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Error actualizando: $err'),
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
+                                  if (!mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        'Error actualizando S/N: $e',
+                                        'Error registrando S/N: ${resp.statusCode}',
                                       ),
                                     ),
                                   );
+                                  if (!mounted) return;
+                                  FocusScope.of(
+                                    context,
+                                  ).requestFocus(entry.focusNode);
                                 }
-                              }
-                              return;
-                            }
-
-                            // Attempt to register this single S/N immediately so data is persisted even if the app closes
-                            try {
-                              final client2 = _clientOrNull();
-                              if (client2 == null) {
+                              } catch (e) {
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Servicio API no disponible',
-                                    ),
+                                  SnackBar(
+                                    content: Text('Error registrando S/N: $e'),
                                   ),
                                 );
                                 if (!mounted) return;
                                 FocusScope.of(
                                   context,
                                 ).requestFocus(entry.focusNode);
-                                return;
                               }
-
-                      final currentUser = ApiService.instance?.currentUser;
-                      final usuario = currentUser != null
-                          ? (currentUser.nombre?.isNotEmpty == true
-                                ? currentUser.nombre
-                                : currentUser.username)
-                          : null;
-                      final startStr = box.startTime != null
-                          ? DateFormat(
-                              'yyyy-MM-dd HH:mm:ss',
-                            ).format(box.startTime!)
-                          : null;
-                      final endStr = DateFormat(
-                        'yyyy-MM-dd HH:mm:ss',
-                      ).format(DateTime.now());
-
-                      final audit = <String, dynamic>{
-                        'nr_orden': _orderController.text.trim(),
-                        'nr_sku': _skuController.text.trim(),
-                        'nr_unidades': _plannedUnits,
-                        'tipo_etiqueta': _selectedType?.displayName,
-                        'fecha': DateFormat(
-                          'yyyy-MM-dd',
-                        ).format(_productionDate),
-                        'fecha_inicio': startStr,
-                        'fecha_finalizacion': endStr,
-                        'usuario': usuario,
-                        'tipo_etiqueta_id': _selectedType?.id,
-                        'nr_box': box.boxNumber,
-                        'nr_unidades_box': box.units,
-                        'ean': _ean ?? '',
-                        'serial_old': entry.controller.text.trim(),
-                        'serial_new': entry.label,
-                      };
-
-                      final resp = await client2.post(
-                        '/serials/add_registry',
-                        jsonBody: audit,
-                      );
-                      if (resp.ok) {
-                        entry.registered = true;
-                        entry.isValid = true;
-                        // capture backend id if returned so the entry can be edited later
-                        int? returnedId;
-                        if (resp.body is Map && resp.body['id'] != null) {
-                          try {
-                            returnedId = (resp.body['id'] as num).toInt();
-                          } catch (_) {
-                            returnedId = null;
-                          }
-                        }
-                        entry.registryId = returnedId;
-                        try {
-                          final Map<String, dynamic> map = {
-                            'old': entry.controller.text.trim(),
-                            'new': entry.label,
-                          };
-                          if (returnedId != null) map['id'] = returnedId;
-                          _registeredMappings.add(map);
-                        } catch (_) {}
-
-                        // If last entry, finalize box similar to previous flow
-                        if (index == box.entries.length - 1) {
-                          final endTime = DateTime.now();
-                          box.endTime = endTime;
-                          _boxTimer?.cancel();
-                          _boxElapsed = Duration.zero;
-                          setState(() {
-                            _consumedLabels.addAll(box.labels);
-                            _history.add(
-                              BoxHistoryEntry(
-                                boxNumber: box.boxNumber,
-                                units: box.units,
-                                submittedAt: DateTime.now(),
-                                lastLabel: box.entries.isNotEmpty
-                                    ? box.entries.last.label
-                                    : null,
-                                records: box.entries.map((e) {
-                                  return {
-                                    'serial_old': e.controller.text.trim(),
-                                    'serial_new': e.label,
-                                    'nr_box': box.boxNumber,
-                                    'nr_unidades_box': box.units,
-                                    'fecha': DateFormat(
-                                      'yyyy-MM-dd',
-                                    ).format(_productionDate),
-                                    'fecha_finalizacion': DateFormat(
-                                      'yyyy-MM-dd HH:mm:ss',
-                                    ).format(DateTime.now()),
-                                    'nr_sku': _skuController.text.trim(),
-                                    'nr_orden': _orderController.text.trim(),
-                                    'id': e.registryId,
-                                  };
-                                }).toList(),
-                              ),
-                            );
-                            _activeBox?.dispose();
-                            _activeBox = null;
-                            final nextBox = int.tryParse(box.boxNumber);
-                            if (nextBox != null) {
-                              _boxNumberController.text = (nextBox + 1)
-                                  .toString();
-                            } else {
-                              _boxNumberController.clear();
+                            } finally {
+                              entry.submitting = false;
                             }
-                            _boxUnitsController.clear();
-                            if (_consumedLabels.length >= _plannedUnits) {
-                              _completionMessage =
-                                  'Se registraron todas las $_plannedUnits unidades.';
-                            } else {
-                              // If order not complete, focus on box number for next box
-                              _boxNumberFocus.requestFocus();
-                            }
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Caja ${box.boxNumber} registrada.',
-                              ),
-                            ),
-                          );
-                          try {
-                            final newSerials = box.labels;
-                            final oldSerials = box.entries
-                                .map((e) => e.controller.text.trim())
-                                .toList();
-                            await _printForBox(
-                              box.boxNumber,
-                              newSerials,
-                              oldSerials,
-                              box.units,
-                            );
-                          } catch (_) {}
-
-                          // Check backend and trigger logic
-                          // debugPrint(
-                          //   'DEBUG: (Single) Calling _checkAndTriggerCompletion...',
-                          // );
-                          if (mounted && await _checkAndTriggerCompletion()) {
-                            // debugPrint('DEBUG: (Single) Completion MET.');
-                            if (!mounted) return;
-                            final doPrint = await showDialog<bool>(
-                              context: context,
-                              builder: (dctx) => AlertDialog(
-                                title: const Text('Proceso completado'),
-                                content: const Text(
-                                  'Se registraron todas las unidades. ¿Deseas imprimir una etiqueta final con todos los S/N?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dctx).pop(false),
-                                    child: const Text('No'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.of(dctx).pop(true),
-                                    child: const Text('Sí, imprimir'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            // debugPrint(
-                            //   'DEBUG: (Single) Print dialog closed. doPrint=$doPrint',
-                            // );
-                            if (doPrint == true) await _printFinalLabel();
-
-                            if (!mounted) {
-                              // debugPrint(
-                              //   'DEBUG: (Single) Not mounted after print.',
-                              // );
-                              return;
-                            }
-                            // debugPrint(
-                            //   'DEBUG: (Single) Showing reset dialog...',
-                            // );
-
-                            await showDialog<void>(
-                              context: context,
-                              builder: (dctx) => AlertDialog(
-                                title: const Text('Proceso completado'),
-                                content: Text(
-                                  'Se registraron todas las $_plannedUnits unidades. El flujo se reiniciará.',
-                                ),
-                                actions: [
-                                  FilledButton(
-                                    onPressed: () => Navigator.of(dctx).pop(),
-                                    child: const Text('Aceptar'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            // debugPrint('DEBUG: (Single) Reset dialog closed.');
-                            if (!mounted) return;
-                            // debugPrint('DEBUG: (Single) Resetting workflow...');
-                            _resetWorkflow();
-                          }
-                        } else {
-                          FocusScope.of(
-                            context,
-                          ).requestFocus(box.entries[index + 1].focusNode);
-                        }
-                      } else {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Error registrando S/N: ${resp.statusCode}',
-                            ),
-                          ),
-                        );
-                        if (!mounted) return;
-                        FocusScope.of(context).requestFocus(entry.focusNode);
-                      }
-                            } catch (e) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error registrando S/N: $e'),
-                                ),
-                              );
-                              if (!mounted) return;
-                              FocusScope.of(
-                                context,
-                              ).requestFocus(entry.focusNode);
-                            }
-                          } finally {
-                            entry.submitting = false;
-                          }
-                        },
+                          },
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -3982,11 +4011,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest.withOpacity(
-                                  .25,
-                                ),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withOpacity(.25),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: Theme.of(
@@ -3998,7 +4026,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Serial Anterior',
+                                'Nuevo Serial',
                                 style: Theme.of(context).textTheme.labelMedium,
                               ),
                               const SizedBox(height: 6),
@@ -4279,6 +4307,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                                           icon: const Icon(
                                                             Icons.search,
                                                           ),
+                                                          focusNode: FocusNode(
+                                                            canRequestFocus:
+                                                                false,
+                                                          ),
                                                           onPressed:
                                                               _configLocked
                                                               ? null
@@ -4437,6 +4469,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                           onPressed: _configLocked
                                               ? _resetWorkflow
                                               : null,
+                                          focusNode: FocusNode(
+                                            canRequestFocus: false,
+                                          ),
                                           icon: const Icon(Icons.refresh),
                                           label: const Text('Reiniciar'),
                                         ),
@@ -4561,6 +4596,9 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                     onPressed: _activeBox == null
                                         ? _startBox
                                         : null,
+                                    focusNode: FocusNode(
+                                      canRequestFocus: false,
+                                    ),
                                     icon: const Icon(
                                       Icons.inventory_2_outlined,
                                     ),

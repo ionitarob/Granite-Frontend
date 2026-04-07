@@ -153,7 +153,7 @@ class _AmazonGradingScreenState extends State<AmazonGradingScreen> {
   Future<void> _fetchFcOptions() async {
     try {
       final api = Provider.of<ApiService>(context, listen: false);
-      await api.client.loadCookiesFromStorage();
+      await api.client.loadSessionFromStorage();
       // Changed from /amz/grading/options to /amz/grading/transfers per user request
       final res = await api.client.get('/amz/grading/transfers');
 

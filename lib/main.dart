@@ -56,6 +56,7 @@ import 'screens/analisis_y_serveis/ays_management_screen.dart';
 import 'screens/sentinel_for_imaging/active_images_screen.dart';
 import 'screens/sentinel_for_imaging/physical_tables_screen.dart';
 import 'screens/sentinel_for_imaging/sentinel_provider.dart';
+import 'screens/sentinel_for_imaging/sentinel_stats_screen.dart';
 import 'screens/orderops/order_queue_screen.dart';
 import 'screens/orderops/work_items_screen.dart';
 import 'screens/orderops/agent_activity_screen.dart';
@@ -239,6 +240,7 @@ class MainApp extends StatelessWidget {
                 '/hr/gestion_empleado': (_) => const GestionEmpleadosScreen(),
                 // Sentinel
                 '/sentinel/active': (_) => const ActiveImagesScreen(),
+                '/sentinel/stats': (_) => const SentinelStatsScreen(),
                 '/sentinel/tables': (context) {
                   final args = ModalRoute.of(context)?.settings.arguments;
                   if (args is int) {

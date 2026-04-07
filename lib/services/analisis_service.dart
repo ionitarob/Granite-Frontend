@@ -216,9 +216,9 @@ class AnalisisService {
   }
 
   Future<void> updateMasterServicioPrice(int id, double pvd) async {
-    final res = await _client.post(
-      '/serveis/servicios/$id/price/',
-      jsonBody: {'pvd': pvd},
+    final res = await _client.patch(
+      '/serveis/servicios/$id/',
+      jsonBody: {'PVD': pvd},
     );
     if (!res.ok) {
       throw _asException(res, fallback: 'Error updating service price');

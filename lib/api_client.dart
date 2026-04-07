@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiResult {
   final bool ok;
@@ -31,7 +31,7 @@ class MultipartAttachment {
 class ApiClient {
   final String baseUrl;
   final http.Client _client;
-  final FlutterSecureStorage _storage;
+  SharedPreferences? _prefs;
 
   // In-memory cookies map
   final Map<String, String> _cookies = {};
@@ -43,6 +43,8 @@ class ApiClient {
   bool get hasSessionCookie => _cookies.isNotEmpty;
 
   static const _cookieStorageKey = 'session_cookies_v1';
+  static const _accessTokenKey = 'access_token_v1';
+  static const _accessTokenExpiryKey = 'access_token_expiry_v1';
 
   /// If [allowBadCertificateForHosts] is provided and the app is running in
   /// debug mode, the internal HttpClient will accept self-signed certificates
@@ -51,11 +53,9 @@ class ApiClient {
   ApiClient({
     required this.baseUrl,
     http.Client? client,
-    FlutterSecureStorage? storage,
     List<String>? allowBadCertificateForHosts,
     this.onUnauthorized,
-  }) : _storage = storage ?? const FlutterSecureStorage(),
-       _client = client ?? _createDefaultClient(allowBadCertificateForHosts);
+  }) : _client = client ?? _createDefaultClient(allowBadCertificateForHosts);
 
   static http.Client _createDefaultClient(
     List<String>? allowBadCertificateForHosts,
@@ -114,7 +114,7 @@ class ApiClient {
       }
 
       if (persistSession) {
-        await _saveCookiesToStorage();
+        await saveSessionToStorage();
       }
 
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -180,14 +180,11 @@ class ApiClient {
         _cookies.clear();
         _accessToken = null;
         try {
-          await _storage.delete(key: _cookieStorageKey);
+          _prefs ??= await SharedPreferences.getInstance();
+          await _prefs!.remove(_cookieStorageKey);
+          await _prefs!.remove(_accessTokenKey);
         } catch (e) {
-          if (kDebugMode) {
-            try {
-              debugPrint('ApiClient.logout: failed clearing cookie storage: $e');
-            } catch (_) {}
-          }
-          // Do not fail logout because secure storage/keychain access failed.
+          debugPrint('ApiClient.logout: failed clearing storage: $e');
         }
         return ApiResult(true, resp.statusCode);
       }
@@ -245,24 +242,63 @@ class ApiClient {
     }
   }
 
-  Future<void> _saveCookiesToStorage() async {
-    if (_cookies.isEmpty) return;
-    // Save as header string
-    final cookieStr = _buildCookieHeader();
-    await _storage.write(key: _cookieStorageKey, value: cookieStr);
+  /// Persist current cookies and access token to storage.
+  Future<void> saveSessionToStorage() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      if (_cookies.isNotEmpty) {
+        final cookieString = jsonEncode(_cookies);
+        await _prefs!.setString(_cookieStorageKey, cookieString);
+      } else {
+        await _prefs!.remove(_cookieStorageKey);
+      }
+
+      if (_accessToken != null) {
+        await _prefs!.setString(_accessTokenKey, _accessToken!);
+      } else {
+        await _prefs!.remove(_accessTokenKey);
+      }
+
+      if (_accessTokenExpiry != null) {
+        await _prefs!.setString(
+          _accessTokenExpiryKey,
+          _accessTokenExpiry!.toIso8601String(),
+        );
+      } else {
+        await _prefs!.remove(_accessTokenExpiryKey);
+      }
+    } catch (e) {
+      debugPrint('[ApiClient] error saving session to storage: $e');
+    }
   }
 
-  Future<void> loadCookiesFromStorage() async {
-    final s = await _storage.read(key: _cookieStorageKey);
-    if (s == null || s.isEmpty) return;
-    // parse cookie header string like "k1=v1; k2=v2"
-    final parts = s.split(';');
-    for (final p in parts) {
-      final kv = p.split('=');
-      if (kv.length < 2) continue;
-      final name = kv[0].trim();
-      final value = kv.sublist(1).join('=').trim();
-      _cookies[name] = value;
+  /// Load cookies and access token from storage.
+  Future<void> loadSessionFromStorage() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      final cookieString = _prefs!.getString(_cookieStorageKey);
+      if (cookieString != null && cookieString.isNotEmpty) {
+        final Map<String, dynamic> decoded = jsonDecode(cookieString);
+        _cookies.clear();
+        decoded.forEach((key, value) {
+          _cookies[key] = value.toString();
+        });
+        debugPrint('[ApiClient] ${_cookies.length} cookies restored from storage');
+      }
+
+      final token = _prefs!.getString(_accessTokenKey);
+      if (token != null && token.isNotEmpty) {
+        _accessToken = token;
+        debugPrint('[ApiClient] access token restored from storage');
+      }
+
+      final expiryStr = _prefs!.getString(_accessTokenExpiryKey);
+      if (expiryStr != null && expiryStr.isNotEmpty) {
+        _accessTokenExpiry = DateTime.tryParse(expiryStr);
+        debugPrint('[ApiClient] token expiry restored: $_accessTokenExpiry');
+      }
+    } catch (e) {
+      debugPrint('[ApiClient] error loading session from storage: $e');
     }
   }
 
@@ -366,29 +402,50 @@ class ApiClient {
   /// Try to refresh access token using a refresh token by calling the
   /// standard refresh endpoint. Returns true if a new access token was
   /// obtained and stored in memory.
-  Future<bool> refreshAccessToken(String refreshToken) async {
+  Future<Map<String, String>?> refreshAccessToken(String refreshToken) async {
     try {
       final uri = _uri('/api/auth/refresh/');
-      final headers = _authHeaders();
-      headers['Content-Type'] = 'application/json';
+      final headers = {'Accept': 'application/json', 'Content-Type': 'application/json'};
 
+      debugPrint('ApiClient -> POST ${uri.toString()} (refresh rotation)');
       final resp = await _client.post(
         uri,
         headers: headers,
-        body: jsonEncode({'refresh': refreshToken}),
+        body: jsonEncode({'refresh_token': refreshToken}),
       );
+      debugPrint('ApiClient: refresh response status: ${resp.statusCode}');
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         try {
-          final parsed = jsonDecode(resp.body);
-          final token = _extractTokenFromParsed(parsed);
-          if (token != null && token.isNotEmpty) {
-            _accessToken = token;
-            return true;
+          if (resp.body.isNotEmpty) {
+            final parsed = jsonDecode(resp.body);
+            final access = _extractTokenFromParsed(parsed);
+            
+            // Extract the new rotated refresh token if the backend provides it
+            String? newRefresh;
+            if (parsed is Map) {
+              newRefresh = (parsed['refresh'] ?? parsed['refresh_token'] ?? parsed['refreshToken']) as String?;
+            }
+
+            if (access != null && access.isNotEmpty) {
+              _accessToken = access;
+              debugPrint('ApiClient: token refresh successful');
+              await saveSessionToStorage();
+              return {
+                'access_token': access,
+                if (newRefresh != null) 'refresh_token': newRefresh,
+              };
+            }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('ApiClient: error parsing refresh response: $e');
+        }
+      } else {
+        debugPrint('ApiClient: refresh failed. Status: ${resp.statusCode}, Body: ${resp.body}');
       }
-    } catch (_) {}
-    return false;
+    } catch (e) {
+      debugPrint('ApiClient: error during refresh: $e');
+    }
+    return null;
   }
 
   /// Authenticated GET helper that returns an ApiResult wrapping parsed JSON
@@ -479,6 +536,7 @@ class ApiClient {
       _logRequestHeaders('POST', uri, headers);
       final body = jsonBody != null ? jsonEncode(jsonBody) : null;
       final resp = await _client.post(uri, headers: headers, body: body);
+      if (kDebugMode) debugPrint('ApiClient <- POST $path result: ${resp.statusCode}');
       _updateCookiesFromResponse(resp);
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         dynamic parsed;
@@ -748,18 +806,22 @@ class ApiClient {
     }
   }
 
-  void clearSession({bool forgetPersisted = true}) {
+  void clearSession({bool forgetPersisted = true}) async {
     _cookies.clear();
     _accessToken = null;
     _accessTokenExpiry = null;
     if (forgetPersisted) {
-      // ignore: discarded_futures
-      _storage.delete(key: _cookieStorageKey);
+      try {
+        _prefs ??= await SharedPreferences.getInstance();
+        await _prefs!.remove(_cookieStorageKey);
+        await _prefs!.remove(_accessTokenKey);
+        await _prefs!.remove(_accessTokenExpiryKey);
+      } catch (_) {}
     }
   }
 
   void _emitUnauthorized(ApiResult result) {
-    if ((result.statusCode == 401 || result.statusCode == 403) &&
+    if (result.statusCode == 401 &&
         onUnauthorized != null) {
       try {
         onUnauthorized!(result);

@@ -413,7 +413,7 @@ class _MainSidebarState extends State<MainSidebar> {
     try {
       final api = Provider.of<ApiService>(context, listen: false);
       final client = api.client;
-      await client.loadCookiesFromStorage();
+      await client.loadSessionFromStorage();
       final res = await api.logout();
       navigator.pop();
       if (res.ok) {
@@ -1380,6 +1380,7 @@ class _MainSidebarState extends State<MainSidebar> {
           initiallyExpanded: [
             '/sentinel/active',
             '/sentinel/tables',
+            '/sentinel/stats',
           ].contains(routeName),
           children: [
             _SidebarTile(
@@ -1402,6 +1403,19 @@ class _MainSidebarState extends State<MainSidebar> {
               onTap: () => _navigate(
                 context,
                 '/sentinel/active',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Estadísticas',
+              icon: Icons.bar_chart_rounded,
+              selected: isRoute('/sentinel/stats'),
+              onTap: () => _navigate(
+                context,
+                '/sentinel/stats',
                 closeOverlay: !permanent,
               ),
               highlight: highlight,
