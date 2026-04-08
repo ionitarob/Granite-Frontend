@@ -63,6 +63,8 @@ import 'screens/orderops/agent_activity_screen.dart';
 import 'screens/orderops/agent_memory_screen.dart';
 import 'screens/orderops/cotizaciones_management_screen.dart';
 import 'screens/orderops/proyectos_management_screen.dart';
+import 'screens/tv/tv_revision_screen.dart';
+import 'screens/tv/tv_history_screen.dart';
 import 'widgets/main_sidebar.dart';
 import 'services/navigation_tracker.dart';
 
@@ -258,6 +260,8 @@ class MainApp extends StatelessWidget {
                 '/orderops/memory': (_) => const AgentMemoryScreen(),
                 '/orderops/cotizaciones': (_) => const CotizacionesManagementScreen(),
                 '/orderops/proyectos': (_) => const ProyectosManagementScreen(),
+                '/tv/revision': (_) => const TvRevisionScreen(),
+                '/tv/history': (_) => const TvHistoryScreen(),
               },
             ),
           );

@@ -1261,6 +1261,49 @@ class _MainSidebarState extends State<MainSidebar> {
           ),
         ),
         SidebarExpansionTile(
+          title: 'TV',
+          icon: Icons.tv_rounded,
+          highlight: highlight,
+          textPrimary: textPrimary,
+          initiallyExpanded: routeName?.startsWith('/tv') ?? false,
+          children: [
+            _SidebarTile(
+              label: 'Revisión TV',
+              icon: Icons.screenshot_monitor_rounded,
+              selected: isRoute('/tv/revision'),
+              onTap: () => _navigate(
+                context,
+                '/tv/revision',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Historial Revisión TV',
+              icon: Icons.history_rounded,
+              selected: isRoute('/tv/history'),
+              onTap: () => _navigate(
+                context,
+                '/tv/history',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
+        SidebarExpansionTile(
           title: 'Xiaomi',
           icon: Icons.phone_android_rounded,
           highlight: highlight,
@@ -2168,6 +2211,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
       '/servers/',
       '/sentinel/',
       '/analisis/',
+      '/tv/',
     ];
     return prefixes.any(r.startsWith);
   }
@@ -2944,6 +2988,29 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               title: 'Gestión',
               icon: Icons.settings_suggest_rounded,
               route: '/analisis/management',
+              currentRoute: currentRoute,
+            ),
+          ],
+        ),
+        _menuExpandableGroup(
+          dialogContext: dialogCtx,
+          title: 'TV',
+          icon: Icons.tv_rounded,
+          currentRoute: currentRoute,
+          routePrefixes: const ['/tv/'],
+          children: [
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Revisión TV',
+              icon: Icons.screenshot_monitor_rounded,
+              route: '/tv/revision',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Historial Revisión TV',
+              icon: Icons.history_rounded,
+              route: '/tv/history',
               currentRoute: currentRoute,
             ),
           ],

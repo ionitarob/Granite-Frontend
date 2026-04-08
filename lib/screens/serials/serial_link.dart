@@ -875,6 +875,59 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     setState(() {});
   }
 
+  Future<bool> _isDuplicateInMatch(int index, String serial) async {
+    final value = serial.trim().toLowerCase();
+    if (value.isEmpty) return false;
+
+    // Check against history in this order
+    final registered = _orderSerials.any(
+      (e) => (e['serial'] ?? '').toLowerCase() == value,
+    );
+    if (registered) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Serial duplicado'),
+          content: Text(
+            'El serial "$serial" ya está registrado en esta orden.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return true;
+    }
+
+    // Check against other current rows
+    for (var i = 0; i < _matchRows.length; i++) {
+      if (i == index) continue;
+      if (_matchRows[i].serial.text.trim().toLowerCase() == value) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Serial duplicado'),
+            content: Text(
+              'El serial "$serial" ya está en la fila ${i + 1}.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Entendido'),
+              ),
+            ],
+          ),
+        );
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   bool _allRowsFilled() {
     if (_matchRows.isEmpty) return false;
     final manualDouble = _isManualDouble;
@@ -1643,7 +1696,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                   : null,
                             ),
                             onChanged: (_) => _validateRows(),
-                            onSubmitted: (_) {
+                            onSubmitted: (value) async {
+                              final isDup = await _isDuplicateInMatch(index, value);
+                              if (isDup) {
+                                row.serial.clear();
+                                _validateRows();
+                                row.focus.requestFocus();
+                                return;
+                              }
                               if (manualDouble) {
                                 row.inventoryFocus.requestFocus();
                               } else {
@@ -1653,7 +1713,15 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                 }
                               }
                             },
-                            onEditingComplete: () {
+                            onEditingComplete: () async {
+                              final val = row.serial.text;
+                              final isDup = await _isDuplicateInMatch(index, val);
+                              if (isDup) {
+                                row.serial.clear();
+                                _validateRows();
+                                row.focus.requestFocus();
+                                return;
+                              }
                               // Ensure Tab/Enter both move focus correctly
                               if (manualDouble) {
                                 row.inventoryFocus.requestFocus();

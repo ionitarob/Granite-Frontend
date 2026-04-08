@@ -3633,16 +3633,23 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                         child: TextField(
                           controller: entry.controller,
                           focusNode: entry.focusNode,
+                          maxLength: _originalSerialMaskLength,
+                          maxLengthEnforcement: MaxLengthEnforcement.enforced,
                           decoration: InputDecoration(
                             labelText: 'Serial Viejo',
                             hintText: 'Ingresa el S/N ',
                             isDense: true,
                             errorText: entry.errorMessage,
+                            counterText: '', // Hide the counter for a cleaner look
                           ),
                           inputFormatters: [
                             FilteringTextInputFormatter.allow(
                               RegExp(r'[A-Za-z0-9_\/\-#]'),
                             ),
+                            if (_originalSerialMaskLength != null)
+                              LengthLimitingTextInputFormatter(
+                                _originalSerialMaskLength,
+                              ),
                           ],
                           textInputAction: TextInputAction
                               .none, // Prevent automatic focus jumps
@@ -3650,6 +3657,21 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                           onSubmitted: (_) async {
                             if (entry.submitting) return;
                             entry.submitting = true;
+
+                            // Move focus to next field immediately to accommodate fast scanners
+                            if (index < box.entries.length - 1) {
+                              FocusScope.of(context).requestFocus(
+                                box.entries[index + 1].focusNode,
+                              );
+                            }
+
+                            // Play success sound early if basic checks pass to ensure user hears it on scan
+                            final text = entry.controller.text.trim();
+                            if (_originalSerialMaskLength == null ||
+                                text.length == _originalSerialMaskLength) {
+                              SoundPlayer.playSuccess();
+                            }
+
                             try {
                               final isValid = await _validateEntryForSubmit(
                                 entry,
@@ -3657,8 +3679,11 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                               );
                               if (!isValid) return;
 
-                              // success: play success sound then register this S/N immediately
-                              SoundPlayer.playSuccess();
+                              // success: already played sound or play now if skipped before
+                              if (_originalSerialMaskLength != null &&
+                                  text.length != _originalSerialMaskLength) {
+                                SoundPlayer.playSuccess();
+                              }
 
                               // Check if we are updating an existing registry or creating a new one
                               if (entry.registered &&
@@ -3967,9 +3992,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                       _resetWorkflow();
                                     }
                                   } else {
-                                    FocusScope.of(context).requestFocus(
-                                      box.entries[index + 1].focusNode,
-                                    );
+                                    // Focus already moved at the start of onSubmitted for speed
                                   }
                                 } else {
                                   if (!mounted) return;
