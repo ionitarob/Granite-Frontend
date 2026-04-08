@@ -40,6 +40,7 @@ import 'screens/serials/serial_change.dart';
 import 'screens/serials/serial_label_generator.dart';
 import 'screens/serials/masks_screen.dart';
 import 'screens/serials/historial_cambios_serial.dart';
+import 'screens/serials/historial_match_unidad.dart';
 import 'screens/servers/registro_previ_screen.dart';
 import 'screens/servers/registro_servidor_screen.dart';
 import 'screens/rrhh/alta_empleado.dart';
@@ -218,8 +219,9 @@ class MainApp extends StatelessWidget {
                 '/amazon/inventory/picking': (_) => const ProductPickScreen(),
                 '/amazon/inventory/receiving': (_) => const ReceivingScreen(),
                 '/amazon/inventory/icqa': (_) => const ICQAScreen(),
-                '/serials/cambio': (_) => const SerialLinkScreen(),
-                '/serials/change': (_) => const SerialChangeScreen(),
+                '/serials/match': (_) => const SerialLinkScreen(),
+                '/serials/match-history': (_) => const HistorialMatchUnidadScreen(),
+                '/serials/serial-change': (_) => const SerialChangeScreen(),
                 '/serials/labels': (_) => const SerialLabelGeneratorScreen(),
                 '/serials/serial-changes': (_) =>
                     const HistorialCambiosSerialScreen(),

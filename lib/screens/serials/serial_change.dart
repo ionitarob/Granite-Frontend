@@ -4171,7 +4171,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Cambio de serial'),
+        title: const Text('CAMBIO DE SERIAL (RMA)'),
         centerTitle: true,
         backgroundColor: Colors.black.withValues(alpha: .15),
         elevation: 0,

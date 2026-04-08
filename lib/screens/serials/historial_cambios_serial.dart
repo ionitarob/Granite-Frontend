@@ -12,7 +12,8 @@ import '../../services/api_service.dart';
 import '../../widgets/main_sidebar.dart';
 
 class HistorialCambiosSerialScreen extends StatefulWidget {
-  const HistorialCambiosSerialScreen({super.key});
+  final String? initialSearch;
+  const HistorialCambiosSerialScreen({super.key, this.initialSearch});
 
   static const routeName = '/serials/serial-changes';
 
@@ -263,7 +264,9 @@ class _HistorialCambiosSerialScreenState
 
       if (kDebugMode) {
         try {
-          debugPrint('Unexpected printers response shape: ${body.runtimeType} -> $body');
+          debugPrint(
+            'Unexpected printers response shape: ${body.runtimeType} -> $body',
+          );
         } catch (_) {}
       }
     }
@@ -273,7 +276,8 @@ class _HistorialCambiosSerialScreenState
   Map<String, dynamic> _normalizePrinterEntry(Map<String, dynamic> e) {
     String? id;
     try {
-      id = (e['id_printer'] ?? e['id'] ?? e['printer_id'] ?? e['idPrinter'])?.toString();
+      id = (e['id_printer'] ?? e['id'] ?? e['printer_id'] ?? e['idPrinter'])
+          ?.toString();
     } catch (_) {
       id = null;
     }
@@ -285,7 +289,12 @@ class _HistorialCambiosSerialScreenState
     }
     String? ip;
     try {
-      ip = (e['ip_address'] ?? e['ip'] ?? e['address'] ?? e['ip_address']?.toString())?.toString();
+      ip =
+          (e['ip_address'] ??
+                  e['ip'] ??
+                  e['address'] ??
+                  e['ip_address']?.toString())
+              ?.toString();
     } catch (_) {
       ip = null;
     }
@@ -794,11 +803,83 @@ class _HistorialCambiosSerialScreenState
     }
   }
 
+  Future<void> _deleteBox(
+    String boxNum,
+    List<Map<String, dynamic>> regs,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Borrar caja $boxNum'),
+        content: Text(
+          '¿Confirmas borrar todos los registros (${regs.length}) de la caja "$boxNum"? Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Borrar Caja'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      final client = _clientOrNull();
+      if (client == null) throw Exception('Servicio API no disponible');
+      int failures = 0;
+      int succeeded = 0;
+      for (final r in regs) {
+        try {
+          final id = r['id'];
+          if (id == null) {
+            failures++;
+            continue;
+          }
+          final res = await client.delete(
+            '/serials/serial-changes/${(id as num).toInt()}',
+          );
+          if (res.ok) {
+            succeeded++;
+          } else {
+            failures++;
+          }
+        } catch (_) {
+          failures++;
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Borrados $succeeded registros de la caja $boxNum; $failures fallidos.',
+          ),
+        ),
+      );
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error borrando caja: $e')),
+        );
+      }
+    }
+  }
+
   // OverlayEntry? _edgeOverlay; // REMOVED: Causing navigation leaks
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialSearch != null) {
+      _searchCtrl.text = widget.initialSearch!;
+      _searchFilter = 'nr_orden';
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
       // Overlay logic removed to prevent sidebar state leaks
@@ -840,7 +921,7 @@ class _HistorialCambiosSerialScreenState
       appBar: AppBar(
         centerTitle: true,
         title: const Text(
-          'HISTORIAL DE SERIALES',
+          'HISTORIAL DE CAMBIO DE SERIAL',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             letterSpacing: 1.2,
@@ -1233,11 +1314,22 @@ class _HistorialCambiosSerialScreenState
             ),
           ],
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.print, size: 18),
-          color: Colors.white70,
-          onPressed: () => _printBox(ordKey, boxNum, regs),
-          tooltip: 'Imprimir Caja',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.print, size: 18),
+              color: Colors.white70,
+              onPressed: () => _printBox(ordKey, boxNum, regs),
+              tooltip: 'Imprimir Caja',
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              color: Colors.redAccent.withOpacity(0.7),
+              onPressed: () => _deleteBox(boxNum, regs),
+              tooltip: 'Borrar Caja',
+            ),
+          ],
         ),
         children: regs.map((r) => _buildRecordRow(r)).toList(),
       ),

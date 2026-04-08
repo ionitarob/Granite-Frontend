@@ -10,6 +10,7 @@ import '../../api_client.dart';
 import '../../services/api_service.dart';
 import '../../services/order_input_formatter.dart';
 import '../../services/orderops_service.dart';
+import '../../services/sound_player.dart';
 import '../../widgets/main_sidebar.dart';
 
 enum _SerialPanel { assign, match, upload, recent }
@@ -49,6 +50,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
   final FocusNode _serialFocus = FocusNode();
   final TextEditingController _orderCtrl = TextEditingController();
   final FocusNode _orderFocus = FocusNode();
+  final TextEditingController _quickScanCtrl = TextEditingController();
+  final FocusNode _quickScanFocus = FocusNode();
 
   String? _nextInventory;
   String? _lastInventory;
@@ -142,6 +145,58 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     });
   }
 
+  Future<void> _handleQuickScan(String value) async {
+    final serial = value.trim();
+    if (serial.isEmpty) return;
+    _quickScanCtrl.clear();
+
+    // 1. Check for verification (already in order)
+    final isDouble = _isManualDouble;
+    final existingMatch = _orderSerials.any((s) => s['serial'] == serial);
+
+    if (existingMatch) {
+      SoundPlayer.playSuccess();
+      _showSnack('VERIFICADO ✅: $serial ya está en la orden');
+      _quickScanFocus.requestFocus();
+      return;
+    }
+
+    // 2. Find first empty slot for rapid matching
+    int targetIndex = -1;
+    for (int i = 0; i < _matchRows.length; i++) {
+      if (_matchRows[i].serial.text.trim().isEmpty) {
+        targetIndex = i;
+        break;
+      }
+    }
+
+    if (targetIndex != -1) {
+      final row = _matchRows[targetIndex];
+      row.serial.text = serial;
+      if (isDouble) {
+        // Just focus the inventory field of that row
+        row.inventoryFocus.requestFocus();
+        final currentSaved = _orderSerials.length;
+        _showSnack('Serial capturado. Escanea Inventario/IMEI para la Unidad ${currentSaved + targetIndex + 1}');
+      } else {
+        // Auto-save
+        final ok = await _saveRow(targetIndex);
+        if (ok) {
+          // Success sound is already played in _saveRow
+          _quickScanFocus.requestFocus();
+        } else {
+          // Error sound is already played in _saveRow
+          // If save failed, we keep the serial in the row for manual fix
+        }
+      }
+    } else {
+      // No slots available
+      SoundPlayer.playError();
+      _showSnack('ERROR: Todas las unidades están llenas. No se puede añadir "$serial".');
+      _quickScanFocus.requestFocus();
+    }
+  }
+
   @override
   void dispose() {
     _edgeOverlay?.remove();
@@ -151,6 +206,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     _serialFocus.dispose();
     _orderCtrl.dispose();
     _orderFocus.dispose();
+    _quickScanCtrl.dispose();
+    _quickScanFocus.dispose();
     for (final row in _matchRows) {
       row.dispose();
     }
@@ -494,6 +551,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         await Future.wait([_fetchNextInventory(), _refreshRecent()]);
         _showSnack('Serial asignado');
       } else {
+        SoundPlayer.playError();
         setState(
           () => _assignError =
               ensure.error ?? 'No se pudo asignar (${ensure.statusCode})',
@@ -585,12 +643,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
     _disposeRowsLater(removed);
 
-    if (_matchRows.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _matchRows.isEmpty) return;
-        _matchRows.first.focus.requestFocus();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _quickScanFocus.requestFocus();
+    });
   }
 
   ({int units, bool doubleEntry})? _existingManualConfig(String numOrden) {
@@ -928,16 +984,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     return false;
   }
 
-  bool _allRowsFilled() {
-    if (_matchRows.isEmpty) return false;
-    final manualDouble = _isManualDouble;
-    return _matchRows.every((row) {
-      final serialFilled = row.serial.text.trim().isNotEmpty;
-      final inventoryFilled =
-          !manualDouble || row.inventory.text.trim().isNotEmpty;
-      return serialFilled && inventoryFilled;
-    });
-  }
 
   Future<void> _lookupInventory(int index) async {
     if (index < 0 || index >= _matchRows.length) return;
@@ -1006,6 +1052,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     }
     if (manualDouble) {
       if (row.inventory.text.trim().isEmpty) {
+        SoundPlayer.playError();
         _showSnack('Escanea inventario/IMEI');
         return false;
       }
@@ -1016,7 +1063,47 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           !_matchRows.contains(row))
         return false;
     }
-    setState(() => _savingRows = true);
+
+    // Check if already in saved list (Rescan logic)
+    final existingMatch = _orderSerials.firstWhere(
+      (s) => s['serial'] == serial && (manualDouble ? s['inventory_code'] == row.inventory.text.trim() : true),
+      orElse: () => {},
+    );
+
+    if (existingMatch.isNotEmpty) {
+      SoundPlayer.playSuccess();
+      row.serial.clear();
+      row.inventory.clear();
+      _showSnack('SERIAL YA REGISTRADO ✅ (En esta orden)');
+      if (mounted) {
+        setState(() {});
+        _validateRows();
+      }
+      return false; // Keep the placeholder so it can be used for a real new unit
+    }
+
+    // If not in saved list, ask for confirmation (New assignment logic)
+    final confirmAdd = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Confirmar nueva asignación'),
+        content: Text('El serial "$serial" no está registrado en esta orden. ¿Deseas agregarlo como un nuevo registro?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCELAR')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('AGREGAR')),
+        ],
+      ),
+    );
+
+    if (confirmAdd != true) {
+      return false;
+    }
+
+    setState(() {
+      _savingRows = true;
+      row.isSaving = true;
+    });
+
     try {
       final payload = <String, dynamic>{
         'num_orden': _orderInfo!['num_orden'],
@@ -1031,11 +1118,48 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           !_matchRows.contains(row))
         return false;
       if (res.ok) {
+        SoundPlayer.playSuccess();
         row.serial.clear();
         row.inventory.clear();
+        final completedOrder = _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text;
+        await _refreshOrderAfterSave(completedOrder);
         return true;
       }
-      if (res.statusCode == 409) {
+
+      // Handle Conflict (duplicate serial)
+      if (res.statusCode == 400 || res.statusCode == 409) {
+        final body = res.body;
+        if (body is Map && body['error'] == 'serial already assigned to another order') {
+          final existingOrder = body['num_orden'];
+          final replace = await showDialog<bool>(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: const Text('Serial ya asignado'),
+              content: Text('Este serial está asignado a la orden "$existingOrder". ¿Deseas reemplazarlo y asignarlo a esta orden?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCELAR')),
+                FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('REEMPLAZAR')),
+              ],
+            ),
+          );
+
+          if (replace == true) {
+            payload['replace'] = true;
+            final resRetry = await client.post('$_basePath/match', jsonBody: payload);
+            if (resRetry.ok) {
+              SoundPlayer.playSuccess();
+              row.serial.clear();
+              row.inventory.clear();
+              final completedOrder = _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text;
+              await _refreshOrderAfterSave(completedOrder);
+              return true;
+            }
+          }
+        }
+      }
+
+      SoundPlayer.playError();
+      if (res.statusCode == 400 || res.statusCode == 409) {
         String msg = 'Serial ya asignado';
         if (res.body is Map && (res.body as Map)['num_orden'] != null) {
           msg =
@@ -1047,66 +1171,16 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       _showSnack('No se pudo guardar (${res.statusCode})');
       return false;
     } catch (e) {
+      SoundPlayer.playError();
       _showSnack('Error guardando: $e');
       return false;
     } finally {
-      if (mounted) setState(() => _savingRows = false);
+      if (mounted) {
+        setState(() {
+          row.isSaving = false;
+        });
+      }
     }
-  }
-
-  Future<void> _saveAllRows() async {
-    if (_orderInfo == null) return;
-    final initialPendingRows = _matchRows.length;
-    if (!_allRowsFilled()) {
-      final remaining = _matchRows
-          .where((row) => row.serial.text.trim().isEmpty)
-          .length;
-      _showSnack(
-        remaining == 1
-            ? 'Falta un serial por rellenar'
-            : 'Faltan $remaining seriales por rellenar',
-      );
-      return;
-    }
-    _validateRows();
-    if (_duplicateRows.isNotEmpty) {
-      _showSnack('Elimina los seriales duplicados antes de guardar');
-      return;
-    }
-    int saved = 0;
-    final completedOrder = _normalizeOrder(
-      _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text,
-    );
-    for (var i = 0; i < _matchRows.length; i++) {
-      final ok = await _saveRow(i);
-      if (ok) saved++;
-    }
-    if (!mounted) return;
-    _showSnack('Guardados: $saved');
-    if (_orderInfo?['manual'] == true) {
-      final removed = _resizeMatchRows(0);
-      _orderCtrl.clear();
-      setState(() {
-        _orderInfo = null;
-        _orderSerials = [];
-        _duplicateRows.clear();
-      });
-      _disposeRowsLater(removed);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _orderFocus.requestFocus();
-        }
-      });
-      return;
-    }
-
-    final allPendingSaved = initialPendingRows > 0 && saved == initialPendingRows;
-    if (allPendingSaved) {
-      await _completeOrderAndAttach(completedOrder);
-      return;
-    }
-
-    await _refreshOrderAfterSave(completedOrder);
   }
 
   Future<void> _importOrders() async {
@@ -1562,254 +1636,490 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
   Widget _buildMatchTab() {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.colorScheme.primary;
+
+    final totalUnits = (_orderInfo?['unidades'] as num?)?.toInt() ?? 0;
+    final savedUnits = _orderSerials.length;
+    final progress = totalUnits > 0 ? (savedUnits / totalUnits).clamp(0.0, 1.0) : 0.0;
     final manualDouble = _isManualDouble;
+    final mq = MediaQuery.of(context);
+    final isSmall = mq.size.width < 700;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Match unidad / orden', style: theme.textTheme.titleLarge),
-          // (manualDouble state not shown in UI)
-          const SizedBox(height: 12),
+          // ALWAYS VISIBLE SEARCH BAR
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _orderCtrl,
                   focusNode: _orderFocus,
+                  style: const TextStyle(fontSize: 14),
                   decoration: const InputDecoration(
-                    labelText: 'Número de orden',
+                    labelText: 'Número de Orden',
                     hintText: 'XX-XXXXX-XX',
+                    prefixIcon: Icon(Icons.search, size: 20),
+                    isDense: true,
                   ),
                   inputFormatters: [OrderInputFormatter()],
                   onSubmitted: (_) => _fetchOrder(),
                 ),
               ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: _loadingOrder ? null : _fetchOrder,
-                icon: _loadingOrder
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search),
-                label: Text(_loadingOrder ? 'Buscando...' : 'Buscar'),
+              if (_orderInfo != null) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('DOBLE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54)),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 32,
+                        child: Switch(
+                          value: manualDouble,
+                          onChanged: (val) => setState(() => _orderInfo!['manual_double'] = val),
+                          activeColor: primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+
+          if (_orderInfo == null) ...[
+            const SizedBox(height: 80),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.search_rounded, size: 64, color: isDark ? Colors.white24 : Colors.black12),
+                  const SizedBox(height: 16),
+                  const Text('Ingresa un número de orden para comenzar'),
+                ],
               ),
+            ),
+          ] else ...[
+            const SizedBox(height: 24),
+            // HEADER CARD (Progress & Info)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primaryColor.withOpacity(0.15),
+                  primaryColor.withOpacity(0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: primaryColor.withOpacity(0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ORDEN ${_orderInfo!['num_orden']}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            manualDouble ? 'MODO DOBLE (Serial + IMEI)' : 'MODO UNITARIO (Solo Serial)',
+                            style: TextStyle(
+                              color: manualDouble ? Colors.orangeAccent : Colors.cyanAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '$savedUnits / $totalUnits',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: progress >= 1 ? Colors.greenAccent : primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 10,
+                    backgroundColor: isDark ? Colors.white10 : Colors.black12,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      progress >= 1 ? Colors.greenAccent : primaryColor,
+                    ),
+                  ),
+                ),
+                if (_orderInfo?['manual'] == true) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.edit_note_rounded, size: 14, color: Colors.white70),
+                        const SizedBox(width: 4),
+                        const Text('Registro Manual Externo', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+
+          const SizedBox(height: 24),
+
+          // MASTER SCANNER CARD
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [primaryColor.withOpacity(0.5), primaryColor.withOpacity(0.1)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.center_focus_strong, color: primaryColor, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'ESCÁNER MAESTRO',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.1,
+                          color: primaryColor,
+                        ),
+                      ),
+                      const Spacer(),
+                      const Icon(Icons.info_outline, size: 14, color: Colors.white24),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _quickScanCtrl,
+                    focusNode: _quickScanFocus,
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      hintText: 'Escaneo rápido o verificación...',
+                      prefixIcon: const Icon(Icons.qr_code_scanner),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.03),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                    ),
+                    onSubmitted: _handleQuickScan,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Usa este campo para verificar si un serial ya existe o para capturar rápidamente el siguiente.',
+                    style: TextStyle(fontSize: 11, color: Colors.white38),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // PENDING SLOTS (New Design)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'PENDIENTES DE VINCULACIÓN',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: Colors.white54,
+                ),
+              ),
+              if (_matchRows.isNotEmpty)
+                Text(
+                  '${_matchRows.length} UNIDADES',
+                  style: const TextStyle(fontSize: 10, color: Colors.white30),
+                ),
             ],
           ),
           const SizedBox(height: 12),
-          if (_orderInfo != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: SwitchListTile(
-                title: const Text('Modo Registro Doble (Serial + Código)'),
-                subtitle: const Text('Habilitar para escanear dos campos por unidad'),
-                value: _isManualDouble,
-                activeColor: theme.colorScheme.primary,
-                onChanged: (val) {
-                  setState(() {
-                    _orderInfo!['manual_double'] = val;
-                  });
-                },
+          
+          if (_matchRows.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
               ),
-            ),
-          const SizedBox(height: 8),
-          if (_orderInfo != null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Orden ${_orderInfo!['num_orden'] ?? '-'}',
-                      style: theme.textTheme.titleMedium,
+              child: const Column(
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, color: Colors.greenAccent, size: 40),
+                  const SizedBox(height: 12),
+                  const Text('¡Todas las unidades vinculadas!', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _matchRows.length,
+              itemBuilder: (_, index) {
+                final row = _matchRows[index];
+                final duplicate = _duplicateRows.contains(index);
+
+                return Container(
+                  key: ValueKey(row),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.02),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: duplicate ? Colors.redAccent.withOpacity(0.5) : Colors.white10,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Unidades esperadas: ${_orderInfo!['unidades'] ?? '-'}',
-                    ),
-                    if (_orderInfo?['manual'] == true) ...[
-                      const SizedBox(height: 8),
-                      Chip(
-                        label: const Text('Orden manual'),
-                        avatar: const Icon(Icons.edit, size: 16),
-                        backgroundColor: theme.colorScheme.secondaryContainer,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'UNIDAD ${savedUnits + index + 1}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ),
+                          if (duplicate) ...[
+                            const SizedBox(width: 8),
+                            const Text(
+                              'VALOR DUPLICADO',
+                              style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                          const Spacer(),
+                          if (row.isSaving)
+                            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          else
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.clear, size: 16, color: Colors.white24),
+                              onPressed: () { row.serial.clear(); row.inventory.clear(); },
+                            ),
+                        ],
                       ),
-                    ],
-                    if (_orderSerials.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Text(
-                        'Seriales registrados',
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _orderSerials.length,
-                        itemBuilder: (_, index) {
-                          final row = _orderSerials[index];
-                          return ListTile(
-                            dense: true,
-                            title: Text(row['serial'] ?? '-'),
-                            subtitle: Text(row['inventory_code'] ?? '-'),
-                          );
-                        },
-                      ),
+                      if (isSmall || !manualDouble)
+                        Column(
+                          children: [
+                            _buildModernInput(
+                              controller: row.serial,
+                              focusNode: row.focus,
+                              label: manualDouble ? 'SERIAL / SN' : 'SERIAL ÚNICO',
+                              icon: Icons.qr_code_scanner_rounded,
+                              onSubmitted: (val) => _handleSerialSubmit(index, val),
+                            ),
+                            if (manualDouble) ...[
+                              const SizedBox(height: 12),
+                              _buildModernInput(
+                                controller: row.inventory,
+                                focusNode: row.inventoryFocus,
+                                label: 'IMEI / INVENTARIO',
+                                icon: Icons.inventory_2_rounded,
+                                onSubmitted: (_) => _saveRow(index),
+                              ),
+                            ],
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildModernInput(
+                                controller: row.serial,
+                                focusNode: row.focus,
+                                label: 'SERIAL / SN',
+                                icon: Icons.qr_code_scanner_rounded,
+                                onSubmitted: (val) => _handleSerialSubmit(index, val),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildModernInput(
+                                controller: row.inventory,
+                                focusNode: row.inventoryFocus,
+                                label: 'IMEI / INVENTARIO',
+                                icon: Icons.inventory_2_rounded,
+                                onSubmitted: (_) => _saveRow(index),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
-            const SizedBox(height: 24),
-            Text(
-              'Añadir seriales pendientes',
-              style: theme.textTheme.titleMedium,
+
+          const SizedBox(height: 32),
+
+          // HISTORY SECTION (Previously registered)
+          if (_orderSerials.isNotEmpty) ...[
+            const Text(
+              'RECIÉN VINCULADOS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: Colors.white54,
+              ),
             ),
             const SizedBox(height: 12),
-            if (_matchRows.isEmpty)
-              const Text('No hay unidades pendientes.')
-            else
-              ListView.builder(
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.02),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _matchRows.length,
+                itemCount: _orderSerials.length.clamp(0, 10), // Show last 10
+                separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white10, indent: 16, endIndent: 16),
                 itemBuilder: (_, index) {
-                  final row = _matchRows[index];
-                  return Padding(
-                    key: ValueKey(row),
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: row.serial,
-                            focusNode: row.focus,
-                            textInputAction: TextInputAction.next,
-                            decoration: InputDecoration(
-                              labelText: 'Serial ${index + 1}',
-                              errorText: _duplicateRows.contains(index)
-                                  ? 'Duplicado'
-                                  : null,
-                            ),
-                            onChanged: (_) => _validateRows(),
-                            onSubmitted: (value) async {
-                              final isDup = await _isDuplicateInMatch(index, value);
-                              if (isDup) {
-                                row.serial.clear();
-                                _validateRows();
-                                row.focus.requestFocus();
-                                return;
-                              }
-                              if (manualDouble) {
-                                row.inventoryFocus.requestFocus();
-                              } else {
-                                _lookupInventory(index);
-                                if (index + 1 < _matchRows.length) {
-                                  _matchRows[index + 1].focus.requestFocus();
-                                }
-                              }
-                            },
-                            onEditingComplete: () async {
-                              final val = row.serial.text;
-                              final isDup = await _isDuplicateInMatch(index, val);
-                              if (isDup) {
-                                row.serial.clear();
-                                _validateRows();
-                                row.focus.requestFocus();
-                                return;
-                              }
-                              // Ensure Tab/Enter both move focus correctly
-                              if (manualDouble) {
-                                row.inventoryFocus.requestFocus();
-                              } else {
-                                if (index + 1 < _matchRows.length) {
-                                  _matchRows[index + 1].focus.requestFocus();
-                                } else {
-                                  FocusScope.of(context).nextFocus();
-                                }
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        SizedBox(
-                          width: 160,
-                          child: TextField(
-                            controller: row.inventory,
-                            focusNode: row.inventoryFocus,
-                            readOnly: !manualDouble,
-                            enabled: manualDouble,
-                            decoration: const InputDecoration(
-                              labelText: 'Inventario/IMEI',
-                            ),
-                            textInputAction: manualDouble
-                                ? TextInputAction.next
-                                : TextInputAction.none,
-                            onSubmitted: manualDouble
-                                ? (_) {
-                                    if (index + 1 < _matchRows.length) {
-                                      _matchRows[index + 1].focus
-                                          .requestFocus();
-                                    } else {
-                                      FocusScope.of(context).unfocus();
-                                    }
-                                  }
-                                : null,
-                            onEditingComplete: manualDouble
-                                ? () {
-                                    if (index + 1 < _matchRows.length) {
-                                      _matchRows[index + 1].focus.requestFocus();
-                                    } else {
-                                      FocusScope.of(context).unfocus();
-                                    }
-                                  }
-                                : null,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: manualDouble
-                              ? 'Inventario manual'
-                              : 'Buscar etiqueta',
-                          onPressed: manualDouble
-                              ? null
-                              : () => _lookupInventory(index),
-                          icon: const Icon(Icons.search),
-                        ),
-                      ],
-                    ),
+                  final item = _orderSerials[(_orderSerials.length - 1) - index];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 18),
+                    title: Text(item['serial'] ?? '-'),
+                    subtitle: item['inventory_code']?.isNotEmpty == true ? Text(item['inventory_code']!) : null,
+                    trailing: Text('#${_orderSerials.length - index}', style: const TextStyle(color: Colors.white24, fontSize: 10)),
                   );
                 },
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                FilledButton.icon(
-                  onPressed: _savingRows ? null : _saveAllRows,
-                  icon: _savingRows
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_alt),
-                  label: Text(_savingRows ? 'Guardando...' : 'Guardar todo'),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${_matchRows.length - _duplicateRows.length} / ${_matchRows.length} sin duplicados',
-                ),
-              ],
             ),
-          ] else if (!_loadingOrder) ...[
-            const Text('Busca una orden para mostrar los seriales pendientes.'),
+            ],
           ],
         ],
       ),
     );
+  }
+
+  Widget _buildModernInput({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String label,
+    required IconData icon,
+    required Function(String) onSubmitted,
+  }) {
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      onSubmitted: onSubmitted,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 18),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.cyanAccent),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  void _handleSerialSubmit(int index, String val) async {
+    final isDup = await _isDuplicateInMatch(index, val);
+    if (isDup) {
+      _matchRows[index].serial.clear();
+      _validateRows();
+      _matchRows[index].focus.requestFocus();
+      return;
+    }
+    if (_isManualDouble) {
+      _matchRows[index].inventoryFocus.requestFocus();
+    } else {
+      final saved = await _saveRow(index);
+      if (saved) {
+        if (index + 1 < _matchRows.length) {
+          _matchRows[index + 1].focus.requestFocus();
+        }
+      } else {
+        _matchRows[index].focus.requestFocus();
+      }
+    }
   }
 
   Widget _buildUploadTab() {
@@ -2004,39 +2314,40 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primary.withOpacity(0.16),
-                    Colors.transparent,
+            if (!widget.isEmbedded)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Theme.of(context).colorScheme.primary.withOpacity(0.16),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).dividerColor.withOpacity(0.2),
+                    ),
+                  ),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Manipulacion y Etiquetado',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Modo Match directo para esta orden',
+                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                    ),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border(
-                  bottom: BorderSide(
-                    color: Theme.of(context).dividerColor.withOpacity(0.2),
-                  ),
                 ),
               ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Manipulacion y Etiquetado',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Modo Match directo para esta orden',
-                    style: TextStyle(fontSize: 13, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
             Expanded(child: views.first),
           ],
         ),
@@ -2048,7 +2359,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       child: Scaffold(
         appBar: AppBar(
           leading: const EdgeNavHandle(),
-          title: const Text('Seriales'),
+          title: const Text('VINCULAR SERIAL (MATCH)'),
           bottom: TabBar(controller: _tabs, tabs: tabs, isScrollable: true),
         ),
         body: TabBarView(controller: _tabs, children: views),
@@ -2168,6 +2479,7 @@ class _MatchRow {
   final FocusNode inventoryFocus = FocusNode();
   bool disposed = false;
   int generation = 0;
+  bool isSaving = false;
 
   void dispose() {
     if (disposed) return;

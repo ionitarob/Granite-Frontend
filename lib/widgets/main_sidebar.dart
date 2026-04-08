@@ -42,7 +42,10 @@ class _MainSidebarState extends State<MainSidebar> {
     }
     final isDark = theme?.isDark ?? true;
     final routeName =
-        widget.currentRoute ?? (ModalRoute.of(context)?.settings.name == '/' ? '/dashboard' : ModalRoute.of(context)?.settings.name);
+        widget.currentRoute ??
+        (ModalRoute.of(context)?.settings.name == '/'
+            ? '/dashboard'
+            : ModalRoute.of(context)?.settings.name);
     final logoAsset = 'lib/assets/logo.png';
 
     final textPrimary = isDark ? Colors.white : Colors.black87;
@@ -92,9 +95,7 @@ class _MainSidebarState extends State<MainSidebar> {
             'chief',
             'technitian',
             'technician',
-          ].any(
-            (r) => (user?.role ?? '').toLowerCase().contains(r),
-          )) ...[
+          ].any((r) => (user?.role ?? '').toLowerCase().contains(r))) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Column(
@@ -573,27 +574,22 @@ class _MainSidebarState extends State<MainSidebar> {
 
         // Serials
         (
-          label: 'Serials · Registro Serial',
-          icon: Icons.change_circle_rounded,
-          route: '/serials/cambio',
+          label: 'MATCH · Vincular Serial',
+          icon: Icons.link_rounded,
+          route: '/serials/match',
         ),
         (
-          label: 'Serials · Cambio Serial',
+          label: 'MATCH · Historial de Vínculos',
+          icon: Icons.history_rounded,
+          route: '/serials/match-history',
+        ),
+        (
+          label: 'RMA · Cambio de Serial',
           icon: Icons.swap_horiz_rounded,
-          route: '/serials/change',
+          route: '/serials/serial-change',
         ),
         (
-          label: 'Serials · Etiquetas',
-          icon: Icons.label_rounded,
-          route: '/serials/labels',
-        ),
-        (
-          label: 'Serials · Máscaras',
-          icon: Icons.masks_rounded,
-          route: '/serials/masks',
-        ),
-        (
-          label: 'Serials · Historial Cambios',
+          label: 'RMA · Historial de Cambios',
           icon: Icons.history_edu_rounded,
           route: '/serials/serial-changes',
         ),
@@ -719,9 +715,7 @@ class _MainSidebarState extends State<MainSidebar> {
       '/amazon/herramientas/findbox',
       '/amazon/herramientas/finddsn',
     ];
-    const amazonProyectosRoutes = [
-      '/amazon/proyectos',
-    ];
+    const amazonProyectosRoutes = ['/amazon/proyectos'];
     const amazonToolsRoutes = [
       '/amazon/herramientas/closebox',
       '/amazon/herramientas/findbox',
@@ -1184,13 +1178,14 @@ class _MainSidebarState extends State<MainSidebar> {
           textPrimary: textPrimary,
           initiallyExpanded: serialsExpanded,
           children: [
+            const SidebarSubHeader(title: 'MATCH / VINCULAR'),
             _SidebarTile(
-              label: 'Registro Serial',
-              icon: Icons.change_circle_rounded,
-              selected: isRoute('/serials/cambio'),
+              label: 'Vincular Serial',
+              icon: Icons.link_rounded,
+              selected: isRoute('/serials/match'),
               onTap: () => _navigate(
                 context,
-                '/serials/cambio',
+                '/serials/match',
                 closeOverlay: !permanent,
               ),
               highlight: highlight,
@@ -1198,18 +1193,48 @@ class _MainSidebarState extends State<MainSidebar> {
               isDark: isDark,
             ),
             _SidebarTile(
-              label: 'Cambio Serial',
+              label: 'Historial de Vínculos',
+              icon: Icons.history_rounded,
+              selected: isRoute('/serials/match-history'),
+              onTap: () => _navigate(
+                context,
+                '/serials/match-history',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+
+            const SidebarSubHeader(title: 'CAMBIO DE SERIAL'),
+            _SidebarTile(
+              label: 'Cambio de Serial',
               icon: Icons.swap_horiz_rounded,
-              selected: isRoute('/serials/change'),
+              selected: isRoute('/serials/serial-change'),
               onTap: () => _navigate(
                 context,
-                '/serials/change',
+                '/serials/serial-change',
                 closeOverlay: !permanent,
               ),
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
             ),
+            _SidebarTile(
+              label: 'Historial de Cambios',
+              icon: Icons.history_edu_rounded,
+              selected: isRoute('/serials/serial-changes'),
+              onTap: () => _navigate(
+                context,
+                '/serials/serial-changes',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+
+            const SidebarSubHeader(title: 'OTROS'),
             _SidebarTile(
               label: 'Etiquetas',
               icon: Icons.label_rounded,
@@ -1230,20 +1255,6 @@ class _MainSidebarState extends State<MainSidebar> {
               onTap: () => _navigate(
                 context,
                 '/serials/masks',
-                closeOverlay: !permanent,
-              ),
-              highlight: highlight,
-              textPrimary: textPrimary,
-              isDark: isDark,
-            ),
-
-            _SidebarTile(
-              label: 'Historial Cambios',
-              icon: Icons.history_edu_rounded,
-              selected: isRoute('/serials/serial-changes'),
-              onTap: () => _navigate(
-                context,
-                '/serials/serial-changes',
                 closeOverlay: !permanent,
               ),
               highlight: highlight,
@@ -1271,11 +1282,8 @@ class _MainSidebarState extends State<MainSidebar> {
               label: 'Revisión TV',
               icon: Icons.screenshot_monitor_rounded,
               selected: isRoute('/tv/revision'),
-              onTap: () => _navigate(
-                context,
-                '/tv/revision',
-                closeOverlay: !permanent,
-              ),
+              onTap: () =>
+                  _navigate(context, '/tv/revision', closeOverlay: !permanent),
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
@@ -1284,11 +1292,8 @@ class _MainSidebarState extends State<MainSidebar> {
               label: 'Historial Revisión TV',
               icon: Icons.history_rounded,
               selected: isRoute('/tv/history'),
-              onTap: () => _navigate(
-                context,
-                '/tv/history',
-                closeOverlay: !permanent,
-              ),
+              onTap: () =>
+                  _navigate(context, '/tv/history', closeOverlay: !permanent),
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
@@ -1770,6 +1775,33 @@ class SidebarSectionHeader extends StatelessWidget {
   }
 }
 
+class SidebarSubHeader extends StatelessWidget {
+  final String title;
+  const SidebarSubHeader({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color c = isDark
+        ? Colors.white.withOpacity(0.4)
+        : Colors.black.withOpacity(0.3);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 10, 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: c,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+}
+
 class AppleSidebarSearch extends StatefulWidget {
   final String hint;
   final ValueChanged<String>? onSubmitted;
@@ -2103,8 +2135,10 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     }
 
     final mq = MediaQuery.maybeOf(context);
-    final logicalWidth = mq?.size.width ??
-        (View.of(context).physicalSize.width / View.of(context).devicePixelRatio);
+    final logicalWidth =
+        mq?.size.width ??
+        (View.of(context).physicalSize.width /
+            View.of(context).devicePixelRatio);
     if (logicalWidth < 900) {
       return const SizedBox.shrink();
     }
@@ -2263,7 +2297,9 @@ class GlobalMobileSidebarDock extends StatelessWidget {
     final selected = currentRoute == route;
     return InkWell(
       onTap: () {
-        final elapsed = DateTime.now().difference(_MobileDockMenuState.openedAt);
+        final elapsed = DateTime.now().difference(
+          _MobileDockMenuState.openedAt,
+        );
         if (elapsed.inMilliseconds < 420) return;
         Navigator.of(dialogContext).pop(route);
       },
@@ -2275,7 +2311,9 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           color: selected ? Colors.white.withOpacity(0.12) : Colors.transparent,
           border: Border.all(
-            color: selected ? Colors.white.withOpacity(0.32) : Colors.transparent,
+            color: selected
+                ? Colors.white.withOpacity(0.32)
+                : Colors.transparent,
           ),
         ),
         child: Row(
@@ -2460,7 +2498,12 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Padding(
-                                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    12,
+                                    12,
+                                    10,
+                                  ),
                                   child: Row(
                                     children: [
                                       Icon(
@@ -2528,7 +2571,10 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           );
         },
         transitionBuilder: (ctx, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
           return FadeTransition(
             opacity: curved,
             child: ScaleTransition(
@@ -2658,7 +2704,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                 '/amazon/grading',
                 '/amazon/sorting',
                 '/amazon/quality',
-                '/amazon/herramientas/'
+                '/amazon/herramientas/',
               ],
               nested: true,
               children: [
@@ -3056,7 +3102,8 @@ class GlobalMobileSidebarDock extends StatelessWidget {
 
         final normalizedRole = user.role.toLowerCase();
         final canOpenOrderOpsPopup =
-            normalizedRole.contains('admin') || normalizedRole.contains('chief');
+            normalizedRole.contains('admin') ||
+            normalizedRole.contains('chief');
         final canSeeHr = !_isOperarioRole(user.role);
         final primary = Theme.of(context).colorScheme.primary;
         final ordersSelected = _isOrdersRoute(routeName);
@@ -3078,68 +3125,68 @@ class GlobalMobileSidebarDock extends StatelessWidget {
         final selectedIconSize = isPhone ? 24.0 : (isTablet ? 27.0 : 30.0);
 
         List<Widget> buildDockButtons() => [
-              _MobileDockButton(
-                icon: Icons.receipt_long_rounded,
-                onTap: (anchorCtx) {
-                  if (canOpenOrderOpsPopup) {
-                    _showOrderOpsPopup(
-                      anchorContext: anchorCtx,
-                      currentRoute: routeName,
-                    );
-                    return;
-                  }
-                  if (!ordersSelected) {
-                    _pushIfNeeded('/orderops/queue', routeName);
-                  }
-                },
-                primary: primary,
-                selected: ordersSelected,
-                defaultSize: defaultButtonSize,
-                selectedSize: selectedButtonSize,
-                defaultIconSize: defaultIconSize,
-                selectedIconSize: selectedIconSize,
-              ),
-              _MobileDockButton(
-                icon: Icons.home_rounded,
-                onTap: (_) {
-                  if (homeSelected) return;
-                  _pushIfNeeded('/dashboard/redesigned', routeName);
-                },
-                primary: primary,
-                selected: homeSelected,
-                defaultSize: defaultButtonSize,
-                selectedSize: selectedButtonSize,
-                defaultIconSize: defaultIconSize,
-                selectedIconSize: selectedIconSize,
-              ),
-              _MobileDockButton(
-                icon: Icons.widgets_rounded,
-                onTap: (anchorCtx) => _showProjectsPopup(
+          _MobileDockButton(
+            icon: Icons.receipt_long_rounded,
+            onTap: (anchorCtx) {
+              if (canOpenOrderOpsPopup) {
+                _showOrderOpsPopup(
                   anchorContext: anchorCtx,
                   currentRoute: routeName,
-                ),
-                primary: primary,
-                selected: projectsSelected,
-                defaultSize: defaultButtonSize,
-                selectedSize: selectedButtonSize,
-                defaultIconSize: defaultIconSize,
-                selectedIconSize: selectedIconSize,
+                );
+                return;
+              }
+              if (!ordersSelected) {
+                _pushIfNeeded('/orderops/queue', routeName);
+              }
+            },
+            primary: primary,
+            selected: ordersSelected,
+            defaultSize: defaultButtonSize,
+            selectedSize: selectedButtonSize,
+            defaultIconSize: defaultIconSize,
+            selectedIconSize: selectedIconSize,
+          ),
+          _MobileDockButton(
+            icon: Icons.home_rounded,
+            onTap: (_) {
+              if (homeSelected) return;
+              _pushIfNeeded('/dashboard/redesigned', routeName);
+            },
+            primary: primary,
+            selected: homeSelected,
+            defaultSize: defaultButtonSize,
+            selectedSize: selectedButtonSize,
+            defaultIconSize: defaultIconSize,
+            selectedIconSize: selectedIconSize,
+          ),
+          _MobileDockButton(
+            icon: Icons.widgets_rounded,
+            onTap: (anchorCtx) => _showProjectsPopup(
+              anchorContext: anchorCtx,
+              currentRoute: routeName,
+            ),
+            primary: primary,
+            selected: projectsSelected,
+            defaultSize: defaultButtonSize,
+            selectedSize: selectedButtonSize,
+            defaultIconSize: defaultIconSize,
+            selectedIconSize: selectedIconSize,
+          ),
+          if (canSeeHr)
+            _MobileDockButton(
+              icon: Icons.people_alt_rounded,
+              onTap: (anchorCtx) => _showHrPopup(
+                anchorContext: anchorCtx,
+                currentRoute: routeName,
               ),
-              if (canSeeHr)
-                _MobileDockButton(
-                  icon: Icons.people_alt_rounded,
-                  onTap: (anchorCtx) => _showHrPopup(
-                    anchorContext: anchorCtx,
-                    currentRoute: routeName,
-                  ),
-                  primary: primary,
-                  selected: hrSelected,
-                  defaultSize: defaultButtonSize,
-                  selectedSize: selectedButtonSize,
-                  defaultIconSize: defaultIconSize,
-                  selectedIconSize: selectedIconSize,
-                ),
-            ];
+              primary: primary,
+              selected: hrSelected,
+              defaultSize: defaultButtonSize,
+              selectedSize: selectedButtonSize,
+              defaultIconSize: defaultIconSize,
+              selectedIconSize: selectedIconSize,
+            ),
+        ];
 
         Widget dock = Align(
           alignment: Alignment.bottomCenter,
@@ -3214,10 +3261,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 160),
                   opacity: hidden ? 0.0 : 1.0,
-                  child: IgnorePointer(
-                    ignoring: hidden,
-                    child: child,
-                  ),
+                  child: IgnorePointer(ignoring: hidden, child: child),
                 ),
               );
             },

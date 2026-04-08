@@ -24,6 +24,8 @@ import '../../config.dart';
 import '../servers/registro_servidor_screen.dart';
 import '../serials/serial_link.dart';
 import '../serials/serial_change.dart';
+import '../serials/historial_match_unidad.dart';
+import '../serials/historial_cambios_serial.dart';
 import '../xiaomi/xiaomi_registro_orden.dart';
 import '../sentinel_for_imaging/physical_tables_screen.dart';
 
@@ -426,6 +428,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             focusNode: FocusNode(canRequestFocus: false),
           ),
           actions: [
+            if (_detail != null) ...[
+              Builder(builder: (ctx) {
+                final family = (_detail!.agentOrder.family ?? '').trim().toUpperCase();
+                final nf = _normalizeText(family);
+                final isMatch = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+                final isChange = nf.contains('CAMBIO') && nf.contains('SERIAL');
+                
+                if (isMatch || isChange) {
+                  return IconButton(
+                    icon: const Icon(Icons.history, color: Colors.cyanAccent),
+                    tooltip: isMatch ? 'Ver Historial de Match' : 'Ver Historial de Cambios',
+                    onPressed: () {
+                      final orderNbr = _formatOrderNbr(_detail!.agentOrder.orderNbr);
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                          builder: (c) => isMatch 
+                            ? HistorialMatchUnidadScreen(initialSearch: orderNbr)
+                            : HistorialCambiosSerialScreen(initialSearch: orderNbr),
+                        ),
+                      );
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
+            ],
             IconButton(
               icon: const Icon(Icons.refresh), 
               focusNode: FocusNode(canRequestFocus: false),
