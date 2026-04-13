@@ -1033,7 +1033,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     } catch (_) {}
   }
 
-  Future<bool> _saveRow(int index) async {
+  Future<bool> _saveRow(int index, {bool forceConfirm = true}) async {
     final client = _clientOrNull();
     if (client == null || _orderInfo == null) return false;
     if (index < 0 || index >= _matchRows.length) return false;
@@ -1083,19 +1083,22 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     }
 
     // If not in saved list, ask for confirmation (New assignment logic)
-    final confirmAdd = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Confirmar nueva asignación'),
-        content: Text('El serial "$serial" no está registrado en esta orden. ¿Deseas agregarlo como un nuevo registro?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCELAR')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('AGREGAR')),
-        ],
-      ),
-    );
+    bool confirmAdd = !forceConfirm;
+    if (forceConfirm) {
+      confirmAdd = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Confirmar nueva asignaci\u00f3n'),
+          content: Text('El serial "$serial" no est\u00e1 registrado en esta orden. \u00bfDeseas agregarlo como un nuevo registro?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCELAR')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('AGREGAR')),
+          ],
+        ),
+      ) ?? false;
+    }
 
-    if (confirmAdd != true) {
+    if (!confirmAdd) {
       return false;
     }
 
@@ -1988,7 +1991,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                 focusNode: row.inventoryFocus,
                                 label: 'IMEI / INVENTARIO',
                                 icon: Icons.inventory_2_rounded,
-                                onSubmitted: (_) => _saveRow(index),
+                                onSubmitted: (_) => _saveRow(index, forceConfirm: false),
                               ),
                             ],
                           ],
@@ -2012,7 +2015,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                 focusNode: row.inventoryFocus,
                                 label: 'IMEI / INVENTARIO',
                                 icon: Icons.inventory_2_rounded,
-                                onSubmitted: (_) => _saveRow(index),
+                                onSubmitted: (_) => _saveRow(index, forceConfirm: false),
                               ),
                             ),
                           ],
@@ -2111,7 +2114,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     if (_isManualDouble) {
       _matchRows[index].inventoryFocus.requestFocus();
     } else {
-      final saved = await _saveRow(index);
+      final saved = await _saveRow(index, forceConfirm: false);
       if (saved) {
         if (index + 1 < _matchRows.length) {
           _matchRows[index + 1].focus.requestFocus();
