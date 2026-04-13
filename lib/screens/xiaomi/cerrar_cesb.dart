@@ -75,7 +75,7 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
 
   bool get _isSupervisor {
     final role = context.read<ApiService>().currentUser?.role?.toLowerCase();
-    return role == 'admin' || role == 'chief';
+    return role == 'admin' || role == 'chief' || role == 'clerc' || role == 'technitian';
   }
 
   Future<void> _confirmAndSend() async {
