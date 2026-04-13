@@ -410,6 +410,17 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                         ),
                                       ),
+                                      FilledButton.tonalIcon(
+                                        onPressed: _showSubfamiliesPicker,
+                                        icon: const Icon(Icons.category_outlined, size: 18),
+                                        label: const Text('Subfamilias'),
+                                        style: FilledButton.styleFrom(
+                                          visualDensity: isNarrow ? VisualDensity.compact : VisualDensity.standard,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          backgroundColor: Colors.teal.withOpacity(0.2),
+                                          foregroundColor: Colors.teal,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ],
@@ -777,6 +788,105 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
           proyectoId: proyecto.id,
         );
         if (success) _refreshProyecto();
+      } finally {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _showSubfamiliesPicker() async {
+    if (_service == null) return;
+    final proyecto = _detailedProyecto ?? widget.proyecto;
+    final currentSubfam = List<String>.from(proyecto.subfamilies);
+
+    // Fetch catalog families
+    List<String> catalog = [];
+    try {
+      catalog = await _service!.getCatalogFamilies();
+      if (catalog.isEmpty) {
+        catalog = [
+          'SERIGRAFIADO',
+          'MANIPULACIÓN Y ETIQUETADO',
+          'ORDENADORES SERVIDOR',
+          'CAMBIO DE SERIAL',
+          'XIAOMI ETIQUETADO',
+        ];
+      }
+    } catch (e) {
+      debugPrint('Error fetching catalog families: $e');
+    }
+
+    if (!mounted) return;
+
+    final selected = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) {
+        final List<String> tempSelected = List.from(currentSubfam);
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('Gestionar Subfamilias'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Selecciona las subfamilias para este proyecto:'),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: catalog.length,
+                        itemBuilder: (ctx, index) {
+                          final f = catalog[index];
+                          final isSel = tempSelected.contains(f);
+                          return CheckboxListTile(
+                            title: Text(f),
+                            value: isSel,
+                            onChanged: (val) {
+                              setDialogState(() {
+                                if (val == true) {
+                                  tempSelected.add(f);
+                                } else {
+                                  tempSelected.remove(f);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('CANCELAR'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, tempSelected),
+                  child: const Text('GUARDAR'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (selected != null) {
+      setState(() => _isLoading = true);
+      try {
+        final ok = await _service!.updateProyecto(
+          proyecto.id,
+          subfamilies: selected,
+        );
+        if (ok) _refreshProyecto();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error guardando subfamilias: $e')),
+        );
       } finally {
         setState(() => _isLoading = false);
       }

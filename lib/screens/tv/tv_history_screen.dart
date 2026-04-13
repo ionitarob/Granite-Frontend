@@ -1,6 +1,10 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 import '../../services/api_service.dart';
 import '../../widgets/animated_background.dart';
 
@@ -23,6 +27,7 @@ class _TvHistoryScreenState extends State<TvHistoryScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -33,6 +38,7 @@ class _TvHistoryScreenState extends State<TvHistoryScreen> {
       final res = await api.client.get('/tv/revisions/');
       
       if (res.ok) {
+        if (!mounted) return;
         setState(() {
           _historial = res.body as List<dynamic>;
           _loading = false;
@@ -41,10 +47,155 @@ class _TvHistoryScreenState extends State<TvHistoryScreen> {
         throw Exception(res.error ?? 'Error al cargar el historial');
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _exportGlobalPdf() async {
+    if (_historial.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay datos para exportar'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _showLoadingDialog('Generando reporte global...');
+
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final res = await api.client.getBytes('/tv/revisions/export_global_pdf/');
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      if (res.ok && res.body is List<int>) {
+        await _saveAndOpenPdf(res.body as List<int>, 'Reporte_Global_TV.pdf');
+      } else {
+        throw Exception(res.error ?? 'Error al descargar el PDF global');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Ensure dialog is closed
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al obtener PDF: $e'), 
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleSinglePdf(dynamic item) async {
+    final id = item['id'];
+    _showLoadingDialog('Preparando PDF para ${item['serial_number']}...');
+
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final res = await api.client.getBytes('/tv/revisions/$id/export_pdf/');
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      if (res.ok && res.body is List<int>) {
+        await _saveAndOpenPdf(res.body as List<int>, 'Revision_${item['serial_number']}.pdf');
+      } else {
+        throw Exception(res.error ?? 'El servidor no devolvió el archivo PDF');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Ensure dialog is closed
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showLoadingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 20),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveAndOpenPdf(List<int> bytes, String filename) async {
+    try {
+      // Sanitize filename to avoid directory separator issues if SN contains '/'
+      final safeName = filename.replaceAll('/', '_').replaceAll('\\', '_');
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$safeName');
+      await file.writeAsBytes(bytes, flush: true);
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al abrir PDF: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _deleteRecord(dynamic item) async {
+    final id = item['id'];
+    final sn = item['serial_number'];
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar Registro'),
+        content: Text('¿Estás seguro de que deseas eliminar permanentemente la revisión de SN $sn? Esto también borrará las imágenes en el servidor.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text('ELIMINAR')
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (!mounted) return;
+
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final res = await api.client.delete('/tv/revisions/$id/');
+      
+      if (res.ok) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registro eliminado correctamente')),
+        );
+        _loadData(); // Refresh list
+      } else {
+        throw Exception(res.error ?? 'Error al eliminar');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -63,142 +214,223 @@ class _TvHistoryScreenState extends State<TvHistoryScreen> {
       ),
       body: Stack(
         children: [
-          const AnimatedBackgroundWidget(intensity: 0.2),
+          const AnimatedBackgroundWidget(),
           _loading 
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-              ? Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)))
+              ? Center(child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('Error: $_error', style: const TextStyle(color: Colors.white)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(onPressed: _loadData, child: const Text('Reintentar')),
+                  ],
+                ))
               : _historial.isEmpty
-                ? const Center(child: Text('No hay revisiones registradas'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _historial.length,
-                    itemBuilder: (context, index) {
-                      final item = _historial[index];
-                      return _buildHistoryCard(item);
-                    },
+                ? const Center(child: Text('No hay revisiones registradas', style: TextStyle(color: Colors.white70, fontSize: 18)))
+                : Column(
+                    children: [
+                      _buildHeaderStats(),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          itemCount: _historial.length,
+                          itemBuilder: (context, index) {
+                            final item = _historial[index];
+                            return _buildHistoryCard(item);
+                          },
+                        ),
+                      ),
+                    ],
                   ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _exportGlobalPdf,
+        label: const Text('EXPORTAR GLOBAL'),
+        icon: const Icon(Icons.picture_as_pdf),
+        backgroundColor: Colors.blue.shade900,
+      ),
+    );
+  }
+
+  Widget _buildHeaderStats() {
+    final int total = _historial.length;
+    final int correctos = _historial.where((item) => item['estado'] == 'Correcto').length;
+    final int incidencias = _historial.where((item) => item['estado'] == 'Dañado' || item['estado'] == 'Defectuoso').length;
+
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _statItem('TOTAL', total.toString(), Colors.white),
+          _statItem('OK', correctos.toString(), Colors.greenAccent),
+          _statItem('FALLOS', incidencias.toString(), Colors.orangeAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text(value, style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+      ],
     );
   }
 
   Widget _buildHistoryCard(dynamic item) {
-    final date = DateTime.tryParse(item['created_at'] ?? '')?.toLocal();
-    final dateStr = date != null ? DateFormat('dd/MM/yyyy HH:mm').format(date) : '-';
-    final pNum = item['part_number'] ?? 'N/A';
-    final sNum = item['serial_number'] ?? 'N/A';
-    final estado = item['estado'] ?? 'Desconocido';
-    final id = item['id'];
-    
-    final api = Provider.of<ApiService>(context, listen: false);
-    final imageUrl = '${api.client.baseUrl}/tv/revisions/$id/image/';
+    final estado = item['estado'];
+    final bool isOk = estado == 'Correcto';
+    final dateStr = item['created_at'] != null 
+        ? DateFormat('dd/MM/yy HH:mm').format(DateTime.parse(item['created_at']).toLocal())
+        : '-';
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => _showDetailDialog(item, imageUrl),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image preview
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    imageUrl,
-                    headers: api.client.accessToken != null 
-                        ? {'Authorization': 'Bearer ${api.client.accessToken}'}
-                        : null,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Text info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$pNum | $sNum', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 4),
-                    Text('Estado: $estado', style: TextStyle(color: _getEstadoColor(estado), fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 4),
-                    Text('Fecha: $dateStr', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    const SizedBox(height: 4),
-                    Text('Usuario: ${item['usuario'] ?? 'Anon'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: Colors.grey),
-            ],
-          ),
-        ),
+      key: ValueKey(item['id']),
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Colors.black26,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isOk ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3)),
       ),
-    );
-  }
-
-  Color _getEstadoColor(String estado) {
-    if (estado == 'Correcto') return Colors.green;
-    if (estado == 'Defectuoso') return Colors.red;
-    return Colors.orange;
-  }
-
-  void _showDetailDialog(dynamic item, String imageUrl) {
-    final api = Provider.of<ApiService>(context, listen: false);
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Detalle: ${item['serial_number']}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.network(
-                imageUrl,
-                headers: api.client.accessToken != null 
-                    ? {'Authorization': 'Bearer ${api.client.accessToken}'}
-                    : null,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 100),
-              ),
-              const SizedBox(height: 16),
-              _buildDetailInfo('Part Number', item['part_number']),
-              _buildDetailInfo('EAN', item['ean']),
-              _buildDetailInfo('Sticker', item['sticker']),
-              _buildDetailInfo('Pulgadas', item['pulgadas']),
-              _buildDetailInfo('Comentarios', item['comentarios']),
-              _buildDetailInfo('Chequeo Visual', item['chequeo_visual'] == true ? 'SÍ' : 'NO'),
-            ],
-          ),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: isOk ? Colors.green : Colors.red,
+          child: Icon(isOk ? Icons.check : Icons.warning, color: Colors.white, size: 20),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+        title: Text(
+          item['serial_number'] ?? 'Sin SN',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        subtitle: Text(
+          '${item['part_number']} - $dateStr',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.blueAccent),
+              onPressed: () => _handleSinglePdf(item),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              onPressed: () => _deleteRecord(item),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _detailRow('EAN:', item['ean'] ?? '-'),
+                _detailRow('Pulgadas:', item['pulgadas'] ?? '-'),
+                _detailRow('Sticker:', item['sticker'] ?? '-'),
+                _detailRow('Usuario:', item['usuario'] ?? '-'),
+                _detailRow('Visual OK:', item['chequeo_visual'] == true ? 'Correcto' : 'Fallos detectados'),
+                const SizedBox(height: 8),
+                const Text('Comentarios:', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                Text(item['comentarios'] ?? 'Sin comentarios', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                
+                // Detailed Checklist (if any is 'Da\u00f1ado')
+                if (item['rev_accesorios'] == 'Da\u00f1ado' || item['rev_roturas'] == 'Da\u00f1ado' ||
+                    item['rev_pantalla'] == 'Da\u00f1ado' || item['rev_golpes'] == 'Da\u00f1ado' ||
+                    item['rev_sistema'] == 'Da\u00f1ado' || item['rev_humedad'] == 'Da\u00f1ado') ...[
+                  const SizedBox(height: 12),
+                  const Text('Checklist Incidencias:', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  if (item['rev_accesorios'] == 'Da\u00f1ado') _checklistDetailText('Revisi\u00f3n accesorios'),
+                  if (item['rev_roturas'] == 'Da\u00f1ado') _checklistDetailText('Revisi\u00f3n Roturas'),
+                  if (item['rev_pantalla'] == 'Da\u00f1ado') _checklistDetailText('Revisi\u00f3n de la pantalla'),
+                  if (item['rev_golpes'] == 'Da\u00f1ado') _checklistDetailText('Revisi\u00f3n de golpes o ara\u00f1azos'),
+                  if (item['rev_sistema'] == 'Da\u00f1ado') _checklistDetailText('Revisi\u00f3n de Errores sistema'),
+                  if (item['rev_humedad'] == 'Da\u00f1ado') _checklistDetailText('Revisi\u00f3n de humedad'),
+                ],
+
+                if (item['image_filename'] != null && item['image_filename'].toString().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Evidencia fotográfica:', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 100,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: item['image_filename'].toString().split(',').length,
+                      itemBuilder: (ctx, i) {
+                        final filename = item['image_filename'].toString().split(',')[i];
+                        final api = Provider.of<ApiService>(context, listen: false);
+                        final imageUrl = '${api.client.baseUrl}/tv/revisions/${item['id']}/image/?filename=$filename';
+                        
+                        return Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          width: 100,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                imageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (c, e, s) => const Icon(Icons.image_not_supported, color: Colors.white24),
+                              ),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (c) => Dialog(
+                                        child: Image.network(imageUrl),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildDetailInfo(String label, dynamic value) {
+  Widget _checklistDetailText(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Text('• $text', style: const TextStyle(color: Colors.white, fontSize: 13)),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(width: 100, child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.bold))),
-          Expanded(child: Text(value?.toString() ?? '-')),
+          Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
         ],
       ),
     );

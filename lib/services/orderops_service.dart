@@ -39,6 +39,24 @@ class OrderOpsService {
     return result.ok;
   }
 
+  Future<bool> updateProyecto(
+    int id, {
+    String? nombre,
+    String? description,
+    List<String>? subfamilies,
+  }) async {
+    final body = <String, dynamic>{};
+    if (nombre != null) body['nombre'] = nombre;
+    if (description != null) body['descripcion'] = description;
+    if (subfamilies != null) body['subfamilies'] = subfamilies.join(',');
+
+    final result = await _client.patch(
+      '/orderops/proyectos/$id',
+      jsonBody: body,
+    );
+    return result.ok;
+  }
+
   /// Fetch list of orders for the agent queue
   Future<List<AgentOrder>> getAgentOrders({
     String? agentStatus,
@@ -163,6 +181,8 @@ class OrderOpsService {
     String? family,
     String? proyecto,
     int? proyectoId,
+    List<String>? subfamilies,
+    List<String>? completedFamilies,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
@@ -180,6 +200,10 @@ class OrderOpsService {
     }
     if (completionAuthor != null) {
       body['completion_author'] = completionAuthor;
+    }
+    if (subfamilies != null) body['subfamilies'] = subfamilies.join(',');
+    if (completedFamilies != null) {
+      body['completed_families'] = completedFamilies.join(',');
     }
 
     final result = await _client.patch(
@@ -201,6 +225,8 @@ class OrderOpsService {
     String? family,
     String? proyecto,
     int? proyectoId,
+    List<String>? subfamilies,
+    List<String>? completedFamilies,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
@@ -218,6 +244,10 @@ class OrderOpsService {
     }
     if (completionAuthor != null) {
       body['completion_author'] = completionAuthor;
+    }
+    if (subfamilies != null) body['subfamilies'] = subfamilies.join(',');
+    if (completedFamilies != null) {
+      body['completed_families'] = completedFamilies.join(',');
     }
 
     return await _client.patch(

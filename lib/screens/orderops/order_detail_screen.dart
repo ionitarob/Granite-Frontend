@@ -28,6 +28,7 @@ import '../serials/historial_match_unidad.dart';
 import '../serials/historial_cambios_serial.dart';
 import '../xiaomi/xiaomi_registro_orden.dart';
 import '../sentinel_for_imaging/physical_tables_screen.dart';
+import '../../widgets/family_selection_dialog.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -1818,9 +1819,88 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     debugPrint(
       'Updating status to: $code for order: ${_detail?.agentOrder.idnbr}',
     );
-    if (_orderOpsService == null) {
-      debugPrint('Error: _orderOpsService is null');
+    if (_detail == null || _orderOpsService == null) {
+      debugPrint('Error: _detail or _orderOpsService is null');
       return;
+    }
+
+    final order = _detail!.agentOrder;
+    final allPossibleFamilies = [
+      if (order.family != null && order.family!.isNotEmpty) order.family!,
+      ...order.subfamilies,
+    ];
+
+    // Case: Moving to En Ejecución (3)
+    if (code == '3' && allPossibleFamilies.length > 1) {
+      final selectedFamily = await showDialog<String>(
+        context: context,
+        builder: (context) => FamilySelectionDialog(
+          families: allPossibleFamilies,
+          title: 'Iniciar Servicio',
+          currentFamily: order.family,
+        ),
+      );
+
+      if (selectedFamily == null) return; // User cancelled
+
+      setState(() => _loading = true);
+      try {
+        final ok = await _orderOpsService!.updateAgentOrder(
+          order.idnbr,
+          estado: '3',
+          family: selectedFamily,
+        );
+        if (ok) await _loadData();
+        return;
+      } catch (e) {
+        debugPrint('Error starting subfamily: $e');
+        setState(() => _loading = false);
+        return;
+      }
+    }
+
+    // Case: Finishing (5) - Check for subfamilies loop
+    if (code == '5') {
+      final pendingFamilies = allPossibleFamilies
+          .where((f) => !order.completedFamilies.contains(f) && f != order.family)
+          .toList();
+
+      if (pendingFamilies.isNotEmpty) {
+        // Partial completion: current active family is done
+        final nextFamily = await showDialog<String>(
+          context: context,
+          builder: (context) => FamilySelectionDialog(
+            families: pendingFamilies,
+            title: 'Siguiente Servicio',
+          ),
+        );
+
+        if (nextFamily == null) return; // User cancelled
+
+        setState(() => _loading = true);
+        try {
+          final newCompleted = {...order.completedFamilies, if (order.family != null) order.family!}.toList();
+          final ok = await _orderOpsService!.updateAgentOrder(
+            order.idnbr,
+            estado: '3', // Stay in execution
+            family: nextFamily,
+            completedFamilies: newCompleted,
+          );
+          if (ok) {
+            await _loadData();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Servicio finalizado. Iniciando: $nextFamily')),
+              );
+            }
+          }
+          return;
+        } catch (e) {
+          debugPrint('Error transitioning to next subfamily: $e');
+          setState(() => _loading = false);
+          return;
+        }
+      }
     }
 
     if (!_canEditOrderMeta && !allowWorkflowAction) {

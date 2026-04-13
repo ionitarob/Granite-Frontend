@@ -36,16 +36,108 @@ class _TvRevisionScreenState extends State<TvRevisionScreen> {
   String _estado = 'Correcto';
   bool _chequeoVisual = false;
   
+  // Checklist for non-Correcto devices (Correcto or Dañado)
+  String _revAccesorios = 'Correcto';
+  String _revRoturas = 'Correcto';
+  String _revPantalla = 'Correcto';
+  String _revGolpes = 'Correcto';
+  String _revSistema = 'Correcto';
+  String _revHumedad = 'Correcto';
+  
   final List<XFile> _images = [];
   final ImagePicker _picker = ImagePicker();
   bool _isSaving = false;
 
   Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
-    if (image != null) {
-      setState(() {
-        _images.add(image);
-      });
+    // If we're on desktop, allow selecting from gallery/files because camera might not be available/ideal
+    bool isDesktop = Platform.isMacOS || Platform.isWindows;
+
+    if (isDesktop) {
+      _showImageSourceActionSheet();
+    } else {
+      // On mobile, default to camera but maybe still allow choice? 
+      // User specifically asked for desktop file picker, so let's provide choice there.
+      // But for better UX, I'll allow it for everyone.
+      _showImageSourceActionSheet();
+    }
+  }
+
+  void _showImageSourceActionSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E2E).withOpacity(0.95),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Seleccionar Origen',
+              style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _sourceOption(
+                  icon: Icons.camera_alt,
+                  label: 'C\u00e1mara',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _executePick(ImageSource.camera);
+                  },
+                ),
+                _sourceOption(
+                  icon: Icons.photo_library,
+                  label: 'Galer\u00eda / Archivo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _executePick(ImageSource.gallery);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sourceOption({required IconData icon, required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.redAccent, size: 30),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _executePick(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(source: source);
+      if (image != null) {
+        setState(() {
+          _images.add(image);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
     }
   }
 
@@ -83,6 +175,13 @@ class _TvRevisionScreenState extends State<TvRevisionScreen> {
         'chequeo_visual': _chequeoVisual.toString(),
         'comentarios': _comentariosController.text,
         'usuario': api.currentUser?.username ?? 'desconocido',
+        // New checklist fields
+        'rev_accesorios': _revAccesorios,
+        'rev_roturas': _revRoturas,
+        'rev_pantalla': _revPantalla,
+        'rev_golpes': _revGolpes,
+        'rev_sistema': _revSistema,
+        'rev_humedad': _revHumedad,
       };
 
       final List<MultipartAttachment> attachments = [];
@@ -104,17 +203,34 @@ class _TvRevisionScreenState extends State<TvRevisionScreen> {
       if (res.ok) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Revisión guardada correctamente')),
+            const SnackBar(
+              content: Text('Revisión guardada correctamente'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           _resetForm();
         }
       } else {
-        throw Exception(res.error ?? 'Error desconocido al guardar');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res.error ?? 'Error al guardar revisión'), 
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error de conexión o sistema: $e'), 
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
@@ -133,6 +249,12 @@ class _TvRevisionScreenState extends State<TvRevisionScreen> {
     setState(() {
       _estado = 'Correcto';
       _chequeoVisual = false;
+      _revAccesorios = 'Correcto';
+      _revRoturas = 'Correcto';
+      _revPantalla = 'Correcto';
+      _revGolpes = 'Correcto';
+      _revSistema = 'Correcto';
+      _revHumedad = 'Correcto';
       _images.clear();
     });
   }
@@ -192,7 +314,8 @@ class _TvRevisionScreenState extends State<TvRevisionScreen> {
                             nextFocus: _comentariosFocus,
                             hint: 'ej: 55',
                           ),
-                          _buildDropdown('Estado', ['Correcto', 'Defectuoso', 'Dañado']),
+                          _buildDropdown('Estado', ['Correcto', 'Defectuoso', 'Da\u00f1ado']),
+                          if (_estado != 'Correcto') _buildDetailedChecklist(),
                           _buildVisualCheck(),
                           _buildTextField(
                             'Comentarios', 
@@ -292,29 +415,92 @@ class _TvRevisionScreenState extends State<TvRevisionScreen> {
 
   Widget _buildVisualCheck() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: CheckboxListTile(
+        title: const Text('Chequeo Visual OK', style: TextStyle(color: Colors.white, fontSize: 13)),
+        value: _chequeoVisual,
+        onChanged: (val) => setState(() => _chequeoVisual = val ?? false),
+        activeColor: Colors.blueAccent,
+        checkColor: Colors.white,
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+      ),
+    );
+  }
+
+  Widget _buildDetailedChecklist() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'DETALLE DE INCIDENCIAS',
+            style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          _checklistTile('Revisi\u00f3n accesorios', _revAccesorios, (v) => setState(() => _revAccesorios = v)),
+          _checklistTile('Revisi\u00f3n Roturas', _revRoturas, (v) => setState(() => _revRoturas = v)),
+          _checklistTile('Revisi\u00f3n de la pantalla', _revPantalla, (v) => setState(() => _revPantalla = v)),
+          _checklistTile('Revisi\u00f3n de golpes o ara\u00f1azos', _revGolpes, (v) => setState(() => _revGolpes = v)),
+          _checklistTile('Revisi\u00f3n de Errores sistema', _revSistema, (v) => setState(() => _revSistema = v)),
+          _checklistTile('Revisi\u00f3n de humedad', _revHumedad, (v) => setState(() => _revHumedad = v)),
+        ],
+      ),
+    );
+  }
+
+  Widget _checklistTile(String title, String value, ValueChanged<String> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 13))),
+          _buildStatusToggle(value, onChanged),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusToggle(String value, ValueChanged<String> onChanged) {
+    bool isDanado = value == 'Da\u00f1ado';
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _toggleBtn('Correcto', !isDanado, () => onChanged('Correcto')),
+          _toggleBtn('Da\u00f1ado', isDanado, () => onChanged('Da\u00f1ado')),
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleBtn(String label, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(4),
+          color: isSelected ? (label == 'Da\u00f1ado' ? Colors.redAccent : Colors.green) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Chequeo visual', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-            CheckboxListTile(
-              title: const Text('Confirmo que la revisión visual está correcta'),
-              value: _chequeoVisual,
-              onChanged: (val) => setState(() => _chequeoVisual = val!),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-            ),
-            const Text(
-              'Debes marcar esta casilla para registrar la revisión como correcta.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white38,
+            fontSize: 10,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
         ),
       ),
     );

@@ -274,10 +274,11 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
           double smartProb = qcPct;
           if (doneQC < expectedQCSoFar) {
             // We are behind! Increase probability to "catch up"
-            smartProb += (expectedQCSoFar - doneQC) * 50; // Boost probability to catch up
+            // Multiplier reduced from 50 to 10 to avoid forcing QC on every unit immediately
+            smartProb += (expectedQCSoFar - doneQC) * 10; 
           } else if (doneQC > expectedQCSoFar + 1) {
              // We are ahead, relax the requirement slightly
-             smartProb = smartProb * 0.5;
+             smartProb = smartProb * 0.8; // Relaxed (was 0.5)
           }
 
           final rollout = _random.nextInt(100);
@@ -1289,24 +1290,42 @@ class _QCFormDialogState extends State<_QCFormDialog> {
     setState(() => _submitting = true);
     try {
       final api = Provider.of<ApiService>(context, listen: false);
-      for (var entry in _responses.entries) {
-        await api.client.post(
-          '/amz/batches/${widget.batchId}/qc-responses',
-          jsonBody: {
-            'question_id': entry.key,
-            'dsn': widget.dsn,
-            'response_text': entry.value,
-          },
+      
+      // Bulk submission format
+      final responsesList = _responses.entries.map((e) => {
+        'question_id': e.key,
+        'response_text': e.value,
+      }).toList();
+
+      final res = await api.client.post(
+        '/amz/batches/${widget.batchId}/qc-responses',
+        jsonBody: {
+          'dsn': widget.dsn,
+          'responses': responsesList,
+        },
+      );
+
+      if (res.ok) {
+        widget.onSuccess();
+        Navigator.pop(context);
+      } else {
+        final error = res.body['error'] ?? 'Error desconocido';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error guardando QC: $error'),
+            backgroundColor: Colors.red.shade900,
+          ),
         );
       }
-      widget.onSuccess();
-      Navigator.pop(context);
-    } catch (_) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Error guardando QC')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de conexión: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 }

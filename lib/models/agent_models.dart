@@ -45,6 +45,9 @@ class AgentOrder {
   final String? completionSummary;
   final String? completionAuthor;
 
+  final List<String> subfamilies;
+  final List<String> completedFamilies;
+
   AgentOrder({
     required this.idnbr,
     required this.orderNbr,
@@ -81,6 +84,8 @@ class AgentOrder {
     this.completedAt,
     this.completionSummary,
     this.completionAuthor,
+    this.subfamilies = const [],
+    this.completedFamilies = const [],
   });
 
   factory AgentOrder.fromJson(Map<String, dynamic> json) {
@@ -159,6 +164,22 @@ class AgentOrder {
           : null,
       completionSummary: json['completion_summary'] as String?,
       completionAuthor: json['completion_author'] as String?,
+      subfamilies: json['subfamilies'] is List
+          ? List<String>.from(json['subfamilies'].map((e) => e.toString()))
+          : (json['subfamilies'] is String
+              ? (json['subfamilies'] as String)
+                  .split(',')
+                  .where((s) => s.isNotEmpty)
+                  .toList()
+              : const []),
+      completedFamilies: json['completed_families'] is List
+          ? List<String>.from(json['completed_families'].map((e) => e.toString()))
+          : (json['completed_families'] is String
+              ? (json['completed_families'] as String)
+                  .split(',')
+                  .where((s) => s.isNotEmpty)
+                  .toList()
+              : const []),
     );
   }
 }
@@ -486,6 +507,7 @@ class Proyecto {
   final List<AgentOrder>? orders;
   final List<AgentOrderObservation>? observations;
   final List<AgentOrderPhoto>? photos;
+  final List<String> subfamilies;
 
   Proyecto({
     required this.id,
@@ -495,6 +517,7 @@ class Proyecto {
     this.orders,
     this.observations,
     this.photos,
+    this.subfamilies = const [],
   });
 
   factory Proyecto.fromJson(Map<String, dynamic> json) {
@@ -516,6 +539,14 @@ class Proyecto {
       photos: json['photos'] is List
           ? List<dynamic>.from(json['photos']).map((e) => AgentOrderPhoto.fromJson(Map<String, dynamic>.from(e))).toList()
           : null,
+      subfamilies: json['subfamilies'] is List
+          ? List<String>.from(json['subfamilies'].map((e) => e.toString()))
+          : (json['subfamilies'] is String
+              ? (json['subfamilies'] as String)
+                  .split(',')
+                  .where((s) => s.isNotEmpty)
+                  .toList()
+              : const []),
     );
   }
 }
