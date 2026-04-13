@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
+import '../utils/formatters.dart';
 
 class AmzBucketDistributionWidget extends StatefulWidget {
   final String wsUrl;
@@ -123,7 +124,7 @@ class _AmzBucketDistributionWidgetState
       return PieChartSectionData(
         color: _getColor(e.key),
         value: e.value.toDouble(),
-        title: '${percentage.toStringAsFixed(0)}%',
+        title: '${percentage.formattedInt}%',
         radius: 40,
         titleStyle: const TextStyle(
           fontSize: 10,

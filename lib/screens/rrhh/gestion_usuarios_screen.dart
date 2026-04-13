@@ -213,6 +213,8 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
     required int empresaId,
     required int rolId,
     String? contrasena,
+    String? fechaFinalizacion,
+    bool? activo,
   }) async {
     final body = {
       'nombre': nombre,
@@ -220,7 +222,9 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
       'turno': turno,
       'empresa_id': empresaId,
       'rol_id': rolId,
+      'fecha_finalizacion': fechaFinalizacion,
     };
+    if (activo != null) body['activo'] = activo;
     if (contrasena != null && contrasena.trim().isNotEmpty) {
       body['contrasena'] = contrasena.trim();
     }
@@ -368,6 +372,9 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
     if (rolSel != null && !_roles.any((r) => r['id'] == rolSel)) {
       rolSel = null;
     }
+    String? fechaFinalizacionStr = emp['fecha_finalizacion']?.toString();
+    DateTime? fechaFinalizacionSel = fechaFinalizacionStr != null ? DateTime.tryParse(fechaFinalizacionStr) : null;
+    bool activoSel = emp['activo'] ?? true;
 
     final guardado = await showDialog<bool>(
       context: context,
@@ -523,13 +530,9 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
                                 .toList(),
                             onChanged: (v) => setModalState(() => empresaSel = v),
                           ),
-                          const SizedBox(height: 12),
                           DropdownButtonFormField<int>(
                             value: rolSel,
-                            decoration: _inputDecoration(
-                              'Rol',
-                              Icons.badge,
-                            ).copyWith(contentPadding: EdgeInsets.zero),
+                            decoration: _inputDecoration('Rol', Icons.badge).copyWith(contentPadding: EdgeInsets.zero),
                             items: _roles
                                 .map(
                                   (r) => DropdownMenuItem<int>(
@@ -545,6 +548,44 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
                                 )
                                 .toList(),
                             onChanged: (v) => setModalState(() => rolSel = v),
+                          ),
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: fechaFinalizacionSel ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
+                              );
+                              if (picked != null) {
+                                setModalState(() => fechaFinalizacionSel = picked);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: InputDecorator(
+                              decoration: _inputDecoration('Fecha finalización', Icons.calendar_today),
+                              child: Text(
+                                fechaFinalizacionSel == null 
+                                  ? 'Sin fecha (indefinido)' 
+                                  : '${fechaFinalizacionSel!.day}/${fechaFinalizacionSel!.month}/${fechaFinalizacionSel!.year}',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Estado de Empleado', style: TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text(
+                              activoSel ? 'Activo (Visible y Operativo)' : 'Inactivo (Oculto del equipo)',
+                              style: TextStyle(color: activoSel ? Colors.green.shade700 : Colors.red.shade700),
+                            ),
+                            value: activoSel,
+                            onChanged: (v) => setModalState(() => activoSel = v),
+                            activeTrackColor: Colors.green.withValues(alpha: 0.3),
+                            activeColor: Colors.green,
+                            inactiveThumbColor: Colors.red,
+                            inactiveTrackColor: Colors.red.withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 24),
                           Wrap(
@@ -596,6 +637,8 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
         contrasena: contrasenaCtrl.text.trim().isEmpty
             ? null
             : contrasenaCtrl.text.trim(),
+        fechaFinalizacion: fechaFinalizacionSel?.toIso8601String(),
+        activo: activoSel,
       );
       if (ok) {
         _mostrarSnack('Empleado actualizado');
@@ -790,23 +833,31 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
             final initials =
                 (nombre.isNotEmpty ? nombre[0] : '') +
                 (apellido.isNotEmpty ? apellido[0] : '');
+            final fechaFinRaw = emp['fecha_finalizacion']?.toString();
+            final fechaFin = fechaFinRaw != null ? DateTime.tryParse(fechaFinRaw) : null;
+            final now = DateTime.now();
+            final isExpired = fechaFin != null && fechaFin.isBefore(DateTime(now.year, now.month, now.day));
+            final isNearExp = fechaFin != null && !isExpired && fechaFin.isBefore(now.add(const Duration(days: 15)));
+
+            final isIngram = (emp['empresa']?.toString().toLowerCase() ?? '').contains('ingram');
+
             final trailingActions = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (!isIngram)
+                  IconButton(
+                    tooltip: 'Renovación Rápida',
+                    icon: const Icon(Icons.autorenew_rounded, color: Colors.teal),
+                    onPressed: () => _dialogoEditar(emp), // Opens dialog, could be specialized
+                  ),
                 IconButton(
                   tooltip: 'Editar',
-                  icon: const Icon(
-                    Icons.edit_rounded,
-                    color: Colors.blueAccent,
-                  ),
+                  icon: const Icon(Icons.edit_rounded, color: Colors.blueAccent),
                   onPressed: () => _dialogoEditar(emp),
                 ),
                 IconButton(
                   tooltip: 'Eliminar',
-                  icon: Icon(
-                    Icons.delete_rounded,
-                    color: theme.colorScheme.error,
-                  ),
+                  icon: Icon(Icons.delete_rounded, color: theme.colorScheme.error),
                   onPressed: () => _dialogoEliminar(emp),
                 ),
               ],
@@ -814,9 +865,19 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
 
             return Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .5),
+                color: isExpired 
+                    ? Colors.red.withValues(alpha: .1)
+                    : isNearExp 
+                        ? Colors.orange.withValues(alpha: .1)
+                        : Colors.white.withValues(alpha: .5),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: .3)),
+                border: Border.all(
+                  color: isExpired 
+                      ? Colors.red.withValues(alpha: .3) 
+                      : isNearExp 
+                          ? Colors.orange.withValues(alpha: .3)
+                          : Colors.white.withValues(alpha: .3)
+                ),
               ),
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
@@ -936,6 +997,27 @@ class _GestionEmpleadosScreenState extends State<GestionEmpleadosScreen> {
                               ),
                             ),
                           ),
+                          if (fechaFin != null)
+                            _Badge(
+                              text: 'Fin: ${fechaFin.day}/${fechaFin.month}/${fechaFin.year}',
+                              color: isExpired 
+                                  ? Colors.red.withValues(alpha: .2) 
+                                  : isNearExp 
+                                      ? Colors.orange.withValues(alpha: .2)
+                                      : Colors.green.withValues(alpha: .1),
+                              textColor: isExpired 
+                                  ? Colors.red.shade900 
+                                  : isNearExp 
+                                      ? Colors.orange.shade900
+                                      : Colors.green.shade900,
+                              icon: isExpired ? Icons.warning_amber_rounded : isNearExp ? Icons.timer_outlined : null,
+                            ),
+                          _Badge(
+                            text: emp['activo'] == false ? 'INACTIVO' : 'ACTIVO',
+                            color: emp['activo'] == false ? Colors.red.withValues(alpha: .15) : Colors.green.withValues(alpha: .15),
+                            textColor: emp['activo'] == false ? Colors.red.shade900 : Colors.green.shade900,
+                            icon: emp['activo'] == false ? Icons.block : Icons.check_circle_outline,
+                          ),
                         ],
                       ),
                       if (isMobile)
@@ -982,27 +1064,37 @@ class _Badge extends StatelessWidget {
     required this.text,
     required this.color,
     required this.textColor,
+    this.icon,
   });
-
   final String text;
   final Color color;
   final Color textColor;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: textColor,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: textColor),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

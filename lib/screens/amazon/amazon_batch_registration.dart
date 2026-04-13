@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/animated_background.dart';
+import '../../utils/formatters.dart';
 import '../../themes/amazon_theme.dart';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -704,8 +705,8 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
                   title: 'PRODUCCIÓN',
                   totalValue: totalProdProgress.clamp(0.0, 1.0),
                   dailyValue: dailyProdProgress.clamp(0.0, 1.0),
-                  totalLabel: '${(totalProdProgress * 100).toStringAsFixed(1)}% Total',
-                  dailyLabel: '${(dailyProdProgress * 100).toStringAsFixed(1)}% Hoy',
+                  totalLabel: '${(totalProdProgress * 100).formatted}% Total',
+                  dailyLabel: '${(dailyProdProgress * 100).formatted}% Hoy',
                   targetLabel: 'Hoy: ${prodDoneToday.toInt()} / ${prodGoal.toInt()} UN\nTotal: ${prodDoneTotal.toInt()} / ${totalUnits.toInt()}',
                   color: dailyProdProgress >= 1.0 
                       ? const Color(0xFF64B5F6) // Softer Premium Blue
@@ -718,8 +719,8 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
                   title: 'CALIDAD (QC)',
                   totalValue: totalQCProgress.clamp(0.0, 1.0),
                   dailyValue: dailyQCProgress.clamp(0.0, 1.0),
-                  totalLabel: '${(totalQCProgress * 100).toStringAsFixed(1)}% Total',
-                  dailyLabel: '${(dailyQCProgress * 100).toStringAsFixed(1)}% Hoy',
+                  totalLabel: '${(totalQCProgress * 100).formatted}% Total',
+                  dailyLabel: '${(dailyQCProgress * 100).formatted}% Hoy',
                   targetLabel: 'Hoy: ${qcUnitsDoneToday.toInt()}/${dailyQCTarget}\nTotal: ${qcUnitsDone.toInt()}/${qcReqUnitsTotal}',
                   color: dailyQCProgress >= 1.0
                       ? const Color(0xFF81C784) // Softer Premium Green
@@ -749,16 +750,16 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
                   ),
                 ),
                 const Divider(height: 32, thickness: 1, color: Colors.white10),
-                _buildMetricRow('Total Lote', '${_metrics!['total_units']} UN'),
+                _buildMetricRow('Total Lote', '${(_metrics!['total_units'] as num? ?? 0).formattedInt} UN'),
                 const SizedBox(height: 12),
                 _buildMetricRow(
                   'Registros',
-                  '${_metrics!['registered_units']} UN',
+                  '${(_metrics!['registered_units'] as num? ?? 0).formattedInt} UN',
                 ),
                 const SizedBox(height: 12),
                 _buildMetricRow(
                   'QC Realizados',
-                  '${_metrics!['qc_units_done']} UN',
+                  '${(_metrics!['qc_units_done'] as num? ?? 0).formattedInt} UN',
                 ),
                 const SizedBox(height: 12),
                 _buildMetricRow(
@@ -808,7 +809,7 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
                         style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        '${_metrics!['shuttle_units']} / 480',
+                        '${(_metrics!['shuttle_units'] as num? ?? 0).formattedInt} / 480',
                         style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w900),
                       ),
                     ],

@@ -12,6 +12,7 @@ import '../../widgets/main_sidebar.dart';
 import 'project_transactions_dialog.dart';
 import 'create_project_fund_dialog.dart';
 import 'ays_filtered_data_screen.dart';
+import '../../utils/formatters.dart';
 
 class AysManagementScreen extends StatefulWidget {
   static const routeName = '/analisis/management';
@@ -843,13 +844,13 @@ class _DashboardKpis extends StatelessWidget {
     final cards = [
       _KpiCard(
         title: 'Gasto Total',
-        value: '${total.toStringAsFixed(0)}€',
+        value: total.asCurrency,
         icon: Icons.account_balance_wallet_rounded,
         color: const Color(0xFF2E7D32),
       ),
       _KpiCard(
         title: 'Tendencia MoM',
-        value: '${mom > 0 ? "+" : ""}${mom.toStringAsFixed(1)}%',
+        value: '${mom > 0 ? "+" : ""}${mom.formatted}%',
         icon: mom > 0
             ? Icons.trending_up_rounded
             : Icons.trending_down_rounded,
@@ -858,7 +859,7 @@ class _DashboardKpis extends StatelessWidget {
       ),
       _KpiCard(
         title: 'Pendiente',
-        value: '${(total - paid).toStringAsFixed(0)}€',
+        value: (total - paid).asCurrency,
         icon: Icons.pending_actions_rounded,
         color: Colors.orange,
       ),
@@ -928,7 +929,7 @@ class _DashboardTrend extends StatelessWidget {
               getTooltipItems: (touchedSpots) {
                 return touchedSpots.map((spot) {
                   return LineTooltipItem(
-                    '${spot.y.toStringAsFixed(2)}€',
+                    '${spot.y.asCurrency}',
                     TextStyle(
                       color: theme.colorScheme.primary,
                       fontWeight: FontWeight.bold,
@@ -1111,7 +1112,7 @@ class _DashboardDistribution extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${(e.value.value / 1000).toStringAsFixed(1)}k',
+                      e.value.value.asCurrency,
                       style: TextStyle(fontSize: 10, color: theme.hintColor),
                     ),
                   ],
@@ -1189,7 +1190,7 @@ class _DashboardFunds extends StatelessWidget {
               ],
             ),
             trailing: Text(
-              '${f.fondos?.toStringAsFixed(0)}€',
+              f.fondos?.asCurrency ?? '-',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           );
@@ -1253,8 +1254,8 @@ class _DashboardFunds extends StatelessWidget {
                         context: ctx,
                         title: f.idxiaomi ?? 'Varios',
                         subtitle:
-                            '${f.totalSpent.toStringAsFixed(0)}€ gastados de ${f.fondos?.toStringAsFixed(0)}€',
-                        trailing: '${f.fondos?.toStringAsFixed(0)}€',
+                            '${f.totalSpent.formattedInt}€ gastados de ${f.fondos?.formattedInt}€',
+                        trailing: '${f.fondos?.formattedInt}€',
                         percent: percent,
                         onTap: () {
                           Navigator.pop(ctx);
@@ -1321,7 +1322,7 @@ class _DashboardMasterServices extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
-                'PVD: ${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
+                'PVD: ${s.pvd?.formatted ?? "0,00"}€',
                 style: const TextStyle(color: Color(0xFF43A047)),
               ),
               trailing: Row(
@@ -1402,12 +1403,12 @@ class _DashboardMasterServices extends StatelessWidget {
                             context: ctx,
                             title: s.servicio,
                             subtitle:
-                                'Precio actual: ${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
+                                'Precio actual: ${s.pvd?.formatted ?? "0,00"}€',
                             trailingWidget: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  '${s.pvd?.toStringAsFixed(2) ?? "0.00"}€',
+                                  '${s.pvd?.formatted ?? "0,00"}€',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: Color(0xFF43A047),
@@ -1650,7 +1651,7 @@ class _DashboardEfficiency extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${(pct * 100).toStringAsFixed(0)}%'),
+                Text('${(pct * 100).formattedInt}%'),
               ],
             ),
           );

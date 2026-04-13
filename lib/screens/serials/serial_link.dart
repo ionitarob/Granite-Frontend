@@ -12,6 +12,7 @@ import '../../services/order_input_formatter.dart';
 import '../../services/orderops_service.dart';
 import '../../services/sound_player.dart';
 import '../../widgets/main_sidebar.dart';
+import '../../utils/formatters.dart';
 
 enum _SerialPanel { assign, match, upload, recent }
 
@@ -645,7 +646,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _quickScanFocus.requestFocus();
+      // No longer stealing focus to Maestro here.
+      // Callers who want focus should request it explicitly.
     });
   }
 
@@ -759,6 +761,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               serials: serials,
               manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true),
             );
+            _quickScanFocus.requestFocus();
           } catch (e) {
             _showSnack('Error registrando orden: $e');
           }
@@ -770,17 +773,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             existingManual ?? await _promptManualUnits(numOrden);
         if (!mounted) return;
         if (manualConfig != null) {
-          _applyOrderData(
-            order: {
-              'num_orden': numOrden,
-              'unidades': manualConfig.units,
-              'manual': true,
-              'manual_double': manualConfig.doubleEntry,
-            },
-            serials: const <Map<String, String>>[],
-            unitsOverride: manualConfig.units,
-            manualDouble: manualConfig.doubleEntry,
-          );
+            _applyOrderData(
+              order: {
+                'num_orden': numOrden,
+                'unidades': manualConfig.units,
+                'manual': true,
+                'manual_double': manualConfig.doubleEntry,
+              },
+              serials: const <Map<String, String>>[],
+              unitsOverride: manualConfig.units,
+              manualDouble: manualConfig.doubleEntry,
+            );
+            _quickScanFocus.requestFocus();
           if (existingManual == null) {
             final mode = manualConfig.doubleEntry ? 'doble' : 'unitario';
             _showSnack(
@@ -1183,6 +1187,18 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           row.isSaving = false;
         });
       }
+    }
+  }
+
+  void _handleInventorySubmit(int index) async {
+    if (index < 0 || index >= _matchRows.length) return;
+    final saved = await _saveRow(index, forceConfirm: false);
+    if (saved) {
+      if (index + 1 < _matchRows.length) {
+        _matchRows[index + 1].focus.requestFocus();
+      }
+    } else {
+      _matchRows[index].inventoryFocus.requestFocus();
     }
   }
 
@@ -1889,7 +1905,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               ),
               if (_matchRows.isNotEmpty)
                 Text(
-                  '${_matchRows.length} UNIDADES',
+                  '${_matchRows.length.formattedInt} UNIDADES',
                   style: const TextStyle(fontSize: 10, color: Colors.white30),
                 ),
             ],
@@ -1946,7 +1962,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              'UNIDAD ${savedUnits + index + 1}',
+                              'UNIDAD ${(savedUnits + index + 1).formattedInt}',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
@@ -1991,7 +2007,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                 focusNode: row.inventoryFocus,
                                 label: 'IMEI / INVENTARIO',
                                 icon: Icons.inventory_2_rounded,
-                                onSubmitted: (_) => _saveRow(index, forceConfirm: false),
+                                onSubmitted: (_) => _handleInventorySubmit(index),
                               ),
                             ],
                           ],
@@ -2015,7 +2031,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                                 focusNode: row.inventoryFocus,
                                 label: 'IMEI / INVENTARIO',
                                 icon: Icons.inventory_2_rounded,
-                                onSubmitted: (_) => _saveRow(index, forceConfirm: false),
+                                onSubmitted: (_) => _handleInventorySubmit(index),
                               ),
                             ),
                           ],
@@ -2058,7 +2074,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                     leading: const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 18),
                     title: Text(item['serial'] ?? '-'),
                     subtitle: item['inventory_code']?.isNotEmpty == true ? Text(item['inventory_code']!) : null,
-                    trailing: Text('#${_orderSerials.length - index}', style: const TextStyle(color: Colors.white24, fontSize: 10)),
+                    trailing: Text('#${(_orderSerials.length - index).formattedInt}', style: const TextStyle(color: Colors.white24, fontSize: 10)),
                   );
                 },
               ),

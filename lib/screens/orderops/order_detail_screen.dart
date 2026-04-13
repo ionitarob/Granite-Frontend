@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import '../../utils/formatters.dart';
 
 import 'package:flutter/services.dart';
 
@@ -29,6 +30,7 @@ import '../serials/historial_cambios_serial.dart';
 import '../xiaomi/xiaomi_registro_orden.dart';
 import '../sentinel_for_imaging/physical_tables_screen.dart';
 import '../../widgets/family_selection_dialog.dart';
+import '../../utils/formatters.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -65,6 +67,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   String? _error;
 
   final TextEditingController _obsController = TextEditingController();
+  final FocusNode _obsFocusNode = FocusNode();
 
   String _normalizedRole() {
     final raw = (ApiService.instance?.currentUser?.role ?? '').trim().toLowerCase();
@@ -105,6 +108,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   void dispose() {
     _obsController.dispose();
+    _obsFocusNode.dispose();
     super.dispose();
   }
 
@@ -387,7 +391,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pedido marcado como Pendiente (Recepcionado)')),
+          const SnackBar(content: Text('Orden marcada como Pendiente (Recepcionado)')),
         );
       }
     } catch (e) {
@@ -409,7 +413,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
     final title = _detail != null
       ? _formatOrderNbr(_detail!.agentOrder.orderNbr)
-      : 'Pedido #${widget.orderId}';
+      : 'Orden #${widget.orderId}';
 
     return Theme(
       data: theme,
@@ -585,7 +589,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               width: infoAndObsWidth,
               child: _buildSummaryCard(
                 theme,
-                'Informacion del Pedido',
+                'Informacion de la Orden',
                 Stack(
                   children: [
                     Positioned.fill(
@@ -595,9 +599,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _buildInfoItem('Pedido', order.orderNbr, maxLines: 1),
-                            const SizedBox(height: 4),
                             _buildInfoItem('Cliente', order.customer, maxLines: 1),
+                            const SizedBox(height: 4),
+                            _buildInfoItem('Orden', order.orderNbr, maxLines: 1),
                             const SizedBox(height: 4),
                             _buildInfoItem(
                               'Fecha',
@@ -638,26 +642,63 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     ),
                   ],
                 ),
-                headerTrailing: SizedBox(
-                  height: 40,
-                  child: ElevatedButton(
-                              onPressed: order.estado.contains('5')
-                        ? null
-                        : () => _updateStatus('5', allowWorkflowAction: true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      minimumSize: const Size(0, 40),
-                    ),
-                    child: const Text(
-                      'Finalizar',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                headerTrailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (order.estado.contains('3')) ...[
+                      OutlinedButton(
+                        onPressed: () => _updateStatus('4', allowWorkflowAction: true),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          minimumSize: const Size(0, 40),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text(
+                          'Parar',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (order.estado.contains('4')) ...[
+                      ElevatedButton(
+                        onPressed: () => _updateStatus('3', allowWorkflowAction: true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyan,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          minimumSize: const Size(0, 40),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text(
+                          'Reanudar',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    ElevatedButton(
+                      onPressed: order.estado.contains('5')
+                          ? null
+                          : () => _updateStatus('5', allowWorkflowAction: true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        minimumSize: const Size(0, 40),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text(
+                        'Finalizar',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
                 height: topCardHeight,
               ),
@@ -688,7 +729,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 theme,
                 'Observaciones',
                 _buildObservacionesPreview(theme),
-                onTap: _showAddObservationDialog,
+                onTap: () => _obsFocusNode.requestFocus(),
+                headerTrailing: IconButton(
+                  icon: const Icon(Icons.add_comment_rounded, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _obsFocusNode.requestFocus(),
+                  tooltip: 'Añadir observación',
+                ),
                 count: _observations.length,
                 height: topCardHeight,
               ),
@@ -905,45 +953,88 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SelectableText(
-          'Familia: ${family ?? 'No asignada'}',
-          maxLines: 2,
-          style: TextStyle(color: theme.hintColor),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Familia: ${family ?? 'No asignada'}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.hintColor,
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+            ),
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Expanded(
           child: Scrollbar(
             thumbVisibility: _showPersistentScrollbar(context),
-            child: ListView.builder(
-              padding: const EdgeInsets.only(right: 12),
+            child: ListView.separated(
+              padding: const EdgeInsets.only(right: 12, top: 8),
               itemCount: lines.length,
+              separatorBuilder: (context, index) => Divider(
+                height: 12,
+                color: theme.dividerColor.withOpacity(0.05),
+              ),
               itemBuilder: (context, index) {
                 final line = lines[index];
                 final sku = line['SKU']?.toString() ?? '-';
                 final desc =
                     (line['DESCRIP1'] ?? line['description'])?.toString() ?? '';
-                final qty = line['QTY_ORD']?.toString() ?? '0';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _panelItemFill(theme),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _panelItemBorder(theme)),
-                    ),
-                    child: SelectableText(
-                      '$sku | Qty: $qty | $desc',
-                      maxLines: 2,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                final qtyRaw = line['QTY_ORD'];
+                final qty = (qtyRaw is num) ? qtyRaw.formattedInt : qtyRaw?.toString() ?? '0';
+                
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 32,
+                      margin: const EdgeInsets.only(top: 2, right: 10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          RichText(
+                            text: TextSpan(
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: sku,
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const TextSpan(text: ' | '),
+                                TextSpan(
+                                  text: 'Qty: $qty',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (desc.isNotEmpty)
+                            Text(
+                              desc,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                                color: theme.hintColor,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -967,31 +1058,50 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         Expanded(
           child: Scrollbar(
             thumbVisibility: _showPersistentScrollbar(context),
-            child: ListView.builder(
+            child: ListView.separated(
+              padding: const EdgeInsets.only(right: 12, top: 4),
               itemCount: _services.length,
+              separatorBuilder: (context, index) => Divider(
+                height: 12,
+                color: theme.dividerColor.withOpacity(0.05),
+              ),
               itemBuilder: (context, index) {
                 final svc = _services[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _panelItemFill(theme),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _panelItemBorder(theme)),
-                    ),
-                    child: SelectableText(
-                      '${svc.skuConfig ?? '-'} | ${svc.description ?? 'Sin descripcion'}',
-                      maxLines: 1,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, right: 8),
+                      child: Icon(
+                        Icons.settings_suggest_rounded,
+                        size: 14,
+                        color: theme.colorScheme.primary.withOpacity(0.7),
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            svc.skuConfig ?? '-',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            svc.description ?? 'Sin descripción',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 10,
+                              color: theme.hintColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -1002,95 +1112,161 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _buildObservacionesPreview(ThemeData theme) {
-    if (_observations.isEmpty) {
-      return SelectableText(
-        'Sin observaciones',
-        style: TextStyle(color: theme.hintColor),
-      );
-    }
-
-    final _roleDebug = _normalizedRole();
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // DEBUG: show current normalized role and permission flag (remove after testing)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: Text('role: $_roleDebug  |  canManage: ${_canManageObservations}', style: TextStyle(color: theme.hintColor, fontSize: 12)),
-        ),
         Expanded(
           child: Scrollbar(
             thumbVisibility: _showPersistentScrollbar(context),
-            child: ListView.builder(
-              itemCount: _observations.length,
-              itemBuilder: (context, index) {
-          final obs = _observations[index];
-          final author = (obs.author ?? 'Sin autor').trim();
-          final canManage = _canManageObservations;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: _panelItemFill(theme),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _panelItemBorder(theme)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
+            child: _observations.isEmpty
+                ? Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SelectableText(
-                          '$author - ${obs.createdAt != null ? DateFormat.yMd().add_Hm().format(obs.createdAt!) : ''}',
-                          style: TextStyle(color: theme.hintColor, fontSize: 11),
+                        Icon(Icons.chat_bubble_outline_rounded,
+                            color: theme.hintColor.withOpacity(0.15), size: 32),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Sin observaciones',
+                          style: TextStyle(color: theme.hintColor, fontSize: 13),
                         ),
-                        const SizedBox(height: 6),
-                        SelectableText(
-                          obs.body ?? '',
-                          style: const TextStyle(
-                            fontSize: 13,
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _observations.length,
+                    padding: const EdgeInsets.only(right: 12, top: 4),
+                    separatorBuilder: (context, index) => Divider(
+                      height: 20,
+                      color: theme.dividerColor.withOpacity(0.05),
+                    ),
+                    itemBuilder: (context, index) {
+                      final obs = _observations[index];
+                      final author = (obs.author ?? 'Sin autor').trim();
+                      final canManage = _canManageObservations;
+                      final dateStr = obs.createdAt != null
+                          ? DateFormat('dd/MM HH:mm').format(obs.createdAt!)
+                          : '';
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2, right: 10),
+                            child: Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              size: 14,
+                              color: theme.hintColor.withOpacity(0.5),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      author,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      dateStr,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: theme.hintColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  obs.body ?? '',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.copy_rounded, size: 14),
+                                onPressed: () {
+                                  Clipboard.setData(
+                                      ClipboardData(text: obs.body ?? ''));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Copiado')),
+                                  );
+                                },
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                splashRadius: 16,
+                                tooltip: 'Copiar',
+                              ),
+                              if (canManage) ...[
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, size: 16),
+                                  onPressed: () => _editObservation(obs),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  splashRadius: 16,
+                                  tooltip: 'Editar',
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline_rounded,
+                                      size: 16, color: Colors.redAccent),
+                                  onPressed: () => _confirmDeleteObservation(obs),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  splashRadius: 16,
+                                  tooltip: 'Eliminar',
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                  if (canManage)
-                    Column(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.copy, size: 14),
-                          focusNode: FocusNode(canRequestFocus: false),
-                          tooltip: 'Copiar',
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: obs.body ?? ''));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Observación copiada')),
-                            );
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 18),
-                          focusNode: FocusNode(canRequestFocus: false),
-                          tooltip: 'Editar',
-                          onPressed: () => _editObservation(obs),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          focusNode: FocusNode(canRequestFocus: false),
-                          tooltip: 'Eliminar',
-                          onPressed: () => _confirmDeleteObservation(obs),
-                        ),
-                      ],
-                    ),
-                ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: theme.cardColor.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _obsController,
+                  focusNode: _obsFocusNode,
+                  onSubmitted: (_) => _addObservation(),
+                  style: const TextStyle(fontSize: 12),
+                  decoration: const InputDecoration(
+                    hintText: 'Escribe una observación...',
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
               ),
-            ),
-          );
-        },
-            ),
+              IconButton(
+                icon: Icon(Icons.send_rounded,
+                    size: 18, color: theme.colorScheme.primary),
+                onPressed: _addObservation,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
         ),
       ],
@@ -1315,7 +1491,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     return _buildCard(
       theme: theme,
-      title: 'Información del Pedido',
+      title: 'Información de la Orden',
       actions: [
         if (isPendiente)
           ElevatedButton.icon(
@@ -1471,7 +1647,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Text(
-                      'Seleccionar Familia de Pedido',
+                      'Seleccionar Familia de Orden',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -1761,7 +1937,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Text(
-                'Cambiar Estado del Pedido',
+                'Cambiar Estado de la Orden',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -2198,7 +2374,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               Text(
                 hasFamily
                     ? 'No hay pantalla configurada para la familia:\n${order.family}'
-                    : 'Familia no detectada para este pedido.',
+                    : 'Familia no detectada para esta orden.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 18, color: Colors.grey),
               ),
@@ -2458,13 +2634,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       250,
                                     ),
                                     _dataCell(
-                                      line['QTY_ORD']?.toString() ?? '0',
+                                      (double.tryParse(line['QTY_ORD']?.toString() ?? '0') ?? 0).formattedInt,
                                       60,
                                       alignment: TextAlign.center,
                                     ),
                                     if (_canViewFinancialData)
                                       _dataCell(
-                                        '€${effectiveCost.toStringAsFixed(2)}',
+                                        effectiveCost.asCurrency,
                                         100,
                                         alignment: TextAlign.right,
                                         color: (unitCost == 0 && mappedCost > 0)
@@ -2473,14 +2649,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       ),
                                     if (_canViewFinancialData)
                                       _dataCell(
-                                        '€${price.toStringAsFixed(2)}',
+                                        price.asCurrency,
                                         100,
                                         alignment: TextAlign.right,
                                         isBold: statusColor != null,
                                       ),
                                     if (_canViewFinancialData)
                                       _dataCell(
-                                        '€${(price - effectiveCost).toStringAsFixed(2)}',
+                                        (price - effectiveCost).asCurrency,
                                         110,
                                         alignment: TextAlign.right,
                                         color: (price - effectiveCost) < 0
@@ -2489,7 +2665,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       ),
                                     if (_canViewFinancialData)
                                       _dataCell(
-                                        '${(((price - effectiveCost) / (price != 0 ? price : 1)) * 100).toStringAsFixed(1)}%',
+                                        '${(((price - effectiveCost) / (price != 0 ? price : 1)) * 100).formatted}%',
                                         90,
                                         alignment: TextAlign.right,
                                         color:
@@ -2500,7 +2676,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       ),
                                     if (_canViewFinancialData)
                                       _dataCell(
-                                        '€${(double.tryParse(line['TOTAL']?.toString() ?? '0') ?? 0).toStringAsFixed(2)}',
+                                        (double.tryParse(line['TOTAL']?.toString() ?? '0') ?? 0).asCurrency,
                                         120,
                                         alignment: TextAlign.right,
                                         isBold: true,
@@ -2715,7 +2891,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               isBold: true,
                             ),
                             _smallInfo(
-                              'Precio Pedido',
+                              'Precio Orden',
                               '${svc.orderUnitPrice ?? 0} €',
                               isBold: true,
                             ),

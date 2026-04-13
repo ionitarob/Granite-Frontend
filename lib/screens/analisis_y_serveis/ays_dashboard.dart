@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui'; // For ImageFilter
+import '../../utils/formatters.dart';
 import '../../services/api_service.dart';
 import '../../widgets/main_sidebar.dart';
 
@@ -590,7 +591,7 @@ class _AysDashboardState extends State<AysDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${t.unit} uds' : ''}',
+                    '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${num.tryParse(t.unit!)?.formattedInt ?? t.unit} uds' : ''}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

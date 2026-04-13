@@ -30,6 +30,7 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
   int? _empresaSeleccionadaId;
   int? _rolSeleccionadoId;
   String? _turnoSeleccionado;
+  DateTime? _fechaFinalizacion;
 
   bool _isLoading = false;
   OverlayEntry? _edgeOverlay;
@@ -143,6 +144,7 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
       'usuario': _usuarioController.text.trim(),
       'contrasena': _contrasenaController.text.trim(),
       'rol_id': _rolSeleccionadoId,
+      'fecha_finalizacion': _fechaFinalizacion?.toIso8601String(),
     };
 
     try {
@@ -194,6 +196,7 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
       _empresaSeleccionadaId = null;
       _rolSeleccionadoId = null;
       _turnoSeleccionado = null;
+      _fechaFinalizacion = null;
     });
   }
 
@@ -466,6 +469,39 @@ class _AltaEmpleadoScreenState extends State<AltaEmpleadoScreen> {
                             value: _rolSeleccionadoId,
                             onSelected: (value) =>
                                 setState(() => _rolSeleccionadoId = value),
+                          ),
+                        ),
+                        SizedBox(
+                          width: fieldWidth,
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _fechaFinalizacion ?? DateTime.now(),
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                              );
+                              if (picked != null) {
+                                setState(() => _fechaFinalizacion = picked);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(24),
+                            child: InputDecorator(
+                              decoration: _inputDecoration(
+                                'Fecha finalización',
+                                Icons.calendar_today_outlined,
+                              ),
+                              child: Text(
+                                _fechaFinalizacion == null
+                                    ? 'Sin fecha (indefinido)'
+                                    : '${_fechaFinalizacion!.day}/${_fechaFinalizacion!.month}/${_fechaFinalizacion!.year}',
+                                style: TextStyle(
+                                  color: _fechaFinalizacion == null
+                                      ? theme.colorScheme.onSurface.withOpacity(0.5)
+                                      : null,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],

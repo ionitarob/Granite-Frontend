@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'dart:ui';
 import 'package:configtool_granite_frontend/services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'utils/formatters.dart';
 // lottie was previously used for the header animation; replaced with a lightweight emoji animation.
 import 'package:configtool_granite_frontend/dashboard_screen.dart';
 import 'models/user_model.dart';
@@ -688,7 +689,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ValueListenableBuilder<double>(
                               valueListenable: _downloadProgressNotifier,
                               builder: (context, p, _) =>
-                                  Text('${(p * 100).toStringAsFixed(0)}%'),
+                                  Text('${(p * 100).formattedInt}%'),
                             ),
                           ],
                         ),

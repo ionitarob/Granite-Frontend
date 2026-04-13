@@ -197,8 +197,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         SnackBar(
           content: Text(
             assignedCount == 1
-                ? 'Familia autoasignada en 1 pedido'
-                : 'Familia autoasignada en $assignedCount pedidos',
+                ? 'Familia autoasignada en 1 orden'
+                : 'Familia autoasignada en $assignedCount ordenes',
           ),
           duration: const Duration(seconds: 2),
         ),
@@ -518,7 +518,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       children: [
         Expanded(
           child: Text(
-            'Cola de Pedidos',
+            'Cola de Ordenes',
             overflow: TextOverflow.ellipsis,
             style: isMobile
                 ? theme.textTheme.headlineMedium?.copyWith(
@@ -545,7 +545,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
             IconButton(
               icon: const Icon(Icons.sync_alt_rounded, color: Colors.tealAccent),
               onPressed: _handleSyncOrders,
-              tooltip: 'Sincronizar Pedidos (SFTP)',
+              tooltip: 'Sincronizar Ordenes (SFTP)',
             ),
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -586,7 +586,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   color: theme.colorScheme.onSurface,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Buscar por pedido, cliente...',
+                  hintText: 'Buscar por orden, cliente...',
                   prefixIcon: Icon(
                     Icons.search,
                     size: 20,
@@ -1024,7 +1024,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Nº Pedido
+              // Nº Orden
               SizedBox(
                 width: 150,
                 child: Padding(

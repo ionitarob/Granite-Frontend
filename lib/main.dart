@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'services/notification_provider.dart';
+import 'services/xiaomi_provider.dart';
+import 'widgets/notification_bar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
@@ -114,6 +117,18 @@ class MainApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<SentinelProvider>(
           create: (_) => SentinelProvider(),
+        ),
+        ChangeNotifierProxyProvider<ApiService, NotificationProvider>(
+          create: (ctx) => NotificationProvider(
+            apiService: Provider.of<ApiService>(ctx, listen: false),
+          ),
+          update: (ctx, api, previous) => previous ?? NotificationProvider(apiService: api),
+        ),
+        ChangeNotifierProxyProvider<ApiService, XiaomiProvider>(
+          create: (ctx) => XiaomiProvider(
+            apiService: Provider.of<ApiService>(ctx, listen: false),
+          ),
+          update: (ctx, api, previous) => previous ?? XiaomiProvider(apiService: api),
         ),
       ],
       child: Consumer<ThemeController>(
@@ -477,6 +492,7 @@ class _SessionWatcherState extends State<SessionWatcher>
                       rootNavigatorKey: globalNavigatorKey,
                       hiddenListenable: _mobileDockHidden,
                     ),
+                    const NotificationBar(),
                   ],
                 ),
               );

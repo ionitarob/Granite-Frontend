@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../utils/formatters.dart';
 
 import '../../services/api_service.dart';
 import '../../services/orderops_service.dart';
@@ -140,10 +141,10 @@ class _AgentActivityScreenState extends State<AgentActivityScreen> {
                                     ),
                                   ),
                                   title: Text(
-                                    'Pedido Analizado #${item.orderNbr}',
+                                    'Orden Analizada #${item.orderNbr}',
                                   ),
                                   subtitle: Text(
-                                    'Confianza: ${(item.llmConfidence * 100).toStringAsFixed(1)}% • Riesgo: ${item.riskLevel.toUpperCase()}'
+                                    'Confianza: ${(item.llmConfidence * 100).formatted}% • Riesgo: ${item.riskLevel.toUpperCase()}'
                                     '\n${item.lastTriagedAt != null ? DateFormat('yyyy-MM-dd HH:mm').format(item.lastTriagedAt!) : ""}',
                                   ),
                                   isThreeLine: true,

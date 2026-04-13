@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../widgets/liquid_glass_card.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -149,9 +150,22 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
       if (resp.ok && resp.body != null) {
         final data = resp.body as List;
         final empleados = data.cast<Map<String, dynamic>>();
+        
+        // Remove inactive users UNLESS they have registry data in this period
+        final filteredEmpleados = empleados.where((e) {
+          if (e['activo'] == true || e['activo'] == 1) return true;
+          // Inactive user: keep ONLY if they have ANY punches in the requested days
+          final dias = (e['dias'] as List?) ?? [];
+          for (final dia in dias) {
+            final f = dia['fichajes'] as List?;
+            if (f != null && f.isNotEmpty) return true;
+          }
+          return false;
+        }).toList();
+
         // Normalizamos y ordenamos los fichajes por hora para cada día
-        _ordenarFichajesEnData(empleados);
-        setState(() => _empleados = empleados);
+        _ordenarFichajesEnData(filteredEmpleados);
+        setState(() => _empleados = filteredEmpleados);
       } else {
         setState(() => _empleados = []);
         _mostrarError('Error ${resp.statusCode}');
@@ -1630,26 +1644,55 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
       ),
     );
 
+    final fechaFinRaw = emp['fecha_finalizacion']?.toString();
+    final fechaFin = fechaFinRaw != null ? DateTime.tryParse(fechaFinRaw) : null;
+    final now = DateTime.now();
+    final isExpired = fechaFin != null && fechaFin.isBefore(DateTime(now.year, now.month, now.day));
+    final isNearExp = fechaFin != null && !isExpired && fechaFin.isBefore(now.add(const Duration(days: 15)));
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: LiquidGlassCard(
         radius: 18,
         blur: 18,
         elevated: false,
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        borderColor: isExpired 
+            ? Colors.red.withValues(alpha: 0.4) 
+            : isNearExp 
+                ? Colors.orange.withValues(alpha: 0.4) 
+                : null,
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFF1565C0),
-              child: Text(
-                _iniciales(emp["nombre"], emp["apellido"]).toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: isExpired 
+                      ? Colors.red.shade800 
+                      : isNearExp 
+                          ? Colors.orange.shade800 
+                          : const Color(0xFF1565C0),
+                  child: Text(
+                    _iniciales(emp["nombre"], emp["apellido"]).toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-              ),
+                if (isExpired || isNearExp)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Icon(
+                      isExpired ? Icons.warning_rounded : Icons.timer_outlined,
+                      size: 14,
+                      color: isExpired ? Colors.red : Colors.orange,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1661,17 +1704,15 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13.5,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.92)
-                          : Colors.black87,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: isExpired ? Colors.red.shade900 : null,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 3),
                   Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                    spacing: 4,
+                    runSpacing: 2,
                     children: [
                       if (empresa.trim().isNotEmpty) tag(empresa),
                       if (turno.trim().isNotEmpty) tag(turno),
@@ -1690,93 +1731,6 @@ class _RegistroFichajeScreenState extends State<RegistroFichajeScreen> {
 // Pequeña extensión para centrar rápidamente
 extension _CenterExt on Widget {
   Widget center() => Center(child: this);
-}
-
-// ─────── LiquidGlassCard ───────
-
-class LiquidGlassCard extends StatelessWidget {
-  final Widget child;
-  final EdgeInsets padding;
-  final double radius;
-  final double blur;
-  final bool elevated;
-  final VoidCallback? onTap;
-  final Color? tint; // opcional: forzar tinte
-
-  const LiquidGlassCard({
-    required this.child,
-    this.padding = EdgeInsets.zero,
-    this.radius = 18,
-    this.blur = 18,
-    this.elevated = true,
-    this.onTap,
-    this.tint,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext ctx) {
-    final theme = Theme.of(ctx);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final base =
-        tint ??
-        (isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.white.withValues(alpha: 0.72));
-
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.10)
-        : Colors.black.withValues(alpha: 0.06);
-
-    final shadow = isDark
-        ? Colors.black.withValues(alpha: 0.45)
-        : Colors.black.withValues(alpha: 0.12);
-
-    final content = ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: border, width: 1),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                base,
-                base.withValues(alpha: isDark ? 0.03 : 0.52),
-              ],
-            ),
-            boxShadow: elevated
-                ? [
-                    BoxShadow(
-                      color: shadow,
-                      blurRadius: 22,
-                      offset: const Offset(0, 14),
-                    ),
-                  ]
-                : null,
-          ),
-          child: child,
-        ),
-      ),
-    );
-
-    if (onTap == null) return content;
-
-    // Material para que el InkWell se vea bien encima del glass
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(radius),
-        child: content,
-      ),
-    );
-  }
 }
 
 class _HoverCell extends StatefulWidget {

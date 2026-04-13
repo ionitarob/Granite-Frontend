@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
+import '../utils/formatters.dart';
 
 class KitDigitalStatsTable extends StatefulWidget {
   const KitDigitalStatsTable({super.key});
@@ -147,12 +148,11 @@ class _KitDigitalStatsTableState extends State<KitDigitalStatsTable> {
     final s = v.toString().trim();
     if (s.isEmpty) return '-';
 
-    // Si parece número, formatea suave (sin intl)
+    // Si parece número, formatea con la extensión centralizada
     final numVal = double.tryParse(s.replaceAll(',', '.'));
     if (numVal != null) {
-      // Enteros sin decimales, flotantes con 2
       final isInt = (numVal - numVal.round()).abs() < 0.000001;
-      return isInt ? numVal.round().toString() : numVal.toStringAsFixed(2);
+      return isInt ? numVal.formattedInt : numVal.formatted;
     }
     return s;
   }

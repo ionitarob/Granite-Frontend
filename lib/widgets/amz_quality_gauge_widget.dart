@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
+import '../utils/formatters.dart';
 
 class AmzQualityGaugeWidget extends StatefulWidget {
   final String wsUrl;
@@ -137,8 +138,8 @@ class _AmzQualityGaugeWidgetState extends State<AmzQualityGaugeWidget> {
                   children: [
                     Text(
                       _qualityIndex > 1.0
-                          ? '${_qualityIndex.toStringAsFixed(1)}%'
-                          : '${(_qualityIndex * 100).toStringAsFixed(1)}%',
+                          ? '${_qualityIndex.formatted}%'
+                          : '${(_qualityIndex * 100).formatted}%',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,

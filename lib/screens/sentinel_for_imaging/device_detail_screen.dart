@@ -4,6 +4,7 @@ import 'package:web_socket_channel/io.dart';
 import 'dart:convert';
 import 'sentinel_models.dart';
 import '../../services/api_service.dart';
+import '../../utils/formatters.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
   final SentinelDevice device;
@@ -429,7 +430,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                         ),
                         if (_speedMbps != null)
                           Text(
-                            '${_speedMbps!.toStringAsFixed(1)} Mbps',
+                            '${_speedMbps!.formatted} Mbps',
                             style: const TextStyle(
                               color: Colors.greenAccent,
                               fontSize: 10,

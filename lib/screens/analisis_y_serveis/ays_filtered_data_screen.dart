@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/analisis_models.dart';
+import '../../utils/formatters.dart';
 
 class AysFilteredDataDialog extends StatefulWidget {
   final List<Transaction> transactions;
@@ -219,7 +220,7 @@ class _AysFilteredDataDialogState extends State<AysFilteredDataDialog> {
                                   DataCell(Text(t.unit ?? '-')),
                                   DataCell(Text(t.fechaf ?? '-')),
                                   DataCell(
-                                    Text(t.cost?.toStringAsFixed(2) ?? '0.00'),
+                                    Text(t.cost?.formatted ?? '0,00'),
                                   ),
                                   DataCell(
                                     Container(

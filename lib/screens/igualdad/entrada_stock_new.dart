@@ -264,7 +264,7 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 		if (_numeroPedido.isEmpty) {
 			setState(() => _submitAttempted = true);
 			ScaffoldMessenger.of(context).showSnackBar(
-				const SnackBar(content: Text('Introduce el número de pedido para continuar.')),
+				const SnackBar(content: Text('Introduce el número de orden para continuar.')),
 			);
 			return;
 		}
@@ -453,8 +453,8 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 																		controller: _numeroPedidoController,
 																		textCapitalization: TextCapitalization.characters,
 																		decoration: InputDecoration(
-																			labelText: 'Número de pedido',
-																			hintText: 'Introduce el número de pedido',
+																			labelText: 'Número de orden',
+																			hintText: 'Introduce el número de orden',
 																			helperText: 'Si detectamos el número en el archivo lo rellenamos automáticamente.',
 																			border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
 																			errorText: (_submitAttempted && _numeroPedido.isEmpty) ? 'Obligatorio' : null,
@@ -632,7 +632,7 @@ class _BuildAdvancedOptions extends StatelessWidget {
 						textCapitalization: TextCapitalization.characters,
 						decoration: InputDecoration(
 							labelText: 'Número SE (opcional)',
-							hintText: 'Si lo dejas vacío se usará el número de pedido',
+							hintText: 'Si lo dejas vacío se usará el número de orden',
 							border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
 						),
 					),
@@ -799,7 +799,7 @@ class _ImportResultCard extends StatelessWidget {
 					),
 					const SizedBox(height: 12),
 					if (numeroPedido != null && numeroPedido.isNotEmpty)
-						Text('Número de pedido: $numeroPedido', style: theme.textTheme.bodyMedium),
+						Text('Número de orden: $numeroPedido', style: theme.textTheme.bodyMedium),
 					if (stockNumSe != null)
 						Text('Num SE: $stockNumSe', style: theme.textTheme.bodyMedium),
 					if (stockSource != null)

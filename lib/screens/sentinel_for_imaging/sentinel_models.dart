@@ -1,3 +1,5 @@
+import '../../utils/formatters.dart';
+
 class SentinelDevice {
   final String mac;
   final String? ip;
@@ -229,9 +231,9 @@ class SentinelEvent {
           final rtt = data?['rtt_ms'];
           message = 'Ping $name: $status${rtt != null ? ' (${rtt}ms)' : ''}';
         } else if (type == 'bandwidth_sample') {
-          final up = (data?['upload_mbps'] as num?)?.toStringAsFixed(2) ?? '0';
+          final up = (data?['upload_mbps'] as num?)?.formatted ?? '0';
           final down =
-              (data?['download_mbps'] as num?)?.toStringAsFixed(2) ?? '0';
+              (data?['download_mbps'] as num?)?.formatted ?? '0';
           message = 'Bandwidth: Up ${up}Mbps, Down ${down}Mbps';
         } else if (type == 'mac_table_entry') {
           final port = data?['port_name'] ?? '?';

@@ -524,7 +524,7 @@ class _MainSidebarState extends State<MainSidebar> {
 
         // OrderOps
         (
-          label: 'OrderOps · Cola de Pedidos',
+          label: 'OrderOps · Cola de Ordenes',
           icon: Icons.list_alt_rounded,
           route: '/orderops/queue',
         ),
@@ -787,7 +787,7 @@ class _MainSidebarState extends State<MainSidebar> {
             initiallyExpanded: orderOpsExpanded,
             children: [
               _SidebarTile(
-                label: 'Cola de Pedidos',
+                label: 'Cola de Ordenes',
                 icon: Icons.list_alt_rounded,
                 selected: isRoute('/orderops/queue'),
                 onTap: () => _navigate(
@@ -2654,7 +2654,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
       buildItems: (dialogCtx) => [
         _menuRouteTile(
           dialogContext: dialogCtx,
-          title: 'Cola de Pedidos',
+          title: 'Cola de Ordenes',
           icon: Icons.list_alt_rounded,
           route: '/orderops/queue',
           currentRoute: currentRoute,

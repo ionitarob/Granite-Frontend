@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'sentinel_service.dart';
+import '../../utils/formatters.dart';
 
 class SentinelStatsDashboard extends StatefulWidget {
   final SentinelService service;
@@ -222,7 +223,7 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
               ),
               const SizedBox(width: 8),
               _buildSimpleBadge(
-                '${successRate.toStringAsFixed(1)}%',
+                '${successRate.formatted}%',
                 successRate > 90 ? Colors.greenAccent : (successRate > 70 ? Colors.amberAccent : Colors.redAccent),
               ),
             ],
@@ -231,12 +232,12 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildInlineMetric('TOTAL', total.toString(), Icons.numbers),
-              _buildInlineMetric('ÉXITO', success.toString(), Icons.check),
+              _buildInlineMetric('TOTAL', total.formattedInt, Icons.numbers),
+              _buildInlineMetric('ÉXITO', success.formattedInt, Icons.check),
               if (avgSpeed != null) 
-                _buildInlineMetric('VELOCIDAD', '${avgSpeed.toStringAsFixed(1)} Mb/s', Icons.speed),
+                _buildInlineMetric('VELOCIDAD', '${avgSpeed.formatted} Mb/s', Icons.speed),
               if (avgDur != null)
-                _buildInlineMetric('DURACIÓN', '${avgDur.toStringAsFixed(1)} min', Icons.timer_outlined),
+                _buildInlineMetric('DURACIÓN', '${avgDur.formatted} min', Icons.timer_outlined),
             ],
           ),
         ],
@@ -306,8 +307,8 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
 
     String _fmtDuration(double? mins) {
       if (mins == null) return 'N/D';
-      if (mins < 60) return '${mins.toStringAsFixed(1)} min';
-      return '${(mins / 60).toStringAsFixed(1)} h';
+      if (mins < 60) return '${mins.formatted} min';
+      return '${(mins / 60).formatted} h';
     }
 
     return Column(
@@ -318,7 +319,7 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
             Expanded(
               child: _buildGlassCard(
                 title: 'TOTAL IMAGING',
-                value: total.toString(),
+                value: total.formattedInt,
                 color: Colors.white,
                 icon: Icons.computer,
               ),
@@ -327,20 +328,20 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
             Expanded(
               child: _buildGlassCard(
                 title: 'EXITOSOS',
-                value: success.toString(),
+                value: success.formattedInt,
                 color: Colors.greenAccent,
                 icon: Icons.check_circle_outline,
-                subtitle: '${successRate.toStringAsFixed(1)}%',
+                subtitle: '${successRate.formatted}%',
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _buildGlassCard(
                 title: 'FALLIDOS',
-                value: failed.toString(),
+                value: failed.formattedInt,
                 color: Colors.redAccent,
                 icon: Icons.error_outline,
-                subtitle: total > 0 ? '${(failed / total * 100).toStringAsFixed(1)}%' : null,
+                subtitle: total > 0 ? '${(failed / total * 100).formatted}%' : null,
               ),
             ),
           ],
@@ -362,10 +363,10 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
             Expanded(
               child: _buildGlassCard(
                 title: 'VELOCIDAD MEDIA',
-                value: avgSpeed != null ? '${avgSpeed.toStringAsFixed(1)} MB/s' : 'N/D',
+                value: avgSpeed != null ? '${avgSpeed.formatted} MB/s' : 'N/D',
                 color: Colors.cyanAccent,
                 icon: Icons.speed_rounded,
-                subtitle: avgSize != null ? '${avgSize.toStringAsFixed(1)} GB/img' : null,
+                subtitle: avgSize != null ? '${avgSize.formatted} GB/img' : null,
               ),
             ),
             const SizedBox(width: 12),
@@ -373,7 +374,7 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
               child: _buildGlassCard(
                 title: 'EFICIENCIA',
                 value: (avgSpeed != null && avgSpeed > 0)
-                    ? '${(136.53 / avgSpeed).toStringAsFixed(1)} min/GB'
+                    ? '${(136.53 / avgSpeed).formatted} min/GB'
                     : 'N/D',
                 color: Colors.purpleAccent,
                 icon: Icons.insights_rounded,
@@ -579,7 +580,7 @@ class _SentinelStatsDashboardState extends State<SentinelStatsDashboard> {
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(
-          total.toString(),
+          total.formattedInt,
           style: const TextStyle(color: Colors.white, fontSize: 10),
         ),
         const SizedBox(height: 4),

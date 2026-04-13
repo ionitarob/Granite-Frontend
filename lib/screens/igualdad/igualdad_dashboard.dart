@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:provider/provider.dart';
+import '../../utils/formatters.dart';
 
 import 'package:configtool_granite_frontend/config.dart';
 import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
@@ -287,7 +288,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
                         final dateLabel = labels[spot.spotIndex];
-                        final total = spot.y.toStringAsFixed(0);
+                        final total = spot.y.formattedInt;
                         return LineTooltipItem(
                           '$dateLabel\n$total registros',
                           const TextStyle(
@@ -448,7 +449,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 compact: compact,
               ),
               Text(
-                'Promedio diario: ${average.toStringAsFixed(1)}',
+                'Promedio diario: ${average.formatted}',
                 style: TextStyle(
                   color: Theme.of(context).textTheme.bodyMedium?.color,
                   fontWeight: FontWeight.w600,
@@ -457,7 +458,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
               ),
               if (highestY > 0)
                 Text(
-                  'Pico máximo: ${highestY.toStringAsFixed(0)}',
+                  'Pico máximo: ${highestY.formattedInt}',
                   style: TextStyle(
                     color: Theme.of(
                       context,
@@ -1296,7 +1297,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
             children: [
               _buildLegendChip(
                 const Color(0xFFFFB366),
-                'Serigrafía pulseras: ${servicios['serigrafia_pulseras'] ?? 0}',
+                'Serigrafía pulseras: ${(servicios['serigrafia_pulseras'] as num? ?? 0).formattedInt}',
                 compact: compact,
               ),
               _buildLegendChip(
