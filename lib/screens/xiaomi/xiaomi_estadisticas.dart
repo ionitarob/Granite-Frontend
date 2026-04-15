@@ -16,8 +16,10 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
   OverlayEntry? _edgeOverlay;
   double _effectiveHours = 7.5;
   double _customUph = 100.0;
+  int _simulatedPersonnel = 4; // New: Personnel for simulation
   String _selectedPeriod = 'Hoy'; // Trends
   String _selectedTeamPeriod = 'Hoy'; // Teams
+  String _selectedEfficiencyPeriod = 'Hoy'; // Efficiency
 
   @override
   void initState() {
@@ -167,6 +169,7 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                     final blockTotal = _buildTotalBlock(summary, theme);
                     final blockPrevision = _buildPrevisionBlock(summary, theme, isDesktop);
                     final blockRendimiento = _buildRendimientoBlock(summary, theme);
+                    final blockEfficiency = _buildEfficiencyBlock(summary, theme);
                     final blockUphChart = _buildUPHChartBlock(context, theme);
 
                     if (isDesktop) {
@@ -180,6 +183,8 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                                 blockTotal,
                                 const SizedBox(height: 16),
                                 blockRendimiento,
+                                const SizedBox(height: 16),
+                                blockEfficiency,
                               ],
                             ),
                           ),
@@ -205,6 +210,8 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                           const SizedBox(height: 16),
                           blockRendimiento,
                           const SizedBox(height: 16),
+                          blockEfficiency,
+                          const SizedBox(height: 16),
                           blockUphChart,
                         ],
                       );
@@ -217,25 +224,105 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
       ),
     );
   }
-
   Widget _buildTotalBlock(XiaomiStatsSummary? summary, ThemeData theme) {
     final totals = summary?.totals ?? {};
+
     return _StatCardBase(
       title: 'TOTAL UNIDADES',
       icon: Icons.inventory_2_rounded,
       color: Colors.blueAccent,
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 2.1,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isSmall = constraints.maxWidth < 400;
+          return GridView.count(
+            crossAxisCount: isSmall ? 1 : 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            childAspectRatio: isSmall ? 2.5 : 2.0,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            children: [
+              _buildComparisonCard(
+                label: 'Hoy',
+                current: totals['hoy'] ?? 0,
+                previous: totals['ayer'] ?? 0,
+                comparisonLabel: 'ayer',
+                color: Colors.greenAccent,
+              ),
+              _buildComparisonCard(
+                label: 'Esta Semana',
+                current: totals['semana'] ?? 0,
+                previous: totals['semana_pasada'] ?? 0,
+                comparisonLabel: 'sem. pasada',
+                color: Colors.blueAccent,
+              ),
+              _buildComparisonCard(
+                label: 'Este Mes',
+                current: totals['mes'] ?? 0,
+                previous: totals['mes_pasado'] ?? 0,
+                comparisonLabel: 'mes pasado',
+                color: Colors.purpleAccent,
+              ),
+              _buildComparisonCard(
+                label: 'Este Año',
+                current: totals['ano'] ?? 0,
+                previous: totals['ano_pasado'] ?? 0,
+                comparisonLabel: 'año pasado',
+                color: Colors.orangeAccent,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildComparisonCard({
+    required String label,
+    required int current,
+    required int previous,
+    required String comparisonLabel,
+    required Color color,
+  }) {
+    final delta = previous > 0 ? ((current - previous) / previous * 100) : 0.0;
+    final isPositive = current >= previous;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _SubStat(label: 'Hoy', value: totals['hoy']?.formattedInt ?? '0', color: Colors.greenAccent),
-          _SubStat(label: 'Este Mes', value: totals['mes']?.formattedInt ?? '0', color: Colors.blueAccent),
-          _SubStat(label: 'Mes Pasado', value: totals['mes_pasado']?.formattedInt ?? '0', color: Colors.purpleAccent),
-          _SubStat(label: 'Este Año', value: totals['ano']?.formattedInt ?? '0', color: Colors.orangeAccent),
+          Text(label.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 1.1)),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(current.formattedInt, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              const Spacer(),
+              if (previous > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (isPositive ? Colors.green : Colors.red).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward, size: 10, color: isPositive ? Colors.green : Colors.red),
+                      Text('${delta.abs().toStringAsFixed(0)}%', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isPositive ? Colors.green : Colors.red)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('vs $previous ($comparisonLabel)', style: const TextStyle(fontSize: 9, color: Colors.grey)),
         ],
       ),
     );
@@ -243,120 +330,169 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
 
   Widget _buildPrevisionBlock(XiaomiStatsSummary? summary, ThemeData theme, bool isDesktop) {
     final pending = summary?.pending ?? 0;
-    final uphToday = summary?.uphToday ?? 0.0;
-    final uphWeek = summary?.uphWeek ?? 0.0;
     
-    // Calculations
-    final hoursNeededToday = uphToday > 0 ? pending / uphToday : 0.0;
-    final personalToday = _effectiveHours > 0 ? (hoursNeededToday / _effectiveHours).ceil() : 0;
-    
-    final hoursNeededWeek = uphWeek > 0 ? pending / uphWeek : 0.0;
-    final personalWeek = _effectiveHours > 0 ? (hoursNeededWeek / _effectiveHours).ceil() : 0;
+    // Logic fix: summary.uphToday is currently total group throughput.
+    // We need to normalize it to per-person UPH for consistent prediction math.
+    final teamPerformance = summary?.teamPerformance ?? [];
+    int totalMembers = 0;
+    for (var t in teamPerformance) {
+      totalMembers += (t['members'] as num?)?.toInt() ?? 0;
+    }
+    // Safety fallback to 1 if no members found (should not happen if producing)
+    final denom = totalMembers > 0 ? totalMembers : 1;
 
-    final hoursNeededCustom = _customUph > 0 ? pending / _customUph : 0.0;
-    final personalCustom = _effectiveHours > 0 ? (hoursNeededCustom / _effectiveHours).ceil() : 0;
+    final uphTodayTotal = summary?.uphToday ?? 0.0;
+    final uphWeekTotal = summary?.uphWeek ?? 0.0;
+    
+    // Normalize to per-person
+    final uphTodayPerPerson = uphTodayTotal / denom;
+    final uphWeekPerPerson = uphWeekTotal / denom;
+
+    // 1. Calculate absolute workload in "Man-Days" (Jornadas Totales)
+    // Man-Hours = Pending / UPH_per_person
+    // Jornadas = Man-Hours / Shift_Hours_per_person
+    final manHoursToday = uphTodayPerPerson > 0 ? pending / uphTodayPerPerson : 0.0;
+    final jornadasToday = _effectiveHours > 0 ? manHoursToday / _effectiveHours : 0.0;
+    
+    final manHoursWeek = uphWeekPerPerson > 0 ? pending / uphWeekPerPerson : 0.0;
+    final jornadasWeek = _effectiveHours > 0 ? manHoursWeek / _effectiveHours : 0.0;
+
+    final manHoursCustom = _customUph > 0 ? pending / _customUph : 0.0;
+    final jornadasCustom = _effectiveHours > 0 ? manHoursCustom / _effectiveHours : 0.0;
+
+    // 2. Forecast: Days to complete based on staff size
+    // Days = Total_Jornadas / Current_Personnel
+    final daysToFinishToday = denom > 0 ? jornadasToday / denom : 0.0;
+    final daysToFinishWeek = denom > 0 ? jornadasWeek / denom : 0.0; // Assuming same staff level
+    final daysToFinishCustom = _simulatedPersonnel > 0 ? jornadasCustom / _simulatedPersonnel : 0.0;
 
     return _StatCardBase(
       title: 'PREVISIÓN & SIMULACIÓN',
       icon: Icons.query_stats,
       color: Colors.orangeAccent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.pending_actions_rounded, size: 18, color: Colors.orange),
-              const SizedBox(width: 8),
-              const Text('Unidades Pendientes Total: ', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(pending.formattedInt, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.orange)),
-            ],
-          ),
-          Text('(UPH = Unidades por hora por persona)', style: TextStyle(fontSize: 10, color: theme.hintColor, fontStyle: FontStyle.italic)),
-          const SizedBox(height: 20),
-          
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.secondaryContainer.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildInputRow(
-                    label: 'HORAS EFECTIVAS',
-                    value: _effectiveHours.toStringAsFixed(1),
-                    suffix: 'h / persona',
-                    icon: Icons.timer_outlined,
-                    color: Colors.blue,
-                    onChanged: (v) {
-                      final val = double.tryParse(v);
-                      if (val != null && val > 0) setState(() => _effectiveHours = val);
-                    },
+              Row(
+                children: [
+                  const Icon(Icons.pending_actions_rounded, size: 18, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  const Text('Unidades Pendientes Total: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(pending.formattedInt, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.orange)),
+                ],
+              ),
+              Text('(UPH = Unidades por hora por persona)', style: TextStyle(fontSize: 10, color: theme.hintColor, fontStyle: FontStyle.italic)),
+              const SizedBox(height: 20),
+              
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildInputRow(
+                            label: 'HORAS/JORNADA',
+                            value: _effectiveHours.toStringAsFixed(1),
+                            suffix: 'h / persona',
+                            icon: Icons.timer_outlined,
+                            color: Colors.blue,
+                            onChanged: (v) {
+                              final val = double.tryParse(v);
+                              if (val != null && val > 0) setState(() => _effectiveHours = val);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildInputRow(
+                            label: 'SIMULAR UPH',
+                            value: _customUph.toInt().toString(),
+                            suffix: 'UPH / persona',
+                            icon: Icons.speed_outlined,
+                            color: Colors.orange,
+                            onChanged: (v) {
+                              final val = double.tryParse(v);
+                              if (val != null && val > 0) setState(() => _customUph = val);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildInputRow(
+                            label: 'SIMULAR PLANTILLA',
+                            value: _simulatedPersonnel.toString(),
+                            suffix: 'operarios',
+                            icon: Icons.groups_outlined,
+                            color: Colors.purple,
+                            onChanged: (v) {
+                              final val = int.tryParse(v);
+                              if (val != null && val > 0) setState(() => _simulatedPersonnel = val);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 20),
+              
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: isDesktop ? constraints.maxWidth / 3 - 16 : double.infinity,
+                    child: _buildPredictionResults(
+                      context,
+                      title: 'SEGÚN HOY',
+                      uph: uphTodayPerPerson,
+                      days: daysToFinishToday,
+                      jornadas: jornadasToday,
+                      staff: denom,
+                      color: Colors.green,
+                      icon: Icons.today_rounded,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: _buildInputRow(
-                    label: 'SIMULAR UPH',
-                    value: _customUph.toInt().toString(),
-                    suffix: 'UPH / persona',
-                    icon: Icons.speed_outlined,
-                    color: Colors.orange,
-                    onChanged: (v) {
-                      final val = double.tryParse(v);
-                      if (val != null && val > 0) setState(() => _customUph = val);
-                    },
+                  SizedBox(
+                    width: isDesktop ? constraints.maxWidth / 3 - 16 : double.infinity,
+                    child: _buildPredictionResults(
+                      context,
+                      title: 'TENDENCIA SEMANA',
+                      uph: uphWeekPerPerson,
+                      days: daysToFinishWeek,
+                      jornadas: jornadasWeek,
+                      staff: denom, // Assuming current staff level
+                      color: Colors.blue,
+                      icon: Icons.date_range_rounded,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          const SizedBox(height: 20),
-          
-          Row(
-            children: [
-              Expanded(
-                child: _buildPredictionResults(
-                  context,
-                  title: 'SEGÚN HOY',
-                  uph: uphToday,
-                  hoursNeeded: hoursNeededToday,
-                  personal: personalToday,
-                  color: Colors.green,
-                  icon: Icons.today_rounded,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildPredictionResults(
-                  context,
-                  title: 'TENDENCIA SEMANA',
-                  uph: uphWeek,
-                  hoursNeeded: hoursNeededWeek,
-                  personal: personalWeek,
-                  color: Colors.blue,
-                  icon: Icons.date_range_rounded,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildPredictionResults(
-                  context,
-                  title: 'SIMULACIÓN MANUAL',
-                  uph: _customUph,
-                  hoursNeeded: hoursNeededCustom,
-                  personal: personalCustom,
-                  color: Colors.orange,
-                  icon: Icons.edit_note_rounded,
-                ),
+                  SizedBox(
+                    width: isDesktop ? constraints.maxWidth / 3 - 16 : double.infinity,
+                    child: _buildPredictionResults(
+                      context,
+                      title: 'SIMULACIÓN MANUAL',
+                      uph: _customUph,
+                      days: daysToFinishCustom,
+                      jornadas: jornadasCustom,
+                      staff: _simulatedPersonnel,
+                      color: Colors.orange,
+                      icon: Icons.edit_note_rounded,
+                    ),
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -404,8 +540,9 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
     BuildContext context, {
     required String title,
     required double uph,
-    required double hoursNeeded,
-    required int personal,
+    required double days,
+    required double jornadas,
+    required int staff,
     required Color color,
     required IconData icon,
   }) {
@@ -436,22 +573,93 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
             ],
           ),
           const Divider(height: 16),
-          _InfoRow(label: 'UPH actual', value: uph.toStringAsFixed(1), icon: Icons.speed_rounded),
-          _InfoRow(label: 'Horas necesarias', value: '${hoursNeeded.toStringAsFixed(1)} h', icon: Icons.timer_rounded),
+          _InfoRow(label: 'UPH/p actual', value: uph.toStringAsFixed(1), icon: Icons.speed_rounded),
+          _InfoRow(label: 'Plantilla', value: '$staff op.', icon: Icons.groups_rounded),
+          _InfoRow(label: 'Jornadas totales', value: jornadas.toStringAsFixed(1), icon: Icons.assignment_rounded),
           const SizedBox(height: 8),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
-                const Text('PERSONAL NECESARIO', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                const Text('DÍAS ESTIMADOS', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                 FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('$personal', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                  child: Text(
+                    days.toStringAsFixed(1), 
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)
+                  ),
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEfficiencyBlock(XiaomiStatsSummary? summary, ThemeData theme) {
+    if (summary == null) return const SizedBox.shrink();
+    
+    final avgMinutes = summary.avgExecutionAll[_selectedEfficiencyPeriod] ?? 0.0;
+    final hours = avgMinutes ~/ 60;
+    final minutes = (avgMinutes % 60).toInt();
+    
+    String timeStr = avgMinutes > 0 
+      ? (hours > 0 ? '${hours.toInt()}h ${minutes}m' : '${minutes}m')
+      : '---';
+
+    return _StatCardBase(
+      title: 'EFICIENCIA DE EJECUCIÓN',
+      icon: Icons.timer_rounded,
+      color: Colors.greenAccent,
+      child: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: ['Hoy', 'Semana', 'Mes', 'Año'].map((p) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: ChoiceChip(
+                    label: Text(p),
+                    selected: _selectedEfficiencyPeriod == p,
+                    onSelected: (selected) {
+                      if (selected) setState(() => _selectedEfficiencyPeriod = p);
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Column(
+                children: [
+                  Text(
+                    timeStr,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    'Tiempo medio por CESB (${_selectedEfficiencyPeriod})',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Basado en el inicio y fin real de cada palet trabajado ${_selectedEfficiencyPeriod.toLowerCase()}.',
+            style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -518,6 +726,8 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                 final double uphVal = isToday 
                     ? (qty / (7.5 * members)) 
                     : ((t['uph_p'] as num?)?.toDouble() ?? 0.0);
+                
+                final int avgT = (t['avg_time'] as num?)?.toInt() ?? 0;
 
                 return ListTile(
                   leading: Container(
@@ -543,7 +753,10 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('${uphVal.toStringAsFixed(1)} UPH/p', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text('$qty total', style: TextStyle(fontSize: 10, color: theme.hintColor)),
+                      if (avgT > 0)
+                        Text('Avg: ${avgT}m', style: const TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold))
+                      else
+                        Text('$qty total', style: TextStyle(fontSize: 10, color: theme.hintColor)),
                     ],
                   ),
                 );
@@ -639,7 +852,27 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
   }
 
   Widget _buildChartSummary(List<Map<String, dynamic>> trend, ThemeData theme) {
-    final uphValues = trend.map((e) => (e['uph'] as num).toDouble()).toList();
+    final xiaomi = context.read<XiaomiProvider>();
+    final summary = xiaomi.summary;
+    int todayMembers = 0;
+    for (var t in (summary?.teamPerformance ?? [])) {
+      todayMembers += (t['members'] as num?)?.toInt() ?? 0;
+    }
+    final todayDenom = todayMembers > 0 ? todayMembers : 1;
+
+    final uphValues = trend.asMap().entries.map((entry) {
+      final e = entry.value;
+      final totalUph = (e['uph'] as num).toDouble();
+      int workers = (e['workers'] as num?)?.toInt() ?? 0;
+      
+      // Fallback for current day point
+      if (workers <= 0 || (entry.key == trend.length - 1 && workers == 1)) {
+        workers = todayDenom;
+      }
+      
+      return totalUph / (workers > 0 ? workers : 1);
+    }).toList();
+    
     final maxUph = uphValues.isNotEmpty ? uphValues.reduce((a, b) => a > b ? a : b) : 0.0;
     final avgUph = uphValues.isNotEmpty ? uphValues.reduce((a, b) => a + b) / uphValues.length : 0.0;
 
@@ -666,13 +899,33 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
   }
 
   Widget _buildLineChart(List<Map<String, dynamic>> data, bool isHourly, ThemeData theme) {
+    // Determine active workers today for fallback
+    final xiaomi = context.read<XiaomiProvider>();
+    final summary = xiaomi.summary;
+    int todayMembers = 0;
+    for (var t in (summary?.teamPerformance ?? [])) {
+      todayMembers += (t['members'] as num?)?.toInt() ?? 0;
+    }
+    final todayDenom = todayMembers > 0 ? todayMembers : 1;
+
     final spots = data.asMap().entries.map((e) {
-      return FlSpot(e.key.toDouble(), (e.value['uph'] as num).toDouble());
+      final totalUph = (e.value['uph'] as num).toDouble();
+      int workers = (e.value['workers'] as num?)?.toInt() ?? 0;
+      
+      // Sync fix: if workers count is missing or defaulting to 1 in trend (common for today's point), 
+      // use the total active members from summary as fallback.
+      if (workers <= 0 || (e.key == data.length - 1 && workers == 1)) {
+        workers = todayDenom;
+      }
+      
+      final uphPerPerson = totalUph / (workers > 0 ? workers : 1);
+      return FlSpot(e.key.toDouble(), uphPerPerson);
     }).toList();
 
     return LineChart(
       LineChartData(
         backgroundColor: Colors.transparent,
+        minY: 0, // Ensure axis starts at 0 for perspective
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
@@ -681,12 +934,15 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
               return touchedSpots.map((s) {
                 final idx = s.x.toInt();
                 final d = data[idx];
+                int w = (d['workers'] as num?)?.toInt() ?? 0;
+                if (w <= 0) w = todayDenom;
+
                 return LineTooltipItem(
-                  'UPH: ${s.y.toStringAsFixed(1)}\n',
+                  'UPH/p: ${s.y.toStringAsFixed(1)}\n',
                   TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16),
                   children: [
                     TextSpan(
-                      text: '${d['qty']} uds | ${d['workers']} op',
+                      text: '${d['qty']} uds | $w op',
                       style: TextStyle(color: theme.hintColor, fontSize: 12, fontWeight: FontWeight.normal),
                     ),
                   ],
@@ -697,21 +953,25 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
         ),
         gridData: FlGridData(
           show: true,
-          drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(color: theme.dividerColor.withOpacity(0.5), strokeWidth: 1),
+          drawVerticalLine: true, // Enable vertical lines for date alignment
+          getDrawingHorizontalLine: (value) => FlLine(color: theme.dividerColor.withOpacity(0.3), strokeWidth: 1),
+          getDrawingVerticalLine: (value) => FlLine(color: theme.dividerColor.withOpacity(0.3), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           show: true,
           bottomTitles: AxisTitles(
-            axisNameWidget: Text(
-              isHourly ? 'HORA DEL DÍA' : 'FECHA / DÍA', 
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.hintColor, letterSpacing: 1)
+            axisNameWidget: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                isHourly ? 'HORA DEL DÍA' : 'FECHA / DÍA', 
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.hintColor, letterSpacing: 1)
+              ),
             ),
-            axisNameSize: 18,
+            axisNameSize: 22,
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 30,
-              interval: (data.length / 5).clamp(1, 100).toDouble(),
+              reservedSize: 36,
+              interval: 1, // Show all points if possible
               getTitlesWidget: (value, meta) {
                 final idx = value.toInt();
                 if (idx < 0 || idx >= data.length) return const SizedBox();
@@ -720,25 +980,32 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                 if (!isHourly && label.length >= 10) {
                   text = label.substring(8, 10) + '/' + label.substring(5, 7);
                 }
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(text, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.hintColor)),
+                return SideTitleWidget(
+                  meta: meta,
+                  space: 8,
+                  child: Text(
+                    text, 
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.hintColor)
+                  ),
                 );
               },
             ),
           ),
           leftTitles: AxisTitles(
             axisNameWidget: Text(
-              'UPH', 
+              'UPH/p', 
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.hintColor, letterSpacing: 1)
             ),
             axisNameSize: 18,
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 40,
-              getTitlesWidget: (value, meta) => Text(
-                value.toInt().toString(),
-                style: TextStyle(color: theme.hintColor, fontSize: 10),
+              reservedSize: 45,
+              getTitlesWidget: (value, meta) => SideTitleWidget(
+                meta: meta,
+                child: Text(
+                  value.toInt().toString(),
+                  style: TextStyle(color: theme.hintColor, fontSize: 10),
+                ),
               ),
             ),
           ),
@@ -750,9 +1017,9 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            curveSmoothness: 0.35,
+            curveSmoothness: 0.25,
             gradient: const LinearGradient(colors: [Colors.blue, Colors.cyanAccent]),
-            barWidth: 5,
+            barWidth: 4,
             isStrokeCapRound: true,
             dotData: FlDotData(
               show: true,
@@ -766,7 +1033,7 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
             belowBarData: BarAreaData(
               show: true,
               gradient: LinearGradient(
-                colors: [Colors.blue.withOpacity(0.3), Colors.blue.withOpacity(0.0)],
+                colors: [Colors.blue.withOpacity(0.2), Colors.blue.withOpacity(0.0)],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -847,54 +1114,6 @@ class _StatCardBase extends StatelessWidget {
   }
 }
 
-class _SubStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-
-  const _SubStat({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.hintColor,
-              letterSpacing: 0.5,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                fontSize: 26,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _InfoRow extends StatelessWidget {
   final String label;

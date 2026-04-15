@@ -12,8 +12,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import '../../utils/formatters.dart';
-
 import 'package:flutter/services.dart';
 
 import '../../api_client.dart';
@@ -31,6 +29,8 @@ import '../xiaomi/xiaomi_registro_orden.dart';
 import '../sentinel_for_imaging/physical_tables_screen.dart';
 import '../../widgets/family_selection_dialog.dart';
 import '../../utils/formatters.dart';
+import 'serigrafia_panel.dart';
+import '../../widgets/multi_family_selection_dialog.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -44,8 +44,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   static const double _tableCellsWidth = 930;
   static const double _tableOuterWidth = _tableCellsWidth + 4;
   static const double _logDateColumnWidth = 150;
-    static const double _logActorColumnWidth = 140;
-    static const double _logActionColumnWidth = 140;
+  static const double _logActorColumnWidth = 140;
+  static const double _logActionColumnWidth = 140;
   static const double _logMessageColumnWidth =
       _tableCellsWidth -
       _logDateColumnWidth -
@@ -65,12 +65,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _isArchivoDropActive = false;
   bool _isExporting = false;
   String? _error;
+  String? _sessionActiveFamily;
 
   final TextEditingController _obsController = TextEditingController();
   final FocusNode _obsFocusNode = FocusNode();
 
   String _normalizedRole() {
-    final raw = (ApiService.instance?.currentUser?.role ?? '').trim().toLowerCase();
+    final raw = (ApiService.instance?.currentUser?.role ?? '')
+        .trim()
+        .toLowerCase();
     if (raw.startsWith('role_')) return raw.substring(5);
     return raw;
   }
@@ -116,7 +119,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return (value ?? '').trim().toLowerCase();
   }
 
-  Future<int?> _resolveProyectoIdByOrderProyectoName(String? proyectoName) async {
+  Future<int?> _resolveProyectoIdByOrderProyectoName(
+    String? proyectoName,
+  ) async {
     if (_orderOpsService == null) return null;
     final normalized = _normalizeProyectoName(proyectoName);
     if (normalized.isEmpty) return null;
@@ -220,7 +225,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       try {
         proyectoId = await _resolveActiveProyectoId(detail.agentOrder);
         if (proyectoId != null) {
-          final proyecto = await _orderOpsService!.getProyectoDetail(proyectoId);
+          final proyecto = await _orderOpsService!.getProyectoDetail(
+            proyectoId,
+          );
           proyectoName = proyecto.nombre;
           final scopedProyectoObservations = (proyecto.observations ?? const [])
               .where(_observationBelongsToOrderOrGeneral)
@@ -269,7 +276,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final result = await showDialog<_ManualOrderPromptResult>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _ManualUnitsDialog(numOrden: widget.orderId.toString()),
+      builder: (context) =>
+          _ManualUnitsDialog(numOrden: widget.orderId.toString()),
     );
 
     if (result == null) {
@@ -322,7 +330,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() => _loading = true);
     try {
       final user = Provider.of<ApiService>(context, listen: false).currentUser;
-      
+
       await _orderOpsService!.postObservation(
         widget.orderId,
         text,
@@ -363,7 +371,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: const Text('Guardar'),
             ),
           ],
@@ -385,13 +394,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       // Mark as "Pendiente" (Code '2') instead of just setting department
       await _orderOpsService!.updateAgentOrder(
         widget.orderId,
-        estado: '2', // Code for "Pendiente" according to order_queue_screen.dart
+        estado:
+            '2', // Code for "Pendiente" according to order_queue_screen.dart
         department: 'Recepcionado',
       );
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Orden marcada como Pendiente (Recepcionado)')),
+          const SnackBar(
+            content: Text('Orden marcada como Pendiente (Recepcionado)'),
+          ),
         );
       }
     } catch (e) {
@@ -409,11 +421,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final baseTheme = Theme.of(context);
     final isDark = baseTheme.brightness == Brightness.dark;
     final theme = baseTheme.copyWith(
-      cardColor: isDark ? const Color(0xFF1E1E1E) : baseTheme.colorScheme.surface,
+      cardColor: isDark
+          ? const Color(0xFF1E1E1E)
+          : baseTheme.colorScheme.surface,
     );
     final title = _detail != null
-      ? _formatOrderNbr(_detail!.agentOrder.orderNbr)
-      : 'Orden #${widget.orderId}';
+        ? _formatOrderNbr(_detail!.agentOrder.orderNbr)
+        : 'Orden #${widget.orderId}';
 
     return Theme(
       data: theme,
@@ -434,34 +448,48 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           actions: [
             if (_detail != null) ...[
-              Builder(builder: (ctx) {
-                final family = (_detail!.agentOrder.family ?? '').trim().toUpperCase();
-                final nf = _normalizeText(family);
-                final isMatch = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
-                final isChange = nf.contains('CAMBIO') && nf.contains('SERIAL');
-                
-                if (isMatch || isChange) {
-                  return IconButton(
-                    icon: const Icon(Icons.history, color: Colors.cyanAccent),
-                    tooltip: isMatch ? 'Ver Historial de Match' : 'Ver Historial de Cambios',
-                    onPressed: () {
-                      final orderNbr = _formatOrderNbr(_detail!.agentOrder.orderNbr);
-                      Navigator.push(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (c) => isMatch 
-                            ? HistorialMatchUnidadScreen(initialSearch: orderNbr)
-                            : HistorialCambiosSerialScreen(initialSearch: orderNbr),
-                        ),
-                      );
-                    },
-                  );
-                }
-                return const SizedBox.shrink();
-              }),
+              Builder(
+                builder: (ctx) {
+                  final family = (_detail!.agentOrder.family ?? '')
+                      .trim()
+                      .toUpperCase();
+                  final nf = _normalizeText(family);
+                  final isMatch =
+                      nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+                  final isChange =
+                      nf.contains('CAMBIO') && nf.contains('SERIAL');
+
+                  if (isMatch || isChange) {
+                    return IconButton(
+                      icon: const Icon(Icons.history, color: Colors.cyanAccent),
+                      tooltip: isMatch
+                          ? 'Ver Historial de Match'
+                          : 'Ver Historial de Cambios',
+                      onPressed: () {
+                        final orderNbr = _formatOrderNbr(
+                          _detail!.agentOrder.orderNbr,
+                        );
+                        Navigator.push(
+                          ctx,
+                          MaterialPageRoute(
+                            builder: (c) => isMatch
+                                ? HistorialMatchUnidadScreen(
+                                    initialSearch: orderNbr,
+                                  )
+                                : HistorialCambiosSerialScreen(
+                                    initialSearch: orderNbr,
+                                  ),
+                          ),
+                        );
+                      },
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
             ],
             IconButton(
-              icon: const Icon(Icons.refresh), 
+              icon: const Icon(Icons.refresh),
               focusNode: FocusNode(canRequestFocus: false),
               onPressed: _loadData,
             ),
@@ -599,14 +627,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _buildInfoItem('Cliente', order.customer, maxLines: 1),
+                            _buildInfoItem(
+                              'Cliente',
+                              order.customer,
+                              maxLines: 1,
+                            ),
                             const SizedBox(height: 4),
-                            _buildInfoItem('Orden', order.orderNbr, maxLines: 1),
+                            _buildInfoItem(
+                              'Orden',
+                              order.orderNbr,
+                              maxLines: 1,
+                            ),
                             const SizedBox(height: 4),
                             _buildInfoItem(
                               'Fecha',
                               order.orderDate != null
-                                  ? DateFormat('yyyy-MM-dd').format(order.orderDate!)
+                                  ? DateFormat(
+                                      'yyyy-MM-dd',
+                                    ).format(order.orderDate!)
                                   : '-',
                               maxLines: 1,
                             ),
@@ -621,22 +659,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _buildMiniBadge('Estado: ${estadoMeta.$1}', estadoMeta.$2),
+                          _buildMiniBadge(
+                            'Estado: ${estadoMeta.$1}',
+                            estadoMeta.$2,
+                          ),
                           const SizedBox(height: 6),
-                          _buildMiniBadge('Prioridad: ${prioridadMeta.$1}', prioridadMeta.$2),
+                          _buildMiniBadge(
+                            'Prioridad: ${prioridadMeta.$1}',
+                            prioridadMeta.$2,
+                          ),
                           const SizedBox(height: 6),
-                                    _canEditProyectoOrFamily
-                                      ? GestureDetector(
-                                        onTap: () => _showFamilyPicker(order.family ?? ''),
-                                            child: _buildMiniBadge(
-                                              'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
-                                              order.family?.trim().isEmpty ?? true ? Colors.redAccent : Colors.tealAccent,
-                                            ),
-                                          )
-                                        : _buildMiniBadge(
-                                            'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
-                                            order.family?.trim().isEmpty ?? true ? Colors.redAccent : Colors.tealAccent,
-                                          ),
+                          _canEditProyectoOrFamily
+                              ? GestureDetector(
+                                  onTap: () =>
+                                      _showFamilyPicker(order.family ?? ''),
+                                  child: _buildMiniBadge(
+                                    'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
+                                    order.family?.trim().isEmpty ?? true
+                                        ? Colors.redAccent
+                                        : Colors.tealAccent,
+                                  ),
+                                )
+                              : _buildMiniBadge(
+                                  'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
+                                  order.family?.trim().isEmpty ?? true
+                                      ? Colors.redAccent
+                                      : Colors.tealAccent,
+                                ),
                         ],
                       ),
                     ),
@@ -647,13 +696,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   children: [
                     if (order.estado.contains('3')) ...[
                       OutlinedButton(
-                        onPressed: () => _updateStatus('4', allowWorkflowAction: true),
+                        onPressed: () =>
+                            _updateStatus('4', allowWorkflowAction: true),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.redAccent,
-                          side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                          side: const BorderSide(
+                            color: Colors.redAccent,
+                            width: 1.5,
+                          ),
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           minimumSize: const Size(0, 40),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         child: const Text(
                           'Parar',
@@ -664,13 +719,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     ],
                     if (order.estado.contains('4')) ...[
                       ElevatedButton(
-                        onPressed: () => _updateStatus('3', allowWorkflowAction: true),
+                        onPressed: () =>
+                            _updateStatus('3', allowWorkflowAction: true),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.cyan,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           minimumSize: const Size(0, 40),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         child: const Text(
                           'Reanudar',
@@ -688,7 +746,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         minimumSize: const Size(0, 40),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                       child: const Text(
                         'Finalizar',
@@ -871,7 +931,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   String _normalizeText(String s) {
     var t = (s ?? '').toUpperCase();
     // Replace common Spanish accents/characters with ASCII equivalents
-    t = t.replaceAll('Á', 'A').replaceAll('É', 'E').replaceAll('Í', 'I').replaceAll('Ó', 'O').replaceAll('Ú', 'U').replaceAll('Ñ', 'N');
+    t = t
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('Ñ', 'N');
     // Remove any non-alphanumeric/space characters
     t = t.replaceAll(RegExp(r'[^A-Z0-9 ]'), ' ');
     // Collapse whitespace
@@ -904,12 +970,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _hasArchivosAttached() => _photos.isNotEmpty;
   bool _hasXlsxAttached() {
     return _photos.any((photo) {
-      final path = (photo.filePath.isNotEmpty ? photo.filePath : photo.fileName).toLowerCase();
+      final path = (photo.filePath.isNotEmpty ? photo.filePath : photo.fileName)
+          .toLowerCase();
       return path.endsWith('.xlsx') || path.endsWith('.xls');
     });
   }
 
-  bool _hasQualityEvidence() => _photos.any((p) => _isImageFile(p) || _isPdfFile(p));
+  bool _hasQualityEvidence() =>
+      _photos.any((p) => _isImageFile(p) || _isPdfFile(p));
 
   Widget _buildMiniBadge(String value, Color color) {
     return Container(
@@ -981,8 +1049,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 final desc =
                     (line['DESCRIP1'] ?? line['description'])?.toString() ?? '';
                 final qtyRaw = line['QTY_ORD'];
-                final qty = (qtyRaw is num) ? qtyRaw.formattedInt : qtyRaw?.toString() ?? '0';
-                
+                final qty = (qtyRaw is num)
+                    ? qtyRaw.formattedInt
+                    : qtyRaw?.toString() ?? '0';
+
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1008,7 +1078,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               children: [
                                 TextSpan(
                                   text: sku,
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 const TextSpan(text: ' | '),
                                 TextSpan(
@@ -1122,12 +1194,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.chat_bubble_outline_rounded,
-                            color: theme.hintColor.withOpacity(0.15), size: 32),
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          color: theme.hintColor.withOpacity(0.15),
+                          size: 32,
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           'Sin observaciones',
-                          style: TextStyle(color: theme.hintColor, fontSize: 13),
+                          style: TextStyle(
+                            color: theme.hintColor,
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -1196,7 +1274,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                 icon: const Icon(Icons.copy_rounded, size: 14),
                                 onPressed: () {
                                   Clipboard.setData(
-                                      ClipboardData(text: obs.body ?? ''));
+                                    ClipboardData(text: obs.body ?? ''),
+                                  );
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('Copiado')),
                                   );
@@ -1209,7 +1288,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               if (canManage) ...[
                                 const SizedBox(width: 8),
                                 IconButton(
-                                  icon: const Icon(Icons.edit_outlined, size: 16),
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 16,
+                                  ),
                                   onPressed: () => _editObservation(obs),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
@@ -1218,9 +1300,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline_rounded,
-                                      size: 16, color: Colors.redAccent),
-                                  onPressed: () => _confirmDeleteObservation(obs),
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 16,
+                                    color: Colors.redAccent,
+                                  ),
+                                  onPressed: () =>
+                                      _confirmDeleteObservation(obs),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                   splashRadius: 16,
@@ -1260,8 +1346,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.send_rounded,
-                    size: 18, color: theme.colorScheme.primary),
+                icon: Icon(
+                  Icons.send_rounded,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
                 onPressed: _addObservation,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -1283,7 +1372,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _editObservation(AgentOrderObservation obs) async {
-    if (!_canManageObservations || _orderOpsService == null || _detail == null) return;
+    if (!_canManageObservations || _orderOpsService == null || _detail == null)
+      return;
     final controller = TextEditingController(text: obs.body ?? '');
     final updated = await showDialog<String>(
       context: context,
@@ -1295,8 +1385,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('Guardar')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Guardar'),
+          ),
         ],
       ),
     );
@@ -1308,30 +1404,55 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() => _loading = true);
     try {
       final author = ApiService.instance?.currentUser?.username;
-      final ok = await _orderOpsService!.updateObservation(_detail!.agentOrder.idnbr, obs.id, text, author: author);
+      final ok = await _orderOpsService!.updateObservation(
+        _detail!.agentOrder.idnbr,
+        obs.id,
+        text,
+        author: author,
+      );
       if (ok) {
         await _loadData();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Observación actualizada')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Observación actualizada')),
+          );
       } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo actualizar la observación')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo actualizar la observación'),
+            ),
+          );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _confirmDeleteObservation(AgentOrderObservation obs) async {
-    if (!_canManageObservations || _orderOpsService == null || _detail == null) return;
+    if (!_canManageObservations || _orderOpsService == null || _detail == null)
+      return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar observación'),
-        content: const Text('¿Seguro que desea eliminar esta observación? Esta acción quedará registrada en el log.'),
+        content: const Text(
+          '¿Seguro que desea eliminar esta observación? Esta acción quedará registrada en el log.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Eliminar')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Eliminar'),
+          ),
         ],
       ),
     );
@@ -1339,15 +1460,27 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     setState(() => _loading = true);
     try {
-      final success = await _orderOpsService!.deleteObservation(_detail!.agentOrder.idnbr, obs.id);
+      final success = await _orderOpsService!.deleteObservation(
+        _detail!.agentOrder.idnbr,
+        obs.id,
+      );
       if (success) {
         await _loadData();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Observación eliminada')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Observación eliminada')),
+          );
       } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo eliminar la observación')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo eliminar la observación')),
+          );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1383,7 +1516,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: _cardHeaderFill(theme),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
             ),
             child: Row(
               children: [
@@ -1489,32 +1624,63 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final isValidada = order.estado.contains('1');
     final isPendiente = order.estado.contains('2');
 
+    final currentFamily = _sessionActiveFamily ?? order.family;
+    // Multi-service visibility fix: show all assigned families if available
+    final familyText = order.subfamilies.isNotEmpty 
+        ? order.subfamiliesDisplay 
+        : ((currentFamily?.trim().isEmpty ?? true) ? 'SIN ASIGNAR' : currentFamily!);
+          
+    final subCount = order.subfamilies.length;
+    final familyLabel = subCount > 1 
+        ? 'Servicios ($subCount)' 
+        : 'Familia';
+
+    final doneCount = order.completedFamilies.length;
+    final progressText = subCount > 1 ? ' ($doneCount/$subCount)' : '';
+
     return _buildCard(
       theme: theme,
       title: 'Información de la Orden',
       actions: [
-        if (isPendiente)
-          ElevatedButton.icon(
-            onPressed: () => _updateStatus('3', allowWorkflowAction: true),
-            icon: const Icon(Icons.play_circle_outline),
-            label: const Text('Comenzar orden'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.cyan,
-              foregroundColor: Colors.white,
-            ),
-          )
-        else if (isValidada)
-          ElevatedButton.icon(
-            onPressed: _markRecepcionado,
-            icon: const Icon(Icons.check_circle_outline),
-            label: const Text('Recepcionado'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: Colors.white,
+        if (isValidada || isPendiente)
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.icon(
+              onPressed: () => _updateStatus('3'),
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Comenzar Orden'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.tealAccent,
+                foregroundColor: Colors.black,
+              ),
             ),
           ),
-        // When order is finished and it's a CAMBIO DE SERIAL but no XLSX
-        // has been attached, show a small button to manually attach it.
+        if (order.estado.contains('3') || order.estado.contains('4'))
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.icon(
+              onPressed: () => _updateStatus('5'),
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('Finalizar Orden'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.greenAccent,
+                foregroundColor: Colors.black,
+              ),
+            ),
+          ),
+        if (order.estado.contains('3'))
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.icon(
+              onPressed: () => _updateStatus('4'),
+              icon: const Icon(Icons.pause),
+              label: const Text('Parar Orden'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
         if (order.estado.contains('5') &&
             (order.family ?? '').trim().toUpperCase() == 'CAMBIO DE SERIAL' &&
             !_hasXlsxAttached())
@@ -1524,15 +1690,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               onPressed: () async {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Adjuntando Excel...')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Adjuntando Excel...')),
+                );
                 try {
                   await _exportFinalSerialFileToSftpAndAttachArchivo();
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Archivo adjuntado correctamente')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Archivo adjuntado correctamente'),
+                      ),
+                    );
                     await _loadData();
                   }
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adjuntando XLSX: $e')));
+                  if (mounted)
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adjuntando XLSX: $e')),
+                    );
                 }
               },
               icon: const Icon(Icons.attach_file),
@@ -1543,8 +1718,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       child: Wrap(
         alignment: WrapAlignment.center,
         crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: isTablet ? 20 : 32,
-        runSpacing: isTablet ? 12 : 16,
+        spacing: isTablet ? 20 : 16,
+        runSpacing: isTablet ? 12 : 12,
         children: [
           _buildInfoItem('Cliente', order.customer),
           _buildInfoItem(
@@ -1557,13 +1732,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             'Estado',
             estadoText,
             estadoColor,
-            onTap: _canEditOrderMeta ? () => _showStatusPicker(order.estado) : null,
+            onTap: _canEditOrderMeta
+                ? () => _showStatusPicker(order.estado)
+                : null,
           ),
-          _buildBadgeItem(
-            'Prioridad',
-            prioText,
-            prioColor,
-          ),
+          _buildBadgeItem('Prioridad', prioText, prioColor),
           _buildBadgeItem(
             'Proyecto',
             (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
@@ -1572,47 +1745,78 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
                 ? Colors.indigoAccent
                 : Colors.grey,
-            onTap: _canEditProyectoOrFamily ? () => _showProyectoPicker(order.proyecto ?? '') : null,
+            onTap: _canEditProyectoOrFamily
+                ? () => _showProyectoPicker(order.proyecto ?? '')
+                : null,
           ),
           _buildBadgeItem(
-            'Familia',
-            order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!,
-            order.family?.trim().isEmpty ?? true ? Colors.redAccent : Colors.tealAccent,
-            onTap: _canEditProyectoOrFamily ? () => _showFamilyPicker(order.family ?? '') : null,
+            familyLabel,
+            familyText + progressText,
+            Colors.orange,
+            onTap: _canEditProyectoOrFamily
+                ? () => _showFamilyPicker(order.family ?? '')
+                : null,
+          ),
+          if (subCount > 1 && order.estado.contains('3'))
+            _buildBadgeItem(
+              'Enfoque',
+              'Cambiar de Servicio',
+              Colors.tealAccent,
+              onTap: () async {
+                final choice = await showDialog<String>(
+                  context: context,
+                  builder: (context) => FamilySelectionDialog(
+                    families: order.subfamilies.where((f) => !order.completedFamilies.contains(f)).toList(),
+                    title: 'Cambiar Enfoque de Sesión',
+                    currentFamily: _sessionActiveFamily,
+                  ),
+                );
+                if (choice != null && mounted) {
+                  setState(() => _sessionActiveFamily = choice);
+                }
+              },
+            ),
+          _buildBadgeItem(
+            'Asignado',
+            order.assignedToName ?? order.assignedTo ?? 'SIN ASIGNAR',
+            order.assignedTo != null ? Colors.orange : Colors.grey,
+            onTap: _isPrivilegedRole
+                ? () => _showAssigneePicker(order.assignedTo)
+                : null,
           ),
         ],
       ),
     );
   }
 
-  Future<void> _showFamilyPicker(String currentFamily) async {
-    if (!_canEditProyectoOrFamily) return;
+  Future<void> _showAssigneePicker(String? currentAssignee) async {
+    if (!_isPrivilegedRole) return;
     if (_orderOpsService == null) return;
-    const extraFamilies = <String>[
-      'SERIGRAFIADO',
-      'MANIPULACIÓN Y ETIQUETADO',
-    ];
 
-    // Show loading state or fetch before showing sheet
-    List<String> families = [];
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    List<Map<String, String>> assignees = [];
     try {
-      families = await _orderOpsService!.getCatalogFamilies();
+      assignees = await _orderOpsService!.getIngramUsers();
     } catch (e) {
-      debugPrint('Error fetching families: $e');
+      debugPrint('Error fetching assignees: $e');
     }
 
-    // Ensure a baseline list and always include extra families not present in DB.
-    if (families.isEmpty) {
-      families = [
-        'ORDENADORES SERVIDOR',
-        'CAMBIO DE SERIAL',
-        'XIAOMI ETIQUETADO',
-      ];
+    if (mounted) Navigator.pop(context); // Close loading
+
+    if (assignees.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se encontraron usuarios de Ingram')),
+        );
+      }
+      return;
     }
-    families = {...families, ...extraFamilies}.toList();
-    
-    // Sort families
-    families.sort();
 
     if (!mounted) return;
 
@@ -1628,68 +1832,63 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           builder: (context, scrollController) => Material(
             color: const Color(0xFF1A1A2E),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'Asignar Orden',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Text(
-                      'Seleccionar Familia de Orden',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1, color: Colors.white10),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      itemCount: families.length,
-                      itemBuilder: (context, index) {
-                        final f = families[index];
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: assignees.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
                         return ListTile(
-                          leading: Icon(
-                            Icons.category_outlined,
-                            color: f == currentFamily ? Colors.tealAccent : Colors.white70,
-                          ),
-                          title: Text(
-                            f,
-                            style: TextStyle(
-                              color: f == currentFamily ? Colors.tealAccent : Colors.white,
-                              fontWeight: f == currentFamily ? FontWeight.bold : FontWeight.normal,
-                            ),
-                          ),
-                          trailing: f == currentFamily
-                              ? const Icon(Icons.check, color: Colors.tealAccent)
-                              : null,
+                          leading: const Icon(Icons.person_off, color: Colors.grey),
+                          title: const Text('Sin asignar', style: TextStyle(color: Colors.white)),
                           onTap: () {
                             Navigator.pop(context);
-                            if (f != currentFamily) {
-                              _updateFamily(f);
-                            }
+                            _updateAssignment(null, null);
                           },
                         );
-                      },
-                    ),
+                      }
+                      final user = assignees[index - 1];
+                      final username = user['username']!;
+                      final name = user['name']!;
+                      
+                      return ListTile(
+                        leading: const Icon(Icons.person, color: Colors.blueAccent),
+                        title: Text(name, style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(username, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                        trailing: currentAssignee == username
+                            ? const Icon(Icons.check, color: Colors.greenAccent)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _updateAssignment(username, name);
+                        },
+                      );
+                    },
                   ),
-                  const SizedBox(height: 20),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         );
@@ -1697,13 +1896,122 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  Future<void> _updateAssignment(String? username, String? name) async {
+    if (_orderOpsService == null) return;
+    setState(() => _loading = true);
+    try {
+      final ok = await _orderOpsService!.updateAgentOrder(
+        widget.orderId,
+        assignedTo: username,
+        assignedToName: name,
+      );
+      if (ok) {
+        await _loadData();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error al actualizar asignación')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _showFamilyPicker(String currentFamily) async {
+    if (!_canEditProyectoOrFamily) return;
+    if (_orderOpsService == null) return;
+    const extraFamilies = <String>['SERIGRAFIADO', 'MANIPULACIÓN Y ETIQUETADO'];
+
+    List<String> families = [];
+    try {
+      families = await _orderOpsService!.getCatalogFamilies();
+    } catch (e) {
+      debugPrint('Error fetching families: $e');
+    }
+
+    // Consistency fix: ensure catalog list includes currently assigned subfamilies
+    families = {...families, ..._detail!.agentOrder.subfamilies}.toList();
+    final order = _detail!.agentOrder;
+    // Sync fix: combine primary family and all subfamilies for the menu view
+    final currentSelection = {
+      if (order.family != null && order.family!.isNotEmpty) order.family!,
+      ...order.subfamilies,
+    }.toList();
+
+    if (!mounted) return;
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => MultiFamilySelectionDialog(
+        allFamilies: families,
+        initiallySelected: currentSelection,
+        title: 'Asignar Servicios (Subfamilias)',
+      ),
+    );
+
+    if (result != null) {
+      await _updateSubfamilies(result);
+    }
+  }
+
+  Future<void> _updateSubfamilies(List<String> subfamilies) async {
+    if (!_canEditProyectoOrFamily) return;
+    if (_orderOpsService == null || _detail == null) return;
+
+    setState(() => _loading = true);
+    try {
+      // Sync fix: primary family should always be part of the subfamilies list
+      String? primaryFamily = _detail!.agentOrder.family;
+      
+      if (subfamilies.isEmpty) {
+        primaryFamily = '';
+      } else if (primaryFamily == null || primaryFamily.isEmpty || !subfamilies.contains(primaryFamily)) {
+        // If current primary is gone or missing, pick the first from the new selection
+        primaryFamily = subfamilies.first;
+      }
+
+      final ok = await _orderOpsService!.updateAgentOrder(
+        _detail!.agentOrder.idnbr,
+        family: primaryFamily,
+        subfamilies: subfamilies,
+        reason: 'Sync subfamilias: ${subfamilies.join(", ")}',
+      );
+
+      if (ok) {
+        await _loadData();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error al actualizar servicios')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _updateFamily(String family) async {
     if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null || _detail == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Actualizando familia...')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Actualizando familia...')));
 
     try {
       final success = await _orderOpsService!.updateAgentOrder(
@@ -1726,10 +2034,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -1757,103 +2062,100 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           initialChildSize: 0.6,
           minChildSize: 0.3,
           maxChildSize: 0.9,
-          builder:
-              (context, scrollController) => Material(
-                color: const Color(0xFF1A1A2E),
+          builder: (context, scrollController) => Material(
+            color: const Color(0xFF1A1A2E),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: Container(
+              decoration: BoxDecoration(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(20),
                 ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    border: Border.all(color: Colors.white10),
                   ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Text(
+                      'Enlazar con Proyecto',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Text(
-                          'Enlazar con Proyecto',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                    ),
+                  ),
+                  const Divider(height: 1, color: Colors.white10),
+                  if (currentProyecto.isNotEmpty)
+                    ListTile(
+                      leading: const Icon(
+                        Icons.link_off,
+                        color: Colors.redAccent,
                       ),
-                      const Divider(height: 1, color: Colors.white10),
-                      if (currentProyecto.isNotEmpty)
-                        ListTile(
-                          leading: const Icon(
-                            Icons.link_off,
-                            color: Colors.redAccent,
+                      title: const Text(
+                        'Desvincular Proyecto',
+                        style: TextStyle(color: Colors.redAccent),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _updateProyecto(proyectoNombre: '');
+                      },
+                    ),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      itemCount: proyectos.length,
+                      itemBuilder: (context, index) {
+                        final p = proyectos[index];
+                        final isSel = p.nombre == currentProyecto;
+                        return ListTile(
+                          leading: Icon(
+                            Icons.assignment_outlined,
+                            color: isSel ? Colors.indigoAccent : Colors.white70,
                           ),
-                          title: const Text(
-                            'Desvincular Proyecto',
-                            style: TextStyle(color: Colors.redAccent),
+                          title: Text(
+                            p.nombre,
+                            style: TextStyle(
+                              color: isSel ? Colors.indigoAccent : Colors.white,
+                              fontWeight: isSel
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
                           ),
+                          trailing: isSel
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Colors.indigoAccent,
+                                )
+                              : null,
                           onTap: () {
                             Navigator.pop(context);
-                            _updateProyecto(proyectoNombre: '');
+                            if (p.nombre != currentProyecto) {
+                              _updateProyecto(
+                                proyectoNombre: p.nombre,
+                                proyectoId: p.id,
+                                reasonLabel: p.nombre,
+                              );
+                            }
                           },
-                        ),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          itemCount: proyectos.length,
-                          itemBuilder: (context, index) {
-                            final p = proyectos[index];
-                            final isSel = p.nombre == currentProyecto;
-                            return ListTile(
-                              leading: Icon(
-                                Icons.assignment_outlined,
-                                color: isSel ? Colors.indigoAccent : Colors.white70,
-                              ),
-                              title: Text(
-                                p.nombre,
-                                style: TextStyle(
-                                  color: isSel ? Colors.indigoAccent : Colors.white,
-                                  fontWeight:
-                                      isSel ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                              trailing:
-                                  isSel
-                                      ? const Icon(
-                                        Icons.check,
-                                        color: Colors.indigoAccent,
-                                      )
-                                      : null,
-                              onTap: () {
-                                Navigator.pop(context);
-                                if (p.nombre != currentProyecto) {
-                                  _updateProyecto(
-                                    proyectoNombre: p.nombre,
-                                    proyectoId: p.id,
-                                    reasonLabel: p.nombre,
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                        );
+                      },
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 20),
+                ],
               ),
+            ),
+          ),
         );
       },
     );
@@ -1867,9 +2169,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null || _detail == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Actualizando proyecto...')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Actualizando proyecto...')));
 
     try {
       final success = await _orderOpsService!.updateAgentOrder(
@@ -1901,10 +2203,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -2007,13 +2306,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     ];
 
     // Case: Moving to En Ejecución (3)
-    if (code == '3' && allPossibleFamilies.length > 1) {
+    if (code == '3' && allPossibleFamilies.length >= 1) {
+      if (_sessionActiveFamily != null && allPossibleFamilies.contains(_sessionActiveFamily)) {
+        // Already have a session family, just update state to 3
+        setState(() => _loading = true);
+        try {
+          final ok = await _orderOpsService!.updateAgentOrder(
+            order.idnbr,
+            estado: '3',
+            family: _sessionActiveFamily,
+          );
+          if (ok) await _loadData();
+          return;
+        } catch (e) {
+          debugPrint('Error starting order: $e');
+          setState(() => _loading = false);
+          return;
+        }
+      }
+
       final selectedFamily = await showDialog<String>(
         context: context,
         builder: (context) => FamilySelectionDialog(
           families: allPossibleFamilies,
           title: 'Iniciar Servicio',
-          currentFamily: order.family,
+          currentFamily: _sessionActiveFamily ?? order.family,
         ),
       );
 
@@ -2026,7 +2343,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           estado: '3',
           family: selectedFamily,
         );
-        if (ok) await _loadData();
+        if (ok) {
+          setState(() => _sessionActiveFamily = selectedFamily);
+          await _loadData();
+        }
         return;
       } catch (e) {
         debugPrint('Error starting subfamily: $e');
@@ -2037,8 +2357,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     // Case: Finishing (5) - Check for subfamilies loop
     if (code == '5') {
+      final currentToMarkDone = _sessionActiveFamily ?? order.family;
       final pendingFamilies = allPossibleFamilies
-          .where((f) => !order.completedFamilies.contains(f) && f != order.family)
+          .where(
+            (f) => !order.completedFamilies.contains(f) && f != currentToMarkDone,
+          )
           .toList();
 
       if (pendingFamilies.isNotEmpty) {
@@ -2047,26 +2370,36 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           context: context,
           builder: (context) => FamilySelectionDialog(
             families: pendingFamilies,
-            title: 'Siguiente Servicio',
+            title: 'Servicio Finalizado. ¿Continuar?',
           ),
         );
 
-        if (nextFamily == null) return; // User cancelled
-
+        // User can choose next or just stay in state 3 with no focus
         setState(() => _loading = true);
         try {
-          final newCompleted = {...order.completedFamilies, if (order.family != null) order.family!}.toList();
+          final newCompleted = {
+            ...order.completedFamilies,
+            if (currentToMarkDone != null) currentToMarkDone,
+          }.toList();
+          
           final ok = await _orderOpsService!.updateAgentOrder(
             order.idnbr,
             estado: '3', // Stay in execution
-            family: nextFamily,
+            family: nextFamily ?? order.family,
             completedFamilies: newCompleted,
           );
           if (ok) {
+            setState(() => _sessionActiveFamily = nextFamily);
             await _loadData();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Servicio finalizado. Iniciando: $nextFamily')),
+                SnackBar(
+                  content: Text(
+                    nextFamily != null 
+                      ? 'Servicio finalizado. Iniciando: $nextFamily'
+                      : 'Servicio finalizado. Orden pendiente de otros servicios.'
+                  ),
+                ),
               );
             }
           }
@@ -2138,7 +2471,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           );
         }
       } else {
-        String backendMessage = result.error ?? 'El servidor no pudo guardar el estado';
+        String backendMessage =
+            result.error ?? 'El servidor no pudo guardar el estado';
         final body = result.body;
         if (body is Map<String, dynamic>) {
           if (body['detail'] != null) {
@@ -2149,7 +2483,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             backendMessage = body['error'].toString();
           } else if (body['non_field_errors'] is List &&
               (body['non_field_errors'] as List).isNotEmpty) {
-            backendMessage = (body['non_field_errors'] as List).first.toString();
+            backendMessage = (body['non_field_errors'] as List).first
+                .toString();
           }
         }
 
@@ -2189,9 +2524,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _exportFinalSerialFileToSftpAndAttachArchivo() async {
     if (!mounted || _isExporting) return;
-    
+
     setState(() => _isExporting = true);
-    
+
     try {
       final currentDetail = _detail;
       if (currentDetail == null || _orderOpsService == null) return;
@@ -2200,7 +2535,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final family = (order.family ?? '').trim();
       final nf = _normalizeText(family);
       final isCambioSerial = nf.contains('CAMBIO') && nf.contains('SERIAL');
-      final isManipulacionEtq = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+      final isManipulacionEtq =
+          nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
       if (!isCambioSerial && !isManipulacionEtq) return;
 
       final client = ApiService.instance?.client;
@@ -2211,17 +2547,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
       final enc = Uri.encodeQueryComponent(normalizedOrder);
       List<int>? bytes;
-      
+
       // Step 1: Export bytes
       try {
         if (isManipulacionEtq) {
-          final rawOrder = Uri.encodeQueryComponent(order.orderNbr ?? normalizedOrder);
-          final fallbackRes = await client.getBytes('/serials/matches/export?num_orden=$rawOrder');
+          final rawOrder = Uri.encodeQueryComponent(
+            order.orderNbr ?? normalizedOrder,
+          );
+          final fallbackRes = await client.getBytes(
+            '/serials/matches/export?num_orden=$rawOrder',
+          );
           if (fallbackRes.ok && fallbackRes.body is List<int>) {
             bytes = List<int>.from(fallbackRes.body as List<int>);
           }
         } else {
-          final expRes = await client.getBytes('/serials/export-serial-changes?nr_orden=$enc');
+          final expRes = await client.getBytes(
+            '/serials/export-serial-changes?nr_orden=$enc',
+          );
           if (expRes.ok && expRes.body is List<int>) {
             bytes = List<int>.from(expRes.body as List<int>);
           }
@@ -2231,7 +2573,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       }
 
       final fileName = '$normalizedOrder.xlsx';
-      
+
       // Step 2: Check existence
       final exists = _photos.any((p) {
         final name = (p.fileName).trim();
@@ -2243,7 +2585,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (exists) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Archivo $fileName ya existe; no se exporta.')),
+            SnackBar(
+              content: Text('Archivo $fileName ya existe; no se exporta.'),
+            ),
           );
         }
         return;
@@ -2265,8 +2609,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
       // Step 4: Finish order (SFTP)
       try {
-        final targetOrderNo = isManipulacionEtq 
-            ? (order.orderNbr ?? normalizedOrder) 
+        final targetOrderNo = isManipulacionEtq
+            ? (order.orderNbr ?? normalizedOrder)
             : normalizedOrder;
 
         final exportRes = await client.post(
@@ -2280,11 +2624,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         if (exportRes.ok && !attached && exportRes.body is Map) {
           final body = Map<String, dynamic>.from(exportRes.body as Map);
           final filePath = _firstNonEmptyString(body, const [
-            'file_path', 'path', 'excel_path', 'export_path', 'archivo_path', 'relative_path',
+            'file_path',
+            'path',
+            'excel_path',
+            'export_path',
+            'archivo_path',
+            'relative_path',
           ]);
-          final returnedName = _firstNonEmptyString(body, const [
-            'file_name', 'filename', 'name', 'excel_file',
-          ]) ?? fileName;
+          final returnedName =
+              _firstNonEmptyString(body, const [
+                'file_name',
+                'filename',
+                'name',
+                'excel_file',
+              ]) ??
+              fileName;
 
           if (filePath != null && filePath.isNotEmpty) {
             await _orderOpsService!.addArchivoManual(
@@ -2307,12 +2661,51 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
+  Future<void> _promptForActiveService() async {
+    if (_detail == null || !mounted) return;
+    final order = _detail!.agentOrder;
+    
+    // Only prompt if in execution and there are multiple options
+    if (!order.estado.contains('3')) {
+      if (_sessionActiveFamily != null) {
+        setState(() => _sessionActiveFamily = null);
+      }
+      return;
+    }
+
+    final available = order.subfamilies.where((f) => !order.completedFamilies.contains(f)).toList();
+    if (available.isEmpty) return;
+
+    if (_sessionActiveFamily == null || !available.contains(_sessionActiveFamily)) {
+      if (available.length == 1) {
+        setState(() => _sessionActiveFamily = available.first);
+      } else {
+        // Show dialog to choose
+        final choice = await showDialog<String>(
+          context: context,
+          builder: (context) => FamilySelectionDialog(
+            families: available,
+            title: '¿Qué servicio vas a realizar?',
+            currentFamily: _sessionActiveFamily ?? order.family,
+          ),
+        );
+        if (choice != null && mounted) {
+          setState(() => _sessionActiveFamily = choice);
+        } else if (_sessionActiveFamily == null && mounted) {
+          // Default to the global family if it's in the available list
+          setState(() => _sessionActiveFamily = available.contains(order.family) ? order.family : available.first);
+        }
+      }
+    }
+  }
+
   Widget? _resolveEmbeddedServiceWidget() {
     if (_detail == null) return null;
 
     final order = _detail!.agentOrder;
-    final family = (order.family ?? '').trim().toUpperCase();
-    if (family == 'ORDENADORES SERVIDOR' || family == 'ORDENADORES SERVIDORES') {
+    final family = (_sessionActiveFamily ?? order.family ?? '').trim().toUpperCase();
+    if (family == 'ORDENADORES SERVIDOR' ||
+        family == 'ORDENADORES SERVIDORES') {
       return RegistroServidorScreen(
         isEmbedded: true,
         orderId: widget.orderId,
@@ -2344,15 +2737,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (_detail == null) return const SizedBox.shrink();
 
     final order = _detail!.agentOrder;
-    final family = (order.family ?? '').trim().toUpperCase();
+    final family = (_sessionActiveFamily ?? order.family ?? '').trim().toUpperCase();
     final isEnEjecucion = order.estado.contains('3');
     if (!isEnEjecucion) {
       return const SizedBox.shrink();
     }
 
-    // Serigrafiado works only with Archivos/Calidad gates; no embedded service UI.
+    // Serigrafiado workflow
     if (family.contains('SERIGRAF')) {
-      return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: SerigrafiaPanel(
+          order: order,
+          detail: _detail,
+          service: _orderOpsService,
+        ),
+      );
     }
 
     final serviceWidget = _resolveEmbeddedServiceWidget();
@@ -2412,32 +2812,28 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildInfoItem(
-    String label,
-    String value, {
-    int maxLines = 2,
-  }) {
+  Widget _buildInfoItem(String label, String value, {int maxLines = 2}) {
     final isTablet = _isTabletWidth(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SelectableText(
-          label,
-          style: TextStyle(
-            color: Colors.grey,
-            fontSize: isTablet ? 11 : 12,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(
+            label,
+            style: TextStyle(color: Colors.grey, fontSize: isTablet ? 11 : 12),
           ),
-        ),
-        const SizedBox(height: 4),
-        SelectableText(
-          value,
-          maxLines: maxLines,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: isTablet ? 14 : 16,
+          const SizedBox(height: 2),
+          SelectableText(
+            value,
+            maxLines: maxLines,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: isTablet ? 14 : 15,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -2448,50 +2844,56 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     VoidCallback? onTap,
   }) {
     final isTablet = _isTabletWidth(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey,
-            fontSize: isTablet ? 11 : 12,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: Colors.grey, fontSize: isTablet ? 11 : 12),
           ),
-        ),
-        const SizedBox(height: 4),
-        GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: isTablet ? 8 : 10,
-              vertical: isTablet ? 3 : 4,
-            ),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              border: Border.all(color: color.withOpacity(0.6)),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  value.toUpperCase(),
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: isTablet ? 12 : 13,
+          const SizedBox(height: 4),
+          GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              constraints: BoxConstraints(maxWidth: isTablet ? 600 : 340),
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 8 : 10,
+                vertical: isTablet ? 4 : 6,
+              ),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                border: Border.all(color: color.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value.toUpperCase(),
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: isTablet ? 12 : 12,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
                   ),
-                ),
-                if (onTap != null) ...[
-                  const SizedBox(width: 4),
-                  Icon(Icons.edit, size: 12, color: color.withOpacity(0.7)),
+                  if (onTap != null) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.edit, size: 14, color: color.withOpacity(0.8)),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -2515,21 +2917,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final lineOuterWidth = lineCellsWidth + 4;
     final isDark = theme.brightness == Brightness.dark;
     final headerBg = isDark
-      ? Colors.black38
-      : theme.colorScheme.surfaceContainerHighest.withOpacity(0.88);
+        ? Colors.black38
+        : theme.colorScheme.surfaceContainerHighest.withOpacity(0.88);
     final rowDivider = theme.dividerColor.withOpacity(isDark ? 0.16 : 0.24);
     final profitPositiveColor = isDark
-      ? Colors.tealAccent
-      : const Color(0xFF0F766E);
+        ? Colors.tealAccent
+        : const Color(0xFF0F766E);
     final profitNegativeColor = isDark
-      ? Colors.redAccent
-      : const Color(0xFFB91C1C);
+        ? Colors.redAccent
+        : const Color(0xFFB91C1C);
     final lowMarginColor = isDark
-      ? Colors.orangeAccent
-      : const Color(0xFFB45309);
-    final mappedCostColor = isDark
-      ? Colors.blueGrey
-      : const Color(0xFF475569);
+        ? Colors.orangeAccent
+        : const Color(0xFFB45309);
+    final mappedCostColor = isDark ? Colors.blueGrey : const Color(0xFF475569);
 
     return _buildCard(
       theme: theme,
@@ -2557,24 +2957,51 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         decoration: BoxDecoration(
                           color: headerBg,
                           border: Border(
-                            left: BorderSide(color: Colors.transparent, width: 4),
+                            left: BorderSide(
+                              color: Colors.transparent,
+                              width: 4,
+                            ),
                           ),
                         ),
                         child: Row(
                           children: [
                             _headerCell('SKU', 100),
                             _headerCell('Descripción', 250),
-                            _headerCell('Cant.', 60, alignment: TextAlign.center),
+                            _headerCell(
+                              'Cant.',
+                              60,
+                              alignment: TextAlign.center,
+                            ),
                             if (_canViewFinancialData)
-                              _headerCell('Coste', 100, alignment: TextAlign.right),
+                              _headerCell(
+                                'Coste',
+                                100,
+                                alignment: TextAlign.right,
+                              ),
                             if (_canViewFinancialData)
-                              _headerCell('Precio', 100, alignment: TextAlign.right),
+                              _headerCell(
+                                'Precio',
+                                100,
+                                alignment: TextAlign.right,
+                              ),
                             if (_canViewFinancialData)
-                              _headerCell('Beneficio', 110, alignment: TextAlign.right),
+                              _headerCell(
+                                'Beneficio',
+                                110,
+                                alignment: TextAlign.right,
+                              ),
                             if (_canViewFinancialData)
-                              _headerCell('Margen %', 90, alignment: TextAlign.right),
+                              _headerCell(
+                                'Margen %',
+                                90,
+                                alignment: TextAlign.right,
+                              ),
                             if (_canViewFinancialData)
-                              _headerCell('Total', 120, alignment: TextAlign.right),
+                              _headerCell(
+                                'Total',
+                                120,
+                                alignment: TextAlign.right,
+                              ),
                           ],
                         ),
                       ),
@@ -2626,7 +3053,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                 ),
                                 child: Row(
                                   children: [
-                                    _dataCell(line['SKU']?.toString() ?? '', 100),
+                                    _dataCell(
+                                      line['SKU']?.toString() ?? '',
+                                      100,
+                                    ),
                                     _dataCell(
                                       (line['DESCRIP1'] ?? line['description'])
                                               ?.toString() ??
@@ -2634,7 +3064,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       250,
                                     ),
                                     _dataCell(
-                                      (double.tryParse(line['QTY_ORD']?.toString() ?? '0') ?? 0).formattedInt,
+                                      (double.tryParse(
+                                                line['QTY_ORD']?.toString() ??
+                                                    '0',
+                                              ) ??
+                                              0)
+                                          .formattedInt,
                                       60,
                                       alignment: TextAlign.center,
                                     ),
@@ -2644,7 +3079,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                         100,
                                         alignment: TextAlign.right,
                                         color: (unitCost == 0 && mappedCost > 0)
-                                          ? mappedCostColor
+                                            ? mappedCostColor
                                             : null,
                                       ),
                                     if (_canViewFinancialData)
@@ -2660,8 +3095,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                         110,
                                         alignment: TextAlign.right,
                                         color: (price - effectiveCost) < 0
-                                          ? profitNegativeColor
-                                          : profitPositiveColor,
+                                            ? profitNegativeColor
+                                            : profitPositiveColor,
                                       ),
                                     if (_canViewFinancialData)
                                       _dataCell(
@@ -2670,13 +3105,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                         alignment: TextAlign.right,
                                         color:
                                             price != 0 &&
-                                                ((price - effectiveCost) / price) < 0.05
-                                          ? lowMarginColor
+                                                ((price - effectiveCost) /
+                                                        price) <
+                                                    0.05
+                                            ? lowMarginColor
                                             : Colors.grey,
                                       ),
                                     if (_canViewFinancialData)
                                       _dataCell(
-                                        (double.tryParse(line['TOTAL']?.toString() ?? '0') ?? 0).asCurrency,
+                                        (double.tryParse(
+                                                  line['TOTAL']?.toString() ??
+                                                      '0',
+                                                ) ??
+                                                0)
+                                            .asCurrency,
                                         120,
                                         alignment: TextAlign.right,
                                         isBold: true,
@@ -3025,7 +3467,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildQualityQualityCard(ThemeData theme) {
     final imageFiles = _photos
-        .where((photo) => _isImageFile(photo) && _photoScope(photo) == 'quality')
+        .where(
+          (photo) => _isImageFile(photo) && _photoScope(photo) == 'quality',
+        )
         .toList(growable: false);
     return _buildCard(
       theme: theme,
@@ -3077,8 +3521,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildArchivosCard(ThemeData theme) {
     final archivoFiles = _photos
-      .where((photo) => _photoScope(photo) != 'quality')
-      .toList(growable: false);
+        .where((photo) => _photoScope(photo) != 'quality')
+        .toList(growable: false);
     final borderColor = _isArchivoDropActive
         ? theme.colorScheme.primary
         : theme.colorScheme.outline.withOpacity(0.5);
@@ -3099,48 +3543,65 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ),
         // Manual attach Excel for Cambio de Serial when order is finalized
         if (_detail != null) ...[
-          Builder(builder: (ctx) {
-            final order = _detail!.agentOrder;
-            final family = (order.family ?? '').trim();
-            final estado = (order.estado ?? '').toString();
-            final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
-            final expectedFileName = '$normalizedOrder.xlsx';
-            final lcExpected = expectedFileName.toLowerCase();
-            final alreadyAttached = archivoFiles.any((f) {
-              final fn = (f.fileName ?? '').toLowerCase();
-              final fp = (f.filePath ?? '').toLowerCase();
-              // Prefer explicit .xlsx attachments. If any archivo has .xlsx, treat as attached.
-              if (fn.endsWith('.xlsx') || fp.endsWith('.xlsx')) return true;
-              // Fall back to exact filename match.
-              if (fn == lcExpected) return true;
-              return false;
-            });
-            final isFinished = estado.contains('5') || estado.contains('6');
-            final nf = _normalizeText(family);
-            final isManipulacionEtq = nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
-            final isCambioSerial = nf.contains('CAMBIO') && nf.contains('SERIAL');
-            if (((isCambioSerial && isFinished) || isManipulacionEtq) && !alreadyAttached) {
-              return IconButton(
-                icon: const Icon(Icons.attach_file, size: 20, color: Colors.amber),
-                tooltip: 'Adjuntar XLSX automáticamente',
-                focusNode: FocusNode(canRequestFocus: false),
-                onPressed: () async {
-                  // Automatic export and attach without manual input
-                  try {
-                    ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
-                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Adjuntando Excel...')));
-                    await _exportFinalSerialFileToSftpAndAttachArchivo();
-                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Archivo adjuntado correctamente')));
-                    // reload via parent context
-                    if (mounted) await _loadData();
-                  } catch (e) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Error adjuntando XLSX: $e')));
-                  }
-                },
-              );
-            }
-            return const SizedBox.shrink();
-          }),
+          Builder(
+            builder: (ctx) {
+              final order = _detail!.agentOrder;
+              final family = (order.family ?? '').trim();
+              final estado = (order.estado ?? '').toString();
+              final normalizedOrder = _formatOrderNbr(order.orderNbr).trim();
+              final expectedFileName = '$normalizedOrder.xlsx';
+              final lcExpected = expectedFileName.toLowerCase();
+              final alreadyAttached = archivoFiles.any((f) {
+                final fn = (f.fileName ?? '').toLowerCase();
+                final fp = (f.filePath ?? '').toLowerCase();
+                // Prefer explicit .xlsx attachments. If any archivo has .xlsx, treat as attached.
+                if (fn.endsWith('.xlsx') || fp.endsWith('.xlsx')) return true;
+                // Fall back to exact filename match.
+                if (fn == lcExpected) return true;
+                return false;
+              });
+              final isFinished = estado.contains('5') || estado.contains('6');
+              final nf = _normalizeText(family);
+              final isManipulacionEtq =
+                  nf.contains('MANIPUL') && nf.contains('ETIQUETADO');
+              final isCambioSerial =
+                  nf.contains('CAMBIO') && nf.contains('SERIAL');
+              if (((isCambioSerial && isFinished) || isManipulacionEtq) &&
+                  !alreadyAttached) {
+                return IconButton(
+                  icon: const Icon(
+                    Icons.attach_file,
+                    size: 20,
+                    color: Colors.amber,
+                  ),
+                  tooltip: 'Adjuntar XLSX automáticamente',
+                  focusNode: FocusNode(canRequestFocus: false),
+                  onPressed: () async {
+                    // Automatic export and attach without manual input
+                    try {
+                      ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Adjuntando Excel...')),
+                      );
+                      await _exportFinalSerialFileToSftpAndAttachArchivo();
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('Archivo adjuntado correctamente'),
+                        ),
+                      );
+                      // reload via parent context
+                      if (mounted) await _loadData();
+                    } catch (e) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(content: Text('Error adjuntando XLSX: $e')),
+                      );
+                    }
+                  },
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
         ],
       ],
       height: null,
@@ -3252,8 +3713,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Adjuntar')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Adjuntar'),
+          ),
         ],
       ),
     );
@@ -3263,23 +3730,42 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     pathCtrl.dispose();
     if (ok != true) return;
     if (filePath.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Se requiere la ruta del archivo en el servidor.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Se requiere la ruta del archivo en el servidor.'),
+        ),
+      );
       return;
     }
 
-    final fileName = nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : defaultName;
+    final fileName = nameCtrl.text.trim().isNotEmpty
+        ? nameCtrl.text.trim()
+        : defaultName;
     try {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Adjuntando archivo...')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Adjuntando archivo...')));
       final author = ApiService.instance?.currentUser?.username;
-      final okAdd = await _orderOpsService!.addArchivoManual(order.idnbr, fileName, filePath, author: author);
+      final okAdd = await _orderOpsService!.addArchivoManual(
+        order.idnbr,
+        fileName,
+        filePath,
+        author: author,
+      );
       if (okAdd) {
         await _loadData();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Archivo adjuntado correctamente')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Archivo adjuntado correctamente')),
+        );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo adjuntar el archivo.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo adjuntar el archivo.')),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adjuntando archivo: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error adjuntando archivo: $e')));
     }
   }
 
@@ -3320,19 +3806,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                 'Bearer ${ApiService.instance!.client.accessToken}',
                         },
                         errorBuilder: (_, __, ___) => const Center(
-                          child: Icon(Icons.broken_image, color: Colors.white38),
+                          child: Icon(
+                            Icons.broken_image,
+                            color: Colors.white38,
+                          ),
                         ),
                       )
                     : isPdf
                     ? FutureBuilder<Uint8List?>(
                         future: _getPdfPreviewBytes(file),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
                             return const Center(
                               child: SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             );
                           }
@@ -3349,11 +3841,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               ),
                             );
                           }
-                          return IgnorePointer(child: SfPdfViewer.memory(bytes));
+                          return IgnorePointer(
+                            child: SfPdfViewer.memory(bytes),
+                          );
                         },
                       )
                     : const Center(
-                        child: Icon(Icons.insert_drive_file, color: Colors.white70, size: 40),
+                        child: Icon(
+                          Icons.insert_drive_file,
+                          color: Colors.white70,
+                          size: 40,
+                        ),
                       ),
               ),
               Positioned(
@@ -3402,7 +3900,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 left: 8,
                 bottom: 36,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(6),
@@ -3420,7 +3921,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 right: 8,
                 bottom: 8,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   color: Colors.black54,
                   child: Text(
                     file.fileName,
@@ -3517,7 +4021,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   color: Colors.black12,
                   child: Row(
                     children: [
@@ -3538,9 +4045,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SfPdfViewer.memory(bytes),
-                ),
+                Expanded(child: SfPdfViewer.memory(bytes)),
               ],
             ),
           ),
@@ -3568,7 +4073,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _uploadArchivo() async {
     final platform = defaultTargetPlatform;
-    final isDesktop = !kIsWeb &&
+    final isDesktop =
+        !kIsWeb &&
         (platform == TargetPlatform.macOS ||
             platform == TargetPlatform.windows ||
             platform == TargetPlatform.linux);
@@ -3647,7 +4153,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (droppedFiles.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Drop detectado, pero no se recibieron archivos.')),
+        const SnackBar(
+          content: Text('Drop detectado, pero no se recibieron archivos.'),
+        ),
       );
       return;
     }
@@ -3672,7 +4180,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         if (bytes.isEmpty) continue;
         final fallback = 'archivo_${DateTime.now().millisecondsSinceEpoch}';
         final name = dropped.name.isNotEmpty ? dropped.name : fallback;
-        pickedFiles.add(_PickedBinaryFile(name: name, bytes: Uint8List.fromList(bytes)));
+        pickedFiles.add(
+          _PickedBinaryFile(name: name, bytes: Uint8List.fromList(bytes)),
+        );
       } catch (_) {
         failedReads += 1;
       }
@@ -3700,7 +4210,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (pickedFiles.any((f) => f.bytes.isEmpty)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo leer uno o mas archivos seleccionados')),
+        const SnackBar(
+          content: Text('No se pudo leer uno o mas archivos seleccionados'),
+        ),
       );
       return;
     }
@@ -3741,7 +4253,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         final msg = skipped > 0
             ? 'Subidos $uploaded archivo(s). $skipped duplicado(s) omitido(s).'
             : 'Subidos $uploaded archivo(s) en Archivos.';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(msg)));
       } else if (result.statusCode == 409) {
         final body = result.body;
         int skipped = attachments.length;
@@ -3749,7 +4263,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           skipped = (body['count_skipped'] as num?)?.toInt() ?? skipped;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se subio ningun archivo: $skipped ya existia(n).')),
+          SnackBar(
+            content: Text(
+              'No se subio ningun archivo: $skipped ya existia(n).',
+            ),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3768,7 +4286,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<List<_PickedBinaryFile>> _pickArchivoFiles() async {
     final platform = defaultTargetPlatform;
-    final isDesktop = !kIsWeb &&
+    final isDesktop =
+        !kIsWeb &&
         (platform == TargetPlatform.macOS ||
             platform == TargetPlatform.windows ||
             platform == TargetPlatform.linux);
@@ -3938,7 +4457,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Future<_PickedImage?> _pickImageForQuality() async {
     final picker = ImagePicker();
     final platform = defaultTargetPlatform;
-    final isDesktop = !kIsWeb &&
+    final isDesktop =
+        !kIsWeb &&
         (platform == TargetPlatform.macOS ||
             platform == TargetPlatform.windows ||
             platform == TargetPlatform.linux);
@@ -3958,7 +4478,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         if (bytes.isEmpty) return null;
         final name = xFile.name;
         final fallback = 'quality_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        return _PickedImage(name: name.isNotEmpty ? name : fallback, bytes: bytes);
+        return _PickedImage(
+          name: name.isNotEmpty ? name : fallback,
+          bytes: bytes,
+        );
       } catch (_) {
         try {
           final picked = await FilePicker.platform.pickFiles(
@@ -3973,13 +4496,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             bytes = await File(file.path!).readAsBytes();
           }
           if (bytes == null) return null;
-          final fallback = 'quality_${DateTime.now().millisecondsSinceEpoch}.jpg';
-          return _PickedImage(name: file.name.isNotEmpty ? file.name : fallback, bytes: bytes);
+          final fallback =
+              'quality_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          return _PickedImage(
+            name: file.name.isNotEmpty ? file.name : fallback,
+            bytes: bytes,
+          );
         } catch (_) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('File picker no respondio, intentando selector alternativo...'),
+                content: Text(
+                  'File picker no respondio, intentando selector alternativo...',
+                ),
                 duration: Duration(seconds: 2),
               ),
             );
@@ -4216,7 +4745,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               decoration: const BoxDecoration(
                                 color: Colors.black38,
                                 border: Border(
-                                  left: BorderSide(color: Colors.transparent, width: 4),
+                                  left: BorderSide(
+                                    color: Colors.transparent,
+                                    width: 4,
+                                  ),
                                 ),
                               ),
                               child: Row(
@@ -4224,7 +4756,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                   _headerCell('Fecha', _logDateColumnWidth),
                                   _headerCell('Usuario', _logActorColumnWidth),
                                   _headerCell('Acción', _logActionColumnWidth),
-                                  _headerCell('Mensaje', _logMessageColumnWidth),
+                                  _headerCell(
+                                    'Mensaje',
+                                    _logMessageColumnWidth,
+                                  ),
                                 ],
                               ),
                             ),
@@ -4240,7 +4775,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                     return Container(
                                       decoration: BoxDecoration(
                                         border: Border(
-                                          bottom: const BorderSide(color: Colors.white10),
+                                          bottom: const BorderSide(
+                                            color: Colors.white10,
+                                          ),
                                           left: BorderSide(
                                             color: Colors.transparent,
                                             width: 4,
@@ -4249,15 +4786,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       ),
                                       child: Row(
                                         children: [
-                                          _dataCell(dateStr, _logDateColumnWidth),
-                                          _dataCell(entry.actor, _logActorColumnWidth),
+                                          _dataCell(
+                                            dateStr,
+                                            _logDateColumnWidth,
+                                          ),
+                                          _dataCell(
+                                            entry.actor,
+                                            _logActorColumnWidth,
+                                          ),
                                           _dataCell(
                                             entry.action,
                                             _logActionColumnWidth,
                                             isBold: true,
                                             color: entry.color,
                                           ),
-                                          _dataCell(entry.message, _logMessageColumnWidth),
+                                          _dataCell(
+                                            entry.message,
+                                            _logMessageColumnWidth,
+                                          ),
                                         ],
                                       ),
                                     );

@@ -24,6 +24,8 @@ class XiaomiStatsSummary {
   final double historicalAvgUph;
   final double uphToday;
   final double uphWeek;
+  final double avgExecutionTime;
+  final Map<String, double> avgExecutionAll;
   final Map<String, double> uphAll;
 
   XiaomiStatsSummary({
@@ -33,12 +35,15 @@ class XiaomiStatsSummary {
     required this.historicalAvgUph,
     required this.uphToday,
     required this.uphWeek,
+    required this.avgExecutionTime,
+    required this.avgExecutionAll,
     required this.uphAll,
   });
 
   factory XiaomiStatsSummary.fromJson(Map<String, dynamic> json) {
     final t = Map<String, int>.from(json['totals'] ?? {});
     final uAll = Map<String, dynamic>.from(json['uph_all'] ?? {});
+    final avgAllRaw = Map<String, dynamic>.from(json['avg_execution_all'] ?? {});
     return XiaomiStatsSummary(
       totals: t,
       pending: (json['pending'] as num?)?.toInt() ?? 0,
@@ -46,6 +51,8 @@ class XiaomiStatsSummary {
       historicalAvgUph: (json['historical_avg_uph'] as num?)?.toDouble() ?? 0.0,
       uphToday: (json['uph_today'] as num?)?.toDouble() ?? 0.0,
       uphWeek: (json['uph_week'] as num?)?.toDouble() ?? 0.0,
+      avgExecutionTime: (json['avg_execution_time'] as num?)?.toDouble() ?? 0.0,
+      avgExecutionAll: avgAllRaw.map((k, v) => MapEntry(k, (v as num).toDouble())),
       uphAll: uAll.map((k, v) => MapEntry(k, (v as num).toDouble())),
     );
   }
@@ -147,6 +154,52 @@ class XiaomiProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error cloneTeams: $e');
+    }
+    return false;
+  }
+
+  Future<bool> validateCesb(String cesb) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/validar_cesb/', jsonBody: {'cesb': cesb});
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error validateCesb: $e');
+    }
+    return false;
+  }
+
+  Future<bool> unvalidateCesb(String cesb) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/desvalidar_cesb/', jsonBody: {'cesb': cesb});
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error unvalidateCesb: $e');
+    }
+    return false;
+  }
+
+  Future<bool> startCesb(String cesb, int teamId) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/empezar_cesb/', jsonBody: {
+        'cesb': cesb,
+        'team_id': teamId,
+      });
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error startCesb: $e');
+    }
+    return false;
+  }
+
+  Future<bool> finishCesb(String cesb, int teamId) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/cerrar_cesb/', jsonBody: {
+        'cesb': cesb,
+        'team_id': teamId,
+      });
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error finishCesb: $e');
     }
     return false;
   }

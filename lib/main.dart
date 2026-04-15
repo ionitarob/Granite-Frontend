@@ -67,6 +67,7 @@ import 'screens/orderops/agent_activity_screen.dart';
 import 'screens/orderops/agent_memory_screen.dart';
 import 'screens/orderops/cotizaciones_management_screen.dart';
 import 'screens/orderops/proyectos_management_screen.dart';
+import 'screens/orderops/serigrafia_repository_screen.dart';
 import 'screens/tv/tv_revision_screen.dart';
 import 'screens/tv/tv_history_screen.dart';
 import 'widgets/main_sidebar.dart';
@@ -241,6 +242,7 @@ class MainApp extends StatelessWidget {
                 '/serials/serial-changes': (_) =>
                     const HistorialCambiosSerialScreen(),
                 '/serials/masks': (_) => const MasksScreen(),
+                '/serials/repository': (_) => const SerigrafiaRepositoryScreen(),
                 '/automatizations/cambio_serial': (_) =>
                     const SerialLinkScreen(),
                 '/servers/previ': (_) => const RegistroPreviScreen(),

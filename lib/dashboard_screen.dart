@@ -41,6 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _ordersLoading = false;
   String? _ordersError;
   List<AgentOrder> _dashboardOrders = const [];
+  List<Map<String, String>> _ingramUsers = const [];
 
   @override
   void initState() {
@@ -87,6 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     try {
+      final users = await service.getIngramUsers();
       final all = await service.getAgentOrders(limit: 300);
       final allowed = {'1', '2', '3', '4'};
       final filtered = all
@@ -94,7 +96,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           .toList();
 
       filtered.sort((a, b) {
-        final rank = _estadoSortRank(a.estado).compareTo(_estadoSortRank(b.estado));
+        final rank = _estadoSortRank(
+          a.estado,
+        ).compareTo(_estadoSortRank(b.estado));
         if (rank != 0) return rank;
 
         final ad = a.orderDate ?? a.createdAt;
@@ -108,6 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
       setState(() {
         _dashboardOrders = filtered;
+        _ingramUsers = users;
         _ordersError = null;
         _ordersLoading = false;
       });
@@ -266,7 +271,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                             decoration: BoxDecoration(
                               color: statusColor.withOpacity(0.18),
                               borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: statusColor.withOpacity(0.55)),
+                              border: Border.all(
+                                color: statusColor.withOpacity(0.55),
+                              ),
                             ),
                             child: Text(
                               _estadoLabel(o.estado),
@@ -294,7 +301,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                           Icon(
                             Icons.calendar_today_rounded,
                             size: 14,
-                            color: theme.colorScheme.onSurface.withOpacity(0.65),
+                            color: theme.colorScheme.onSurface.withOpacity(
+                              0.65,
+                            ),
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -305,13 +314,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                           Icon(
                             Icons.flag_rounded,
                             size: 14,
-                            color: theme.colorScheme.onSurface.withOpacity(0.65),
+                            color: theme.colorScheme.onSurface.withOpacity(
+                              0.65,
+                            ),
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            o.prioridad,
-                            style: theme.textTheme.bodySmall,
-                          ),
+                          Text(o.prioridad, style: theme.textTheme.bodySmall),
                         ],
                       ),
                     ],
@@ -649,7 +657,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 SizedBox(width: isVeryNarrowLayout ? 12 : 20),
                 SizedBox(
-                  width: isVeryNarrowLayout ? (constraints.maxWidth - 60) : (constraints.maxWidth - 300) / 2,
+                  width: isVeryNarrowLayout
+                      ? (constraints.maxWidth - 60)
+                      : (constraints.maxWidth - 300) / 2,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -670,7 +680,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                 ),
-                if (isVeryNarrowLayout) const SizedBox(height: 12, width: double.infinity),
+                if (isVeryNarrowLayout)
+                  const SizedBox(height: 12, width: double.infinity),
                 if (!isVeryNarrowLayout)
                   Container(
                     height: 50,
@@ -679,7 +690,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 if (!isVeryNarrowLayout) const SizedBox(width: 20),
                 SizedBox(
-                  width: isVeryNarrowLayout ? (constraints.maxWidth - 20) : (constraints.maxWidth - 300) / 2,
+                  width: isVeryNarrowLayout
+                      ? (constraints.maxWidth - 20)
+                      : (constraints.maxWidth - 300) / 2,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -708,7 +721,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                           Icon(
                             perf >= 0
                                 ? Icons.trending_up_rounded
-                                : Icons.trending_down_rounded, // Placeholder logic
+                                : Icons
+                                      .trending_down_rounded, // Placeholder logic
                             color: perf >= 90
                                 ? Colors.greenAccent
                                 : (perf >= 70
@@ -727,6 +741,24 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       );
     } else {
+      // Orders that are not Finalizado (5) nor Facturado (6) — already filtered in _dashboardOrders.
+      final pendingCount = _dashboardOrders.length;
+      final pendingLabel = _ordersLoading && _dashboardOrders.isEmpty
+          ? '...'
+          : '$pendingCount';
+
+      // Orders that belong to Ingram users (assigned_to field)
+      final assignedCount = _dashboardOrders
+          .where(
+            (o) =>
+                o.assignedTo != null &&
+                _ingramUsers.any((u) => u['username'] == o.assignedTo!.trim()),
+          )
+          .length;
+      final assignedLabel = _ordersLoading && _dashboardOrders.isEmpty
+          ? '...'
+          : '$assignedCount';
+
       block = isVeryNarrow
           ? SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -736,7 +768,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 children: [
                   _buildMetricCard(
                     title: 'Órdenes pendientes',
-                    value: '0',
+                    value: pendingLabel,
                     gradientColors: [
                       const Color(0xFFF12711),
                       const Color(0xFFF5AF19),
@@ -745,7 +777,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   _buildMetricCard(
                     title: 'Órdenes asignadas',
-                    value: '0',
+                    value: assignedLabel,
                     gradientColors: [
                       const Color(0xFF2193b0),
                       const Color(0xFF6dd5ed),
@@ -768,7 +800,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               children: [
                 _buildMetricCard(
                   title: 'Órdenes pendientes',
-                  value: '0',
+                  value: pendingLabel,
                   gradientColors: [
                     const Color(0xFFF12711),
                     const Color(0xFFF5AF19),
@@ -777,7 +809,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 _buildMetricCard(
                   title: 'Órdenes asignadas',
-                  value: '0',
+                  value: assignedLabel,
                   gradientColors: [
                     const Color(0xFF2193b0),
                     const Color(0xFF6dd5ed),
@@ -804,16 +836,28 @@ class _DashboardScreenState extends State<DashboardScreen>
           children: [
             Text(
               '${_greeting()}, ',
-              style: (isOperario ? theme.textTheme.headlineSmall : (isVeryNarrow ? theme.textTheme.titleMedium : theme.textTheme.headlineSmall))?.copyWith(
-                fontWeight: FontWeight.w400,
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
-              ),
+              style:
+                  (isOperario
+                          ? theme.textTheme.headlineSmall
+                          : (isVeryNarrow
+                                ? theme.textTheme.titleMedium
+                                : theme.textTheme.headlineSmall))
+                      ?.copyWith(
+                        fontWeight: FontWeight.w400,
+                        color: theme.textTheme.bodyMedium?.color?.withOpacity(
+                          0.8,
+                        ),
+                      ),
             ),
             Text(
               _displayName(u),
-              style: (isOperario ? theme.textTheme.headlineSmall : (isVeryNarrow ? theme.textTheme.titleMedium : theme.textTheme.headlineSmall))?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
+              style:
+                  (isOperario
+                          ? theme.textTheme.headlineSmall
+                          : (isVeryNarrow
+                                ? theme.textTheme.titleMedium
+                                : theme.textTheme.headlineSmall))
+                      ?.copyWith(fontWeight: FontWeight.w900),
             ),
           ],
         ),
@@ -873,7 +917,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           },
           showSelectedIcon: false,
           style: SegmentedButton.styleFrom(
-            visualDensity: isVeryNarrow ? VisualDensity.compact : VisualDensity.comfortable,
+            visualDensity: isVeryNarrow
+                ? VisualDensity.compact
+                : VisualDensity.comfortable,
             padding: EdgeInsets.symmetric(
               horizontal: isVeryNarrow ? 8 : 12,
               vertical: isVeryNarrow ? 6 : 8,
@@ -1054,7 +1100,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                               'Registro · Smartphone',
                               '/igualdad/registro/smartphone',
                             ),
-                            ('Registro · Pulsera', '/igualdad/registro/pulsera'),
+                            (
+                              'Registro · Pulsera',
+                              '/igualdad/registro/pulsera',
+                            ),
                             (
                               'Registro · Powerbank',
                               '/igualdad/registro/powerbank',
@@ -1079,7 +1128,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           icon: Icons.smartphone_rounded,
                           routes: const [
                             ('Registro Unidades', '/xiaomi/registro/unidades'),
-                            ('Cerrar CESB', '/xiaomi/cerrar_cesb'),
+                            ('Producción CESB', '/xiaomi/cerrar_cesb'),
                             ('Historial', '/xiaomi/historial'),
                             ('Estadísticas', '/xiaomi/estadisticas'),
                           ],
@@ -1146,7 +1195,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   const SizedBox(height: 12),
                   const ListTile(
-                    leading: Icon(Icons.people_alt_rounded, color: Colors.white),
+                    leading: Icon(
+                      Icons.people_alt_rounded,
+                      color: Colors.white,
+                    ),
                     title: Text(
                       'Recursos Humanos',
                       style: TextStyle(
@@ -1179,23 +1231,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     required List<(String, String)> routes,
   }) {
     return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: Colors.transparent,
-      ),
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         leading: Icon(icon, color: Colors.white70),
         iconColor: Colors.white70,
         collapsedIconColor: Colors.white70,
         textColor: Colors.white,
         collapsedTextColor: Colors.white,
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
         children: routes
-            .map(
-              (entry) => _sheetRouteTile(entry.$1, entry.$2, leftPad: 28),
-            )
+            .map((entry) => _sheetRouteTile(entry.$1, entry.$2, leftPad: 28))
             .toList(),
       ),
     );
@@ -1446,7 +1491,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 // It plays the provided Lottie animation and reacts to mouse hover by growing
 // slightly and adding a glow.
 
-
 class DashboardSurface extends StatelessWidget {
   final Widget child;
   final Widget? headerRight;
@@ -1535,5 +1579,3 @@ class DashboardSurface extends StatelessWidget {
     );
   }
 }
-
-

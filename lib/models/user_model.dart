@@ -5,7 +5,9 @@ class User {
   // prefer the backend-provided Spanish field `nombre` when present
   final String? nombre;
 
-  User({this.id, required this.username, required this.role, this.nombre});
+  final String? empresa;
+
+  User({this.id, required this.username, required this.role, this.nombre, this.empresa});
   
   factory User.fromJson(Map<String, dynamic> json) {
     int? parsedId;
@@ -25,6 +27,7 @@ class User {
       username: json['username']?.toString() ?? '',
       role: json['role']?.toString() ?? '',
       nombre: json['nombre']?.toString(),
+      empresa: json['empresa']?.toString(),
     );
   }
 

@@ -579,6 +579,11 @@ class _MainSidebarState extends State<MainSidebar> {
           route: '/serials/match',
         ),
         (
+          label: 'Bartender Labels',
+          icon: Icons.inventory_2_rounded,
+          route: '/serials/repository',
+        ),
+        (
           label: 'MATCH · Historial de Vínculos',
           icon: Icons.history_rounded,
           route: '/serials/match-history',
@@ -601,7 +606,7 @@ class _MainSidebarState extends State<MainSidebar> {
           route: '/xiaomi/registro/unidades',
         ),
         (
-          label: 'Xiaomi · Cerrar CESB',
+          label: 'Xiaomi · Producción CESB',
           icon: Icons.check_circle_outline_rounded,
           route: '/xiaomi/cerrar_cesb',
         ),
@@ -726,6 +731,7 @@ class _MainSidebarState extends State<MainSidebar> {
       '/serials/change',
       '/serials/labels',
       '/serials/masks',
+      '/serials/repository',
       '/serials/serial-changes',
     ];
     const serverRoutes = ['/servers/previ', '/servers/servidores'];
@@ -1329,7 +1335,7 @@ class _MainSidebarState extends State<MainSidebar> {
               isDark: isDark,
             ),
             _SidebarTile(
-              label: 'Cerrar CESB',
+              label: 'Producción CESB',
               icon: Icons.check_circle_outline_rounded,
               selected: isRoute('/xiaomi/cerrar_cesb'),
               onTap: () => _navigate(
@@ -1534,6 +1540,27 @@ class _MainSidebarState extends State<MainSidebar> {
             isDark: isDark,
           ),
         ],
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
+        _SidebarTile(
+          label: 'Bartender Labels',
+          icon: Icons.label_important_outline_rounded,
+          selected: isRoute('/serials/repository'),
+          onTap: () => _navigate(
+            context,
+            '/serials/repository',
+            closeOverlay: !permanent,
+          ),
+          highlight: highlight,
+          textPrimary: textPrimary,
+          isDark: isDark,
+        ),
       ],
     );
   }
@@ -2947,7 +2974,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
-              title: 'Cerrar CESB',
+              title: 'Producción CESB',
               icon: Icons.check_circle_outline_rounded,
               route: '/xiaomi/cerrar_cesb',
               currentRoute: currentRoute,

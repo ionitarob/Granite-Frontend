@@ -183,6 +183,8 @@ class OrderOpsService {
     int? proyectoId,
     List<String>? subfamilies,
     List<String>? completedFamilies,
+    String? assignedTo,
+    String? assignedToName,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
@@ -205,6 +207,8 @@ class OrderOpsService {
     if (completedFamilies != null) {
       body['completed_families'] = completedFamilies.join(',');
     }
+    if (assignedTo != null) body['assigned_to'] = assignedTo;
+    if (assignedToName != null) body['assigned_to_name'] = assignedToName;
 
     final result = await _client.patch(
       '/orderops/agent-orders/$idnbr/update',
@@ -227,6 +231,8 @@ class OrderOpsService {
     int? proyectoId,
     List<String>? subfamilies,
     List<String>? completedFamilies,
+    String? assignedTo,
+    String? assignedToName,
   }) async {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
@@ -249,6 +255,8 @@ class OrderOpsService {
     if (completedFamilies != null) {
       body['completed_families'] = completedFamilies.join(',');
     }
+    if (assignedTo != null) body['assigned_to'] = assignedTo;
+    if (assignedToName != null) body['assigned_to_name'] = assignedToName;
 
     return await _client.patch(
       '/orderops/agent-orders/$idnbr/update',
@@ -475,7 +483,10 @@ class OrderOpsService {
 
     // Fallback to flat endpoint for older backends
     if (result.statusCode == 404 || result.statusCode == 405) {
-      final fallback = await _client.patch('/orderops/observations/$observationId', jsonBody: body);
+      final fallback = await _client.patch(
+        '/orderops/observations/$observationId',
+        jsonBody: body,
+      );
       return fallback.ok;
     }
 
@@ -484,7 +495,9 @@ class OrderOpsService {
 
   /// Delete an observation (comment) from an agent order.
   Future<bool> deleteObservation(int idnbr, int observationId) async {
-    final nested = await _client.delete('/orderops/agent-orders/$idnbr/observations/$observationId');
+    final nested = await _client.delete(
+      '/orderops/agent-orders/$idnbr/observations/$observationId',
+    );
     if (nested.ok) return true;
 
     final flat = await _client.delete('/orderops/observations/$observationId');
@@ -535,7 +548,13 @@ class OrderOpsService {
   }) async {
     final result = await uploadPhotos(
       idnbr,
-      [MultipartAttachment(fieldName: 'file', fileName: fileName, bytes: bytes)],
+      [
+        MultipartAttachment(
+          fieldName: 'file',
+          fileName: fileName,
+          bytes: bytes,
+        ),
+      ],
       proyectoId: proyectoId,
       scope: scope,
     );
@@ -558,10 +577,7 @@ class OrderOpsService {
     final path =
         '/orderops/agent-orders/$idnbr/photos${queryString.isNotEmpty ? '?$queryString' : ''}';
 
-    return _client.postMultipart(
-      path,
-      files: files,
-    );
+    return _client.postMultipart(path, files: files);
   }
 
   /// Register an existing server-side file path into Archivos.
@@ -720,9 +736,10 @@ class OrderOpsService {
       throw Exception('Failed to sync orders: ${streamedResponse.statusCode}');
     }
 
-    await for (final line in streamedResponse.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line
+        in streamedResponse.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
       if (line.startsWith('data: ')) {
         final data = line.substring(6).trim();
         if (data.isNotEmpty) {
@@ -733,6 +750,44 @@ class OrderOpsService {
           }
         }
       }
+    }
+  }
+
+  /// Fetch users belonging to the "Ingram" company.
+  Future<List<Map<String, String>>> getIngramUsers() async {
+    try {
+      // 1. Find the Ingram company ID
+      final empresasResult = await _client.get('/empresas');
+      if (!empresasResult.ok) return [];
+
+      final empresasList = (empresasResult.body as Map)['results'] as List;
+      final ingram = empresasList.firstWhere(
+        (e) => e['nombre'].toString().toUpperCase().contains('INGRAM'),
+        orElse: () => null,
+      );
+
+      if (ingram == null) return [];
+      final ingramId = ingram['id'];
+
+      // 2. Fetch all employees and filter by company ID
+      final empleadosResult = await _client.get('/empleados/list/');
+      if (!empleadosResult.ok) return [];
+
+      final allEmpleados = empleadosResult.body as List;
+      return allEmpleados
+          .where((e) => e['empresa_id'] == ingramId)
+          .map((e) {
+            final username = e['usuario'].toString();
+            final name = e['nombre']?.toString() ?? username;
+            return {
+              'username': username,
+              'name': name,
+            };
+          })
+          .toList();
+    } catch (e) {
+      if (kDebugMode) print('Error fetching Ingram users: $e');
+      return [];
     }
   }
 }

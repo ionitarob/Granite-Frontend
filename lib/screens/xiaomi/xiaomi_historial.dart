@@ -5,7 +5,10 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 // import '../../config.dart';
 import '../../services/api_service.dart';
+import '../../services/xiaomi_provider.dart';
+import 'package:provider/provider.dart';
 import '../../widgets/main_sidebar.dart';
+import '../../widgets/liquid_glass_card.dart';
 
 class XiaomiHistoricoPage extends StatefulWidget {
   const XiaomiHistoricoPage({super.key});
@@ -22,6 +25,11 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
   DateTime? fechaHasta;
   bool ignorarFechas = false;
   OverlayEntry? _edgeOverlay;
+  
+  final _validationController = TextEditingController();
+  final _validationFocus = FocusNode();
+  List<dynamic> pendingItems = [];
+  bool loadingPending = false;
 
   bool loading = false;
   List<dynamic> records = [];
@@ -228,11 +236,100 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
       });
     } catch (e, st) {
       debugPrint('fetchHistorico error: $e\n$st');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error procesando datos: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error procesando datos: $e')),
+      );
     } finally {
-      setState(() => loading = false);
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> fetchPending() async {
+    if (!mounted) return;
+    setState(() => loadingPending = true);
+    try {
+      final api = ApiService.instance?.client;
+      if (api == null) return;
+      final resp = await api.get('/xiaomieco/not_finished_cesb');
+      if (resp.ok && resp.body is Map) {
+        setState(() {
+          pendingItems = resp.body['not_finished'] as List? ?? [];
+          unitsPending = pendingItems.fold<int>(
+            0,
+            (sum, item) => sum + (int.tryParse(item['qty']?.toString() ?? '0') ?? 0),
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching pending: $e');
+    } finally {
+      if (mounted) setState(() => loadingPending = false);
+    }
+  }
+
+  Future<void> _validateCesb(String cesb) async {
+    final code = cesb.trim();
+    if (code.isEmpty) return;
+
+    setState(() => loadingPending = true);
+    try {
+      final provider = Provider.of<XiaomiProvider>(context, listen: false);
+      final success = await provider.validateCesb(code);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('CESB $code Validado con éxito'), backgroundColor: Colors.green),
+        );
+        _validationController.clear();
+        await fetchPending();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al validar CESB $code. Asegúrate de que existe y no está cerrado.'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => loadingPending = false);
+      _validationFocus.requestFocus();
+    }
+  }
+
+  Future<void> _unvalidateCesb(String cesb) async {
+    final code = cesb.trim();
+    if (code.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Desvalidar CESB?'),
+        content: Text('Esto devolverá el CESB $code a estado PENDIENTE y reseteará cualquier inicio de trabajo previo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Desvalidar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => loadingPending = true);
+    try {
+      final provider = Provider.of<XiaomiProvider>(context, listen: false);
+      final success = await provider.unvalidateCesb(code);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('CESB $code ahora está PENDIENTE'), backgroundColor: Colors.orange),
+        );
+        await fetchPending();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al desvalidar CESB $code'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => loadingPending = false);
     }
   }
 
@@ -264,7 +361,7 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
   void initState() {
     super.initState();
     fetchHistorico();
-    _fetchGlobalKPIs();
+    fetchPending(); // New
     _connectStats();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -302,72 +399,6 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
     super.dispose();
   }
 
-  Future<void> _showNotFinishedCesb() async {
-    // show a loading indicator while fetching
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      final api = ApiService.instance?.client;
-      if (api == null) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: API no disponible')),
-        );
-        return;
-      }
-
-      final resp = await api.get('/xiaomieco/not_finished_cesb');
-      Navigator.of(context).pop(); // remove loading
-
-      if (!resp.ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('HTTP ${resp.statusCode}: ${resp.error ?? 'Error'}'),
-          ),
-        );
-        return;
-      }
-
-      final decoded = resp.body;
-      if (decoded == null ||
-          decoded is! Map ||
-          decoded['not_finished'] is! List) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Formato de respuesta no soportado')),
-        );
-        return;
-      }
-
-      final List items = decoded['not_finished'] as List;
-
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('CESB no finalizados'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 500,
-            child: _PendingCesbSearchDialog(items: items),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cerrar'),
-            ),
-          ],
-        ),
-      );
-    } catch (e, st) {
-      Navigator.of(context).pop();
-      debugPrint('fetch not_finished_cesb error: $e\n$st');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error procesando datos: $e')));
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -412,242 +443,377 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
           ),
 
           SafeArea(
-            child: Column(
-              children: [
-                // 1. Top Stats Section
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 16,
-                  ),
-                  child: Column(
-                    children: [
-                      // Toggle "Bubble" removed as per request (only 'dia' supported now)
-
-                      // KPI Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _StatCard(
-                              label: 'Unid. Hoy',
-                              value: '$unitsToday',
-                              icon: Icons.bolt_rounded,
-                              color: Colors.blueAccent,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _StatCard(
-                              label: 'CESB',
-                              value: '$filteredCesb',
-                              icon: Icons.qr_code_2_rounded,
-                              color: Colors.greenAccent,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _StatCard(
-                              label: 'Unid. (Filtradas)',
-                              value: '$filteredUnits',
-                              icon: Icons.layers_rounded,
-                              color: Colors.orangeAccent,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _StatCard(
-                              label: 'Unid. Pendientes',
-                              value: '$unitsPending',
-                              icon: Icons.pending_actions_rounded,
-                              color: Colors.redAccent,
-                            ),
-                          ),
-                        ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 900;
+                
+                Widget content = Column(
+                  children: [
+                    // 1. Top Stats Section
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: isMobile ? 8 : 16,
                       ),
-                    ],
-                  ),
-                ),
-
-                // 2. Filters Section (Compact)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor.withValues(alpha: .6),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: .1),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: .05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _GlassTextField(
-                              controller: _terminoController,
-                              hint: 'Buscar CESB, SKU, P/N...',
-                              icon: Icons.search_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          IconButton.filled(
-                            onPressed: () {
-                              fetchHistorico();
-                              _fetchGlobalKPIs();
-                            },
-                            icon: const Icon(Icons.search),
-                            style: IconButton.styleFrom(
-                              backgroundColor: theme.colorScheme.primary,
-                              foregroundColor: theme.colorScheme.onPrimary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            // Filter chips for date range
-                            _FilterChip(
-                              label: fechaDesde != null
-                                  ? 'Desde: ${fechaDesde!.toLocal().toString().split(' ').first}'
-                                  : 'Inicio',
-                              icon: Icons.start_rounded,
-                              onTap: _pickFechaDesde,
-                              isActive: fechaDesde != null,
-                            ),
-                            const SizedBox(width: 8),
-                            _FilterChip(
-                              label: fechaHasta != null
-                                  ? 'Hasta: ${fechaHasta!.toLocal().toString().split(' ').first}'
-                                  : 'Fin',
-                              icon: Icons.keyboard_tab_rounded,
-                              onTap: _pickFechaHasta,
-                              isActive: fechaHasta != null,
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHighest
-                                    .withValues(alpha: .5),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: operarioSeleccionado,
-                                  icon: const Icon(
-                                    Icons.person_outline_rounded,
-                                    size: 18,
+                      child: isMobile
+                          ? GridView.count(
+                              crossAxisCount: 2,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 2.2, // Taller cards to prevent internal value overflow
+                              children: [
+                                _StatCard(
+                                  label: 'Unid. Hoy',
+                                  value: '$unitsToday',
+                                  icon: Icons.bolt_rounded,
+                                  color: Colors.blueAccent,
+                                ),
+                                _StatCard(
+                                  label: 'CESB',
+                                  value: '$filteredCesb',
+                                  icon: Icons.qr_code_2_rounded,
+                                  color: Colors.greenAccent,
+                                ),
+                                _StatCard(
+                                  label: 'Unid. (Filtradas)',
+                                  value: '$filteredUnits',
+                                  icon: Icons.layers_rounded,
+                                  color: Colors.orangeAccent,
+                                ),
+                                _StatCard(
+                                  label: 'Unid. Pendientes',
+                                  value: '$unitsPending',
+                                  icon: Icons.pending_actions_rounded,
+                                  color: Colors.redAccent,
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: _StatCard(
+                                    label: 'Unid. Hoy',
+                                    value: '$unitsToday',
+                                    icon: Icons.bolt_rounded,
+                                    color: Colors.blueAccent,
                                   ),
-                                  style: theme.textTheme.bodyMedium,
-                                  items: ['Selecciona un valor', ...operarios]
-                                      .map(
-                                        (o) => DropdownMenuItem(
-                                          value: o,
-                                          child: Text(
-                                            o == 'Selecciona un valor'
-                                                ? 'Todos los operarios'
-                                                : o,
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) =>
-                                      setState(() => operarioSeleccionado = v!),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _StatCard(
+                                    label: 'CESB',
+                                    value: '$filteredCesb',
+                                    icon: Icons.qr_code_2_rounded,
+                                    color: Colors.greenAccent,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _StatCard(
+                                    label: 'Unid. (Filtradas)',
+                                    value: '$filteredUnits',
+                                    icon: Icons.layers_rounded,
+                                    color: Colors.orangeAccent,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _StatCard(
+                                    label: 'Unid. Pendientes',
+                                    value: '$unitsPending',
+                                    icon: Icons.pending_actions_rounded,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            ActionChip(
-                              avatar: const Icon(
-                                Icons.cleaning_services_rounded,
-                                size: 16,
-                              ),
-                              label: const Text('Limpiar'),
-                              onPressed: () {
-                                setState(() {
-                                  filtroTiempo = 'dia';
-                                  operarioSeleccionado = 'Selecciona un valor';
-                                  fechaDesde = null;
-                                  fechaHasta = null;
-                                  _terminoController.clear();
-                                  ignorarFechas = false;
-                                });
-                                fetchHistorico();
-                                _fetchGlobalKPIs();
-                              },
-                              side: BorderSide.none,
-                              backgroundColor: theme.colorScheme.errorContainer
-                                  .withValues(alpha: .2),
-                            ),
-                          ],
-                        ),
+                    ),
+
+                    // 2. Filters Section
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: EdgeInsets.all(isMobile ? 12 : 16),
+                      decoration: BoxDecoration(
+                        color: theme.cardColor.withValues(alpha: .6),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: theme.dividerColor.withValues(alpha: .1)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: .05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // 3. List Section
-                Expanded(
-                  child: loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : records.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                      child: Column(
+                        children: [
+                          Row(
                             children: [
-                              Icon(
-                                Icons.history_toggle_off_rounded,
-                                size: 80,
-                                color: theme.disabledColor.withValues(
-                                  alpha: .2,
+                              Expanded(
+                                child: _GlassTextField(
+                                  controller: _terminoController,
+                                  hint: 'Buscar CESB, SKU, P/N...',
+                                  icon: Icons.search_rounded,
                                 ),
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No hay registros',
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  color: theme.disabledColor,
+                              const SizedBox(width: 12),
+                              IconButton.filled(
+                                onPressed: () {
+                                  fetchHistorico();
+                                  _fetchGlobalKPIs();
+                                },
+                                icon: const Icon(Icons.search),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: theme.colorScheme.primary,
+                                  foregroundColor: theme.colorScheme.onPrimary,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                 ),
                               ),
                             ],
                           ),
-                        )
-                      : Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: _LazyDataTable(records: records, theme: theme),
-                        ),
-                ),
-              ],
+                          const SizedBox(height: 12),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _FilterChip(
+                                  label: fechaDesde != null
+                                      ? 'Desde: ${fechaDesde!.toLocal().toString().split(' ').first}'
+                                      : 'Inicio',
+                                  icon: Icons.start_rounded,
+                                  onTap: _pickFechaDesde,
+                                  isActive: fechaDesde != null,
+                                ),
+                                const SizedBox(width: 8),
+                                _FilterChip(
+                                  label: fechaHasta != null
+                                      ? 'Hasta: ${fechaHasta!.toLocal().toString().split(' ').first}'
+                                      : 'Fin',
+                                  icon: Icons.keyboard_tab_rounded,
+                                  onTap: _pickFechaHasta,
+                                  isActive: fechaHasta != null,
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .5),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: operarioSeleccionado,
+                                      icon: const Icon(Icons.person_outline_rounded, size: 18),
+                                      style: theme.textTheme.bodyMedium,
+                                      items: ['Selecciona un valor', ...operarios]
+                                          .map((o) => DropdownMenuItem(
+                                                value: o,
+                                                child: Text(o == 'Selecciona un valor' ? 'Todos los operarios' : o),
+                                              ))
+                                          .toList(),
+                                      onChanged: (v) => setState(() => operarioSeleccionado = v!),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ActionChip(
+                                  avatar: const Icon(Icons.cleaning_services_rounded, size: 16),
+                                  label: const Text('Limpiar'),
+                                  onPressed: () {
+                                    setState(() {
+                                      filtroTiempo = 'dia';
+                                      operarioSeleccionado = 'Selecciona un valor';
+                                      fechaDesde = null;
+                                      fechaHasta = null;
+                                      _terminoController.clear();
+                                      ignorarFechas = false;
+                                    });
+                                    fetchHistorico();
+                                    _fetchGlobalKPIs();
+                                  },
+                                  side: BorderSide.none,
+                                  backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: .2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // 3. Main Split Layout
+                    isMobile
+                        ? Column(
+                            children: [
+                              _buildPendingSection(theme, isMobile),
+                              const SizedBox(height: 12),
+                              _buildHistorySection(theme, isMobile),
+                            ],
+                          )
+                        : Expanded(
+                            child: Flex(
+                              direction: Axis.horizontal,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // --- PRIMARY COLUMN (HISTORY on Desktop) ---
+                                Expanded(
+                                  flex: 3,
+                                  child: _buildHistorySection(theme, isMobile),
+                                ),
+                                const VerticalDivider(width: 1),
+                                // --- SECONDARY COLUMN (PENDING on Desktop) ---
+                                Expanded(
+                                  flex: 2,
+                                  child: _buildPendingSection(theme, isMobile),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ],
+                );
+                return isMobile ? SingleChildScrollView(child: content) : content;
+              },
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showNotFinishedCesb,
-        icon: const Icon(Icons.warning_rounded, color: Colors.white),
-        label: const Text('Pendientes', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.orange,
+    );
+  }
+
+  Widget _buildHistorySection(ThemeData theme, bool isMobile) {
+    return Column(
+      mainAxisSize: isMobile ? MainAxisSize.min : MainAxisSize.max,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: isMobile ? 4 : 8),
+          child: Row(
+            children: [
+              const Icon(Icons.history_rounded, size: 20, color: Colors.blueGrey),
+              const SizedBox(width: 8),
+              Text('HISTÓRICO ACABADOS',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.hintColor, letterSpacing: 1.1)),
+            ],
+          ),
+        ),
+        if (!isMobile)
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : records.isEmpty
+                    ? _buildNoData(theme)
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: _LazyDataTable(records: records, theme: theme),
+                      ),
+          )
+        else
+          // On mobile, just a regular container for the table (it has internal scroll)
+          loading
+              ? const Center(child: CircularProgressIndicator())
+              : records.isEmpty
+                  ? _buildNoData(theme)
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(
+                        height: 400, // Reasonable height for the table on mobile
+                        child: _LazyDataTable(records: records, theme: theme),
+                      ),
+                    ),
+      ],
+    );
+  }
+
+  Widget _buildPendingSection(ThemeData theme, bool isMobile) {
+    return Container(
+      color: theme.colorScheme.surface.withOpacity(0.3),
+      child: Column(
+        mainAxisSize: isMobile ? MainAxisSize.min : MainAxisSize.max,
+        children: [
+          // Scanner Area
+          Container(
+            padding: EdgeInsets.all(isMobile ? 12 : 16),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withOpacity(0.05),
+              border: Border(bottom: BorderSide(color: theme.dividerColor.withOpacity(0.1))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.qr_code_scanner_rounded, size: 20, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('VALIDAR CESB', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.orange)),
+                  ],
+                ),
+                SizedBox(height: isMobile ? 8 : 12),
+                _GlassTextField(
+                  controller: _validationController,
+                  focusNode: _validationFocus,
+                  hint: 'Escanear CESB...',
+                  icon: Icons.barcode_reader,
+                  onSubmitted: (v) => _validateCesb(v),
+                ),
+              ],
+            ),
+          ),
+
+          // Pending List
+          if (!isMobile)
+            Expanded(
+              child: _buildPendingList(),
+            )
+          else
+            SizedBox(
+              height: 450, // Fixed height on mobile for 'scroll in scroll'
+              child: _buildPendingList(shrinkWrap: false), // Enable internal scroll
+            ),
+        ],
       ),
     );
+  }
+
+  Widget _buildPendingList({bool shrinkWrap = false}) {
+    return loadingPending
+        ? const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+        : pendingItems.isEmpty
+            ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Todo está al día', style: TextStyle(color: Colors.grey))))
+            : ListView.separated(
+                shrinkWrap: shrinkWrap,
+                physics: shrinkWrap ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 20, left: 12, right: 12, top: 12),
+                itemCount: pendingItems.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (ctx, i) {
+                  final item = pendingItems[i];
+                  final isValidated = item['fecha_hora_validado'] != null;
+                  final isStarted = item['fecha_hora_inicio'] != null;
+
+                  return _PendingCesbTile(
+                    item: item,
+                    isValidated: isValidated,
+                    isStarted: isStarted,
+                    onTap: () {
+                      if (!isValidated) {
+                        _validationController.text = item['cesb'] ?? '';
+                        _validationFocus.requestFocus();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('CESB ${item['cesb']} está validado. Puedes empezar el trabajo desde la pantalla de Ejecución.'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      }
+                    },
+                    onUnvalidate: (isValidated || isStarted) ? () => _unvalidateCesb(item['cesb'] ?? '') : null,
+                  );
+                },
+              );
   }
 }
 
@@ -670,7 +836,7 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: theme.cardColor.withValues(alpha: .8),
         borderRadius: BorderRadius.circular(20),
@@ -741,11 +907,15 @@ class _GlassTextField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final IconData icon;
+  final FocusNode? focusNode;
+  final Function(String)? onSubmitted;
 
   const _GlassTextField({
     required this.controller,
     required this.hint,
     required this.icon,
+    this.focusNode,
+    this.onSubmitted,
   });
 
   @override
@@ -753,11 +923,13 @@ class _GlassTextField extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: .5),
+        color: theme.colorScheme.surface.withAlpha(128),
         borderRadius: BorderRadius.circular(16),
       ),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
+        onSubmitted: onSubmitted,
         decoration: InputDecoration(
           hintText: hint,
           prefixIcon: Icon(icon, color: theme.hintColor),
@@ -770,6 +942,94 @@ class _GlassTextField extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PendingCesbTile extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final bool isValidated;
+  final bool isStarted;
+  final VoidCallback onTap;
+  final VoidCallback? onUnvalidate;
+
+  const _PendingCesbTile({
+    required this.item,
+    required this.isValidated,
+    required this.isStarted,
+    required this.onTap,
+    this.onUnvalidate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = isStarted ? Colors.blue : (isValidated ? Colors.green : Colors.grey);
+    
+    return LiquidGlassCard(
+      radius: 12,
+      blur: 10,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      onTap: onTap,
+      tint: color.withValues(alpha: .02),
+      child: ListTile(
+        dense: true,
+        title: Text(
+          item['cesb'] ?? 'SIN CESB',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        subtitle: Text(
+          '${item['sku']}\n${item['qty']} uds',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.hintColor,
+            height: 1.3,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onUnvalidate != null)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.undo_rounded, size: 18, color: Colors.orange),
+                onPressed: onUnvalidate,
+                tooltip: 'Desvalidar / Revertir',
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withValues(alpha: .2)),
+              ),
+              child: Text(
+                isStarted ? 'TRABAJANDO' : (isValidated ? 'VALIDADO' : 'PENDIENTE'),
+                style: TextStyle(
+                  fontSize: 9, 
+                  fontWeight: FontWeight.bold, 
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Widget _buildNoData(ThemeData theme) {
+  return Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.history_toggle_off_rounded, size: 48, color: theme.disabledColor.withAlpha(50)),
+        const SizedBox(height: 12),
+        Text('No hay registros', style: TextStyle(color: theme.disabledColor)),
+      ],
+    ),
+  );
 }
 
 class _FilterChip extends StatelessWidget {
@@ -830,122 +1090,6 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _PendingCesbSearchDialog extends StatefulWidget {
-  final List items;
-  const _PendingCesbSearchDialog({required this.items});
-
-  @override
-  State<_PendingCesbSearchDialog> createState() =>
-      _PendingCesbSearchDialogState();
-}
-
-class _PendingCesbSearchDialogState extends State<_PendingCesbSearchDialog> {
-  final _searchController = TextEditingController();
-  late List _filteredItems;
-
-  @override
-  void initState() {
-    super.initState();
-    _filteredItems = List.from(widget.items);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _filter(String query) {
-    if (query.isEmpty) {
-      if (mounted) setState(() => _filteredItems = List.from(widget.items));
-      return;
-    }
-    final lower = query.toLowerCase();
-    setState(() {
-      _filteredItems = widget.items.where((item) {
-        final cesb = item['cesb']?.toString().toLowerCase() ?? '';
-        final sku = item['sku']?.toString().toLowerCase() ?? '';
-        final partn = item['partn']?.toString().toLowerCase() ?? '';
-        final operario = item['operario']?.toString().toLowerCase() ?? '';
-        return cesb.contains(lower) ||
-            sku.contains(lower) ||
-            partn.contains(lower) ||
-            operario.contains(lower);
-      }).toList();
-    });
-  }
-
-  String _val(dynamic v) =>
-      (v == null || (v is String && v.trim().isEmpty)) ? '-' : v.toString();
-
-  String _openDate(dynamic v) {
-    if (v == null) return '-';
-    try {
-      final parsed = DateTime.parse(v.toString()).toLocal();
-      return parsed.toString().split('.').first; // YYYY-MM-DD HH:MM:SS
-    } catch (_) {
-      return v.toString();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        TextField(
-          controller: _searchController,
-          decoration: const InputDecoration(
-            labelText: 'Buscar CESB, SKU, Operario...',
-            prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-          onChanged: _filter,
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: _filteredItems.isEmpty
-              ? const Center(child: Text('No se encontraron resultados'))
-              : SelectionArea(
-                  child: ListView.separated(
-                    itemCount: _filteredItems.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (c, i) {
-                      final r = _filteredItems[i];
-                      return ListTile(
-                        title: Text(
-                          '${_val(r['cesb'])} / ${_val(r['sku'])}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          'P/N: ${_val(r['partn'])} • Qty: ${_val(r['qty'])} • Cartons: ${_val(r['cartons'])}',
-                        ),
-                        trailing: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Operario: ${_val(r['operario'])}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Abierto: ${_openDate(r['fecha_hora_registro'])}',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-}
 
 class _LazyDataTable extends StatefulWidget {
   final List records;
@@ -1099,13 +1243,16 @@ class _LazyDataTableState extends State<_LazyDataTable> {
       return cell;
     }
 
-    // Column background colors to help readability
-    final colColor1 = Colors.transparent;
-    final colColor2 = theme.colorScheme.primaryContainer.withValues(alpha: .6);
-    final colColor3 = theme.colorScheme.secondaryContainer.withValues(
-      alpha: .6,
-    );
-    final colColor4 = theme.colorScheme.tertiaryContainer.withValues(alpha: .6);
+    // Column widths
+    final Map<String, int> columnFlex = {
+      'cesb': 4,
+      'sku': 2,
+      'partn': 3,
+      'qty': 2,
+      'cartons': 2,
+      'operario': 3,
+      'fecha': 4,
+    };
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1139,53 +1286,46 @@ class _LazyDataTableState extends State<_LazyDataTable> {
                     children: [
                       buildCell(
                         'CESB',
-                        flex: 3,
+                        flex: columnFlex['cesb']!,
                         isHeader: true,
-                        bgColor: colColor1,
                         sortKey: 'cesb',
                       ),
                       buildCell(
                         'SKU',
-                        flex: 2,
+                        flex: columnFlex['sku']!,
                         isHeader: true,
-                        bgColor: colColor2,
                         sortKey: 'sku',
                       ),
                       buildCell(
-                        'Part Number',
-                        flex: 2,
+                        'P/N',
+                        flex: columnFlex['partn']!,
                         isHeader: true,
-                        bgColor: colColor1,
                         sortKey: 'partn',
                       ),
                       buildCell(
-                        'Unid.',
-                        flex: 1,
+                        'Uds.',
+                        flex: columnFlex['qty']!,
                         align: TextAlign.right,
                         isHeader: true,
-                        bgColor: colColor3,
                         sortKey: 'qty',
                       ),
                       buildCell(
                         'Cart.',
-                        flex: 1,
+                        flex: columnFlex['cartons']!,
                         align: TextAlign.right,
                         isHeader: true,
-                        bgColor: colColor3,
                         sortKey: 'cartons',
                       ),
                       buildCell(
                         'Operario',
-                        flex: 3,
+                        flex: columnFlex['operario']!,
                         isHeader: true,
-                        bgColor: colColor4,
                         sortKey: 'operario',
                       ),
                       buildCell(
                         'Fecha Fin',
-                        flex: 3,
+                        flex: columnFlex['fecha']!,
                         isHeader: true,
-                        bgColor: colColor1,
                         sortKey: 'fecha_hora_fin',
                       ),
                     ],
@@ -1228,37 +1368,34 @@ class _LazyDataTableState extends State<_LazyDataTable> {
                           children: [
                             buildCell(
                               val(r['cesb']),
-                              flex: 3,
-                              bgColor: colColor1,
+                              flex: columnFlex['cesb']!,
                             ),
                             buildCell(
                               val(r['sku']),
-                              flex: 2,
-                              bgColor: colColor2,
+                              flex: columnFlex['sku']!,
                             ),
                             buildCell(
                               val(r['partn']),
-                              flex: 2,
-                              bgColor: colColor1,
+                              flex: columnFlex['partn']!,
                             ),
                             buildCell(
                               val(r['qty']),
-                              flex: 1,
+                              flex: columnFlex['qty']!,
                               align: TextAlign.right,
-                              bgColor: colColor3,
                             ),
                             buildCell(
                               val(r['cartons']),
-                              flex: 1,
+                              flex: columnFlex['cartons']!,
                               align: TextAlign.right,
-                              bgColor: colColor3,
                             ),
                             buildCell(
                               val(r['operario']),
-                              flex: 3,
-                              bgColor: colColor4,
+                              flex: columnFlex['operario']!,
                             ),
-                            buildCell(dateStr, flex: 3, bgColor: colColor1),
+                            buildCell(
+                              dateStr,
+                              flex: columnFlex['fecha']!,
+                            ),
                           ],
                         ),
                       );

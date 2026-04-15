@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../widgets/main_sidebar.dart';
 import '../../services/api_service.dart';
 import 'dart:ui'; // For ImageFilter
@@ -102,19 +102,21 @@ class _XiaomiRegistroOrdenScreenState extends State<XiaomiRegistroOrdenScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Advertencia de Formato'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Se detectaron inconsistencias:'),
-              const SizedBox(height: 8),
-              ...warnings.map(
-                (w) =>
-                    Text('• $w', style: const TextStyle(color: Colors.orange)),
-              ),
-              const SizedBox(height: 16),
-              const Text('¿Continuar de todos modos?'),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Se detectaron inconsistencias:'),
+                const SizedBox(height: 8),
+                ...warnings.map(
+                  (w) =>
+                      Text('• $w', style: const TextStyle(color: Colors.orange)),
+                ),
+                const SizedBox(height: 16),
+                const Text('¿Continuar de todos modos?'),
+              ],
+            ),
           ),
           actions: [
             TextButton(

@@ -1194,8 +1194,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     if (index < 0 || index >= _matchRows.length) return;
     final saved = await _saveRow(index, forceConfirm: false);
     if (saved) {
-      if (index + 1 < _matchRows.length) {
-        _matchRows[index + 1].focus.requestFocus();
+      if (index < _matchRows.length) {
+        _matchRows[index].focus.requestFocus();
       }
     } else {
       _matchRows[index].inventoryFocus.requestFocus();
@@ -2132,8 +2132,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     } else {
       final saved = await _saveRow(index, forceConfirm: false);
       if (saved) {
-        if (index + 1 < _matchRows.length) {
-          _matchRows[index + 1].focus.requestFocus();
+        if (index < _matchRows.length) {
+          _matchRows[index].focus.requestFocus();
         }
       } else {
         _matchRows[index].focus.requestFocus();

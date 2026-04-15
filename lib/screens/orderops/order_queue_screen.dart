@@ -10,6 +10,7 @@ import '../../widgets/animated_background.dart';
 import '../../widgets/main_sidebar.dart';
 
 import 'order_detail_screen.dart';
+import '../../widgets/multi_family_selection_dialog.dart';
 
 class OrderQueueScreen extends StatefulWidget {
   const OrderQueueScreen({super.key});
@@ -34,6 +35,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   // Filters
   final TextEditingController _searchController = TextEditingController();
   String? _selectedEstado;
+  bool _filterByMe = false;
 
   @override
   void initState() {
@@ -52,7 +54,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       // Insert overlay for sidebar only on desktop widths.
       final logicalWidth =
           MediaQuery.maybeOf(context)?.size.width ??
-          (View.of(context).physicalSize.width / View.of(context).devicePixelRatio);
+          (View.of(context).physicalSize.width /
+              View.of(context).devicePixelRatio);
       final isMobile = logicalWidth < 900;
 
       if (mounted && !isMobile) {
@@ -95,12 +98,33 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     super.dispose();
   }
 
+  String _normalizedRole() {
+    final raw = (ApiService.instance?.currentUser?.role ?? '')
+        .trim()
+        .toLowerCase();
+    if (raw.startsWith('role_')) return raw.substring(5);
+    return raw;
+  }
+
+  bool get _isPrivilegedRole {
+    final role = _normalizedRole();
+    return role == 'admin' || role == 'chief';
+  }
+
+  bool get _canEditProyectoOrFamily {
+    final role = _normalizedRole();
+    return role == 'admin' || role == 'chief' || role.contains('clerc');
+  }
+
   Future<void> _loadOrders({bool silent = false}) async {
     if (_orderOpsService == null) return;
     if (!silent) setState(() => _loading = true);
 
     try {
-      final orders = await _orderOpsService!.getAgentOrders(limit: 200);
+      final allOrders = await _orderOpsService!.getAgentOrders(limit: 240);
+      final allowedStates = {'1', '2', '3', '4'};
+      final orders = allOrders.where((o) => allowedStates.contains(o.estado.trim())).toList();
+      
       setState(() {
         _orders = orders;
         _error = null;
@@ -128,8 +152,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     for (final raw in lines) {
       if (raw is! Map) continue;
       final row = Map<String, dynamic>.from(raw);
-      final description =
-          (row['DESCRIP1'] ?? row['description'] ?? '').toString().toUpperCase();
+      final description = (row['DESCRIP1'] ?? row['description'] ?? '')
+          .toString()
+          .toUpperCase();
       if (description.contains('MASTER')) {
         return true;
       }
@@ -143,7 +168,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     final candidates = orders
         .where((o) {
           final family = (o.family ?? '').trim();
-          return family.isEmpty && !_autoFamilyScannedOrderIds.contains(o.idnbr);
+          return family.isEmpty &&
+              !_autoFamilyScannedOrderIds.contains(o.idnbr);
         })
         .take(25)
         .toList(growable: false);
@@ -277,12 +303,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   }
 
   Future<void> _showManualFamilyPicker(AgentOrder order) async {
+    if (!_canEditProyectoOrFamily) return;
     if (_orderOpsService == null) return;
-
-    const extraFamilies = <String>[
-      'SERIGRAFIADO',
-      'MANIPULACIÓN Y ETIQUETADO',
-    ];
 
     List<String> families = [];
     try {
@@ -291,126 +313,55 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       debugPrint('Error fetching families: $e');
     }
 
-    if (families.isEmpty) {
-      families = [
-        'ORDENADORES SERVIDOR',
-        'CAMBIO DE SERIAL',
-        'XIAOMI ETIQUETADO',
-      ];
-    }
-
-    families = {...families, ...extraFamilies}.toList();
+    // Ensure catalog list includes what is already assigned (consistency fix)
+    families = {...families, ...order.subfamilies}.toList();
     families.sort();
+
+    // Sync fix: combine primary family and all subfamilies for the menu view
+    final currentSelection = {
+      if (order.family != null && order.family!.isNotEmpty) order.family!,
+      ...order.subfamilies,
+    }.toList();
 
     if (!mounted) return;
 
-    final currentFamily = (order.family ?? '').trim();
-
-    showModalBottomSheet(
+    final result = await showDialog<List<String>>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          builder: (ctx, scrollController) => Material(
-            color: const Color(0xFF1A1A2E),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Text(
-                      'Seleccionar Familia de Pedido',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1, color: Colors.white10),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      itemCount: families.length,
-                      itemBuilder: (ctx, index) {
-                        final f = families[index];
-                        final selected =
-                            f.toLowerCase() == currentFamily.toLowerCase();
-                        return ListTile(
-                          leading: Icon(
-                            Icons.category_outlined,
-                            color: selected ? Colors.tealAccent : Colors.white70,
-                          ),
-                          title: Text(
-                            f,
-                            style: TextStyle(
-                              color: selected ? Colors.tealAccent : Colors.white,
-                              fontWeight: selected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                          trailing: selected
-                              ? const Icon(Icons.check, color: Colors.tealAccent)
-                              : null,
-                          onTap: () async {
-                            Navigator.pop(sheetContext);
-                            if (selected) return;
-
-                            final ok = await _orderOpsService!.updateAgentOrder(
-                              order.idnbr,
-                              family: f,
-                              reason: 'Cambio manual de familia a: $f',
-                            );
-                            if (!mounted) return;
-
-                            if (ok) {
-                              _loadOrders(silent: true);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Familia actualizada correctamente'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('No se pudo actualizar la familia'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      builder: (context) => MultiFamilySelectionDialog(
+        allFamilies: families,
+        initiallySelected: currentSelection,
+        title: 'Asignar Servicios',
+      ),
     );
+
+    if (result != null) {
+      setState(() => _loading = true);
+      try {
+        // Sync fix: primary family should always be part of the subfamilies list
+        String? primaryFamily = order.family;
+        if (result.isEmpty) {
+          primaryFamily = '';
+        } else if (primaryFamily == null || primaryFamily.isEmpty || !result.contains(primaryFamily)) {
+          primaryFamily = result.first;
+        }
+
+        final ok = await _orderOpsService!.updateAgentOrder(
+          order.idnbr,
+          family: primaryFamily,
+          subfamilies: result,
+          reason: 'Sync manual subfamilias desde cola: ${result.join(", ")}',
+        );
+        if (ok) await _loadOrders();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
+    }
   }
 
   // Removed _runAgent as AI triage is deprecated.
@@ -543,7 +494,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.sync_alt_rounded, color: Colors.tealAccent),
+              icon: const Icon(
+                Icons.sync_alt_rounded,
+                color: Colors.tealAccent,
+              ),
               onPressed: _handleSyncOrders,
               tooltip: 'Sincronizar Ordenes (SFTP)',
             ),
@@ -558,12 +512,13 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
 
   Widget _buildSearchBar(ThemeData theme) {
     // Unique native estados to filter by (normalized to avoid duplicates/stale values)
-    final estados = _orders
-        .map((e) => e.estado.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final estados =
+        _orders
+            .map((e) => e.estado.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     final selectedEstadoValue =
         (_selectedEstado != null && estados.contains(_selectedEstado))
         ? _selectedEstado
@@ -593,7 +548,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     color: theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
                   hintStyle: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(isDark ? 0.65 : 0.55),
+                    color: theme.colorScheme.onSurface.withOpacity(
+                      isDark ? 0.65 : 0.55,
+                    ),
                   ),
                   filled: true,
                   fillColor: isDark
@@ -602,13 +559,17 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                      color: theme.dividerColor.withOpacity(isDark ? 0.1 : 0.35),
+                      color: theme.dividerColor.withOpacity(
+                        isDark ? 0.1 : 0.35,
+                      ),
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                      color: theme.dividerColor.withOpacity(isDark ? 0.1 : 0.35),
+                      color: theme.dividerColor.withOpacity(
+                        isDark ? 0.1 : 0.35,
+                      ),
                     ),
                   ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -616,7 +577,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                 onChanged: (val) => setState(() {}),
               ),
             ),
-            if (isMobile) const SizedBox(height: 12) else const SizedBox(width: 16),
+            if (isMobile)
+              const SizedBox(height: 12)
+            else
+              const SizedBox(width: 16),
             Container(
               width: isMobile ? double.infinity : null,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -642,12 +606,18 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     ),
                     ...estados.map((e) {
                       String label = e;
-                      if (e.contains('1')) label = 'Validada';
-                      else if (e.contains('2')) label = 'Pendiente';
-                      else if (e.contains('3')) label = 'En Ejecución';
-                      else if (e.contains('4')) label = 'Parada';
-                      else if (e.contains('5')) label = 'Finalizada';
-                      else if (e.contains('6')) label = 'Facturada';
+                      if (e.contains('1'))
+                        label = 'Validada';
+                      else if (e.contains('2'))
+                        label = 'Pendiente';
+                      else if (e.contains('3'))
+                        label = 'En Ejecución';
+                      else if (e.contains('4'))
+                        label = 'Parada';
+                      else if (e.contains('5'))
+                        label = 'Finalizada';
+                      else if (e.contains('6'))
+                        label = 'Facturada';
                       return DropdownMenuItem(
                         value: e,
                         child: Text(label.isEmpty ? 'Sin Estado' : label),
@@ -657,6 +627,14 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   onChanged: (val) => setState(() => _selectedEstado = val),
                 ),
               ),
+            ),
+            const SizedBox(width: 8),
+            FilterChip(
+              label: const Text('Mis órdenes'),
+              selected: _filterByMe,
+              onSelected: (val) => setState(() => _filterByMe = val),
+              selectedColor: theme.colorScheme.primaryContainer,
+              checkmarkColor: theme.colorScheme.primary,
             ),
           ],
         ),
@@ -711,17 +689,28 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     if (_selectedEstado != null) {
       list = list.where((o) => o.estado == _selectedEstado).toList();
     }
+    if (_filterByMe) {
+      final currentUser =
+          Provider.of<ApiService>(context, listen: false).currentUser;
+      if (currentUser != null) {
+        list = list
+            .where((o) =>
+                o.assignedTo == currentUser.username ||
+                o.assignedTo == currentUser.id.toString())
+            .toList();
+      }
+    }
     final query = _searchController.text.trim().toLowerCase();
     if (query.isNotEmpty) {
       final cleanQuery = query.replaceAll('-', '');
       list = list.where((o) {
         final cleanOrderNbr = o.orderNbr.toLowerCase().replaceAll('-', '');
-        
+
         // Match exact clean nbr, or if query is 5 digits, check if it's contained in the middle
         bool nbrMatch = cleanOrderNbr.contains(cleanQuery);
         if (cleanQuery.length == 5 && cleanOrderNbr.length >= 7) {
-            // Specifically check the middle 5 digits if it's a standard format
-            // but .contains(cleanQuery) already covers this and more.
+          // Specifically check the middle 5 digits if it's a standard format
+          // but .contains(cleanQuery) already covers this and more.
         }
 
         return nbrMatch ||
@@ -792,13 +781,13 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         side: BorderSide(color: theme.dividerColor.withOpacity(0.05)),
       ),
       clipBehavior: Clip.antiAlias,
-        color: theme.brightness == Brightness.dark
+      color: theme.brightness == Brightness.dark
           ? theme.cardColor.withOpacity(0.9)
           : theme.colorScheme.surface.withOpacity(0.98),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SizedBox(
-          width: minWidth,
+          width: 1300,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -824,7 +813,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     _headerCell('Fecha', 110),
                     _headerCell('Cliente', 200),
                     _headerCell('Descripción', 300),
+                    _headerCell('Familia', 150),
                     _headerCell('Prioridad', 110),
+                    _headerCell('Asignado', 150),
                     _headerCell('Estado/Manual', 130),
                   ],
                 ),
@@ -835,12 +826,13 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   itemCount: tableItems.length,
                   padding: EdgeInsets.zero,
                   separatorBuilder: (context, index) {
-                    if (tableItems[index] is String || 
-                        (index + 1 < tableItems.length && tableItems[index+1] is String)) {
+                    if (tableItems[index] is String ||
+                        (index + 1 < tableItems.length &&
+                            tableItems[index + 1] is String)) {
                       return const SizedBox.shrink();
                     }
                     return Divider(
-                      height: 1, 
+                      height: 1,
                       color: theme.dividerColor.withOpacity(0.05),
                       indent: 16,
                       endIndent: 16,
@@ -851,7 +843,11 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     if (item is String) {
                       return _buildMonthRow(item, theme);
                     } else {
-                      return _buildOrderRow(item as AgentOrder, theme, idx % 2 == 0);
+                      return _buildOrderRow(
+                        item as AgentOrder,
+                        theme,
+                        idx % 2 == 0,
+                      );
                     }
                   },
                 ),
@@ -869,7 +865,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       margin: const EdgeInsets.symmetric(vertical: 8),
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        color: isDark
+      color: isDark
           ? theme.cardColor.withOpacity(0.9)
           : theme.colorScheme.surface.withOpacity(0.98),
       child: InkWell(
@@ -897,7 +893,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
               const SizedBox(height: 8),
               Text(
                 order.customer,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -905,7 +904,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     ? DateFormat('dd/MM/yyyy').format(order.orderDate!)
                     : '-',
                 style: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(isDark ? 0.6 : 0.68),
+                  color: theme.colorScheme.onSurface.withOpacity(
+                    isDark ? 0.6 : 0.68,
+                  ),
                   fontSize: 13,
                 ),
               ),
@@ -916,49 +917,86 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(isDark ? 0.7 : 0.78),
+                    color: theme.colorScheme.onSurface.withOpacity(
+                      isDark ? 0.7 : 0.78,
+                    ),
                     fontSize: 14,
                   ),
                 ),
                 const SizedBox(height: 12),
               ],
+              // Familia (Mobile)
+              Row(
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 14,
+                    color: theme.colorScheme.primary.withOpacity(0.7),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      order.subfamiliesDisplay.isNotEmpty
+                          ? order.subfamiliesDisplay
+                          : (order.family ?? 'Sin servicio'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Builder(builder: (context) {
-                    String prioText = order.prioridad;
-                    Color prioColor = Colors.grey;
-                    if (prioText.contains('1')) {
-                      prioText = 'Alta';
-                      prioColor = Colors.red;
-                    } else if (prioText.contains('2')) {
-                      prioText = 'Media';
-                      prioColor = Colors.orange;
-                    } else if (prioText.contains('3')) {
-                      prioText = 'Baja';
-                      prioColor = Colors.green;
-                    } else if (prioText.toLowerCase().contains('alta')) {
-                      prioColor = Colors.red;
-                    }
+                  Builder(
+                    builder: (context) {
+                      String prioText = order.prioridad;
+                      Color prioColor = Colors.grey;
+                      if (prioText.contains('1')) {
+                        prioText = 'Alta';
+                        prioColor = Colors.red;
+                      } else if (prioText.contains('2')) {
+                        prioText = 'Media';
+                        prioColor = Colors.orange;
+                      } else if (prioText.contains('3')) {
+                        prioText = 'Baja';
+                        prioColor = Colors.green;
+                      } else if (prioText.toLowerCase().contains('alta')) {
+                        prioColor = Colors.red;
+                      }
 
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: prioColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: prioColor.withOpacity(0.3)),
-                      ),
-                      child: Text(
-                        prioText.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: prioColor,
-                          fontWeight: FontWeight.bold,
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
                         ),
-                      ),
-                    );
-                  }),
-                  const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
+                        decoration: BoxDecoration(
+                          color: prioColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: prioColor.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          prioText.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: prioColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: Colors.grey,
+                  ),
                 ],
               ),
             ],
@@ -1049,7 +1087,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                         : '-',
                     style: TextStyle(
                       fontSize: 13,
-                      color: theme.colorScheme.onSurface.withOpacity(isDark ? 0.7 : 0.72),
+                      color: theme.colorScheme.onSurface.withOpacity(
+                        isDark ? 0.7 : 0.72,
+                      ),
                     ),
                   ),
                 ),
@@ -1063,7 +1103,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     order.customer,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
@@ -1082,7 +1125,31 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: theme.colorScheme.onSurface.withOpacity(isDark ? 0.62 : 0.72),
+                        color: theme.colorScheme.onSurface.withOpacity(
+                          isDark ? 0.62 : 0.72,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Familia
+              SizedBox(
+                width: 150,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Tooltip(
+                    message: order.subfamiliesDisplay,
+                    child: Text(
+                      order.subfamiliesDisplay.isNotEmpty
+                          ? order.subfamiliesDisplay
+                          : (order.family ?? '-'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.primary.withOpacity(0.8),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -1096,48 +1163,70 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   child: order.prioridad.isNotEmpty
                       ? Align(
                           alignment: Alignment.centerLeft,
-                          child: Builder(builder: (context) {
-                            String prioText = order.prioridad;
-                            Color prioColor = Colors.grey;
-                            if (prioText.contains('1')) {
-                              prioText = 'Alta';
-                              prioColor = Colors.red;
-                            } else if (prioText.contains('2')) {
-                              prioText = 'Media';
-                              prioColor = Colors.orange;
-                            } else if (prioText.contains('3')) {
-                              prioText = 'Baja';
-                              prioColor = Colors.green;
-                            } else if (prioText.toLowerCase().contains('alta')) {
-                              prioColor = Colors.red;
-                            }
+                          child: Builder(
+                            builder: (context) {
+                              String prioText = order.prioridad;
+                              Color prioColor = Colors.grey;
+                              if (prioText.contains('1')) {
+                                prioText = 'Alta';
+                                prioColor = Colors.red;
+                              } else if (prioText.contains('2')) {
+                                prioText = 'Media';
+                                prioColor = Colors.orange;
+                              } else if (prioText.contains('3')) {
+                                prioText = 'Baja';
+                                prioColor = Colors.green;
+                              } else if (prioText.toLowerCase().contains('alta')) {
+                                prioColor = Colors.red;
+                              }
 
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: prioColor.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: prioColor.withOpacity(0.3)),
-                              ),
-                              child: Text(
-                                prioText.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: prioColor,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
                                 ),
-                              ),
-                            );
-                          }),
+                                decoration: BoxDecoration(
+                                  color: prioColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: prioColor.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Text(
+                                  prioText.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: prioColor,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         )
                       : const SizedBox.shrink(),
                 ),
               ),
-              // Estado
+              // Asignado
+              SizedBox(
+                width: 150,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    order.assignedToName ?? order.assignedTo ?? '-',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface.withOpacity(
+                        isDark ? 0.8 : 0.9,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Estado/Manual
               SizedBox(
                 width: 130,
                 child: Padding(
@@ -1152,7 +1241,11 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                       ),
                       if (order.family == null || order.family!.isEmpty)
                         IconButton(
-                          icon: const Icon(Icons.assignment_add, size: 18, color: Colors.amber),
+                          icon: const Icon(
+                            Icons.assignment_add,
+                            size: 18,
+                            color: Colors.amber,
+                          ),
                           tooltip: 'Asignar Familia Manualmente',
                           onPressed: () => _showManualFamilyPicker(order),
                         ),

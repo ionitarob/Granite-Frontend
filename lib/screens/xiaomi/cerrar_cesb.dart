@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -19,18 +20,22 @@ class CerrarCesbScreen extends StatefulWidget {
 }
 
 class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _cesbController = TextEditingController();
-  final FocusNode _cesbFocus = FocusNode();
-
   XiaomiTeam? _selectedTeam;
   bool _submitting = false;
   OverlayEntry? _edgeOverlay;
 
+  List<dynamic> _pendingList = [];
+  bool _loadingPending = false;
+  
+  Map<String, dynamic>? _activeCesb;
+  Map<String, dynamic>? _nextCesb;
+
+  Timer? _timer;
+  Duration _elapsed = Duration.zero;
+
   @override
   void dispose() {
-    _cesbController.dispose();
-    _cesbFocus.dispose();
+    _timer?.cancel();
     _edgeOverlay?.remove();
     super.dispose();
   }
@@ -38,13 +43,11 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialCesb != null) {
-      _cesbController.text = widget.initialCesb!;
-    }
     
-    // Initialize teams
+    // Initialize teams and pending
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<XiaomiProvider>().initTeams();
+      _refreshData();
       
       if (!mounted) return;
       final routeName = ModalRoute.of(context)?.settings.name;
@@ -73,36 +76,121 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
     });
   }
 
+  Future<void> _refreshData() async {
+    if (!mounted) return;
+    setState(() => _loadingPending = true);
+    try {
+      final api = ApiService.instance?.client;
+      if (api == null) return;
+      
+      final resp = await api.get('/xiaomieco/not_finished_cesb');
+      if (resp.ok && resp.body is Map) {
+        final items = resp.body['not_finished'] as List? ?? [];
+        if (mounted) {
+          setState(() {
+            _pendingList = items;
+            _evaluateState();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error refreshData: $e');
+    } finally {
+      if (mounted) setState(() => _loadingPending = false);
+    }
+  }
+
+  void _evaluateState() {
+    if (_selectedTeam == null) {
+      _activeCesb = null;
+      _nextCesb = null;
+      _stopTimer();
+      return;
+    }
+
+    // 1. Check if this team has an active CESB (started but not finished)
+    final active = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
+      (item) => item?['team_id'] == _selectedTeam!.id && item?['fecha_hora_inicio'] != null,
+      orElse: () => null,
+    );
+
+    if (active != null) {
+      _activeCesb = active;
+      _nextCesb = null;
+      _startTimer(DateTime.parse(active['fecha_hora_inicio']));
+    } else {
+      _activeCesb = null;
+      _stopTimer();
+      
+      // 2. Find the NEXT CESB based on priority (oldest date) and validation
+      // Note: Backend already returns them sorted by registration date ASC
+      _nextCesb = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
+        (item) => item?['fecha_hora_inicio'] == null,
+        orElse: () => null,
+      );
+    }
+  }
+
+  void _startTimer(DateTime startTime) {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (mounted) {
+        setState(() {
+          _elapsed = DateTime.now().difference(startTime);
+        });
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _elapsed = Duration.zero;
+  }
+
   bool get _isSupervisor {
     final role = context.read<ApiService>().currentUser?.role?.toLowerCase();
     return role == 'admin' || role == 'chief' || role == 'clerc' || role == 'technitian';
   }
 
-  Future<void> _confirmAndSend() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_selectedTeam == null) {
+  Future<void> _onEmpezar() async {
+    if (_nextCesb == null || _selectedTeam == null) return;
+    
+    // PRIORITY CHECK: Is it validated?
+    if (_nextCesb!['fecha_hora_validado'] == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, selecciona un equipo.')),
+        SnackBar(
+          content: Text('El CESB ${_nextCesb!['cesb']} debe ser VALIDADO antes de empezar.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    final cesb = _cesbController.text.trim();
+    setState(() => _submitting = true);
+    try {
+      final success = await context.read<XiaomiProvider>().startCesb(
+        _nextCesb!['cesb'], 
+        _selectedTeam!.id
+      );
+      if (success) {
+        await _refreshData();
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _onFinalizar() async {
+    if (_activeCesb == null || _selectedTeam == null) return;
 
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar'),
-        content: Text('¿Quieres cerrar el CESB "$cesb" con el equipo ${_selectedTeam!.nombre}?'),
+        title: const Text('Finalizar Trabajo'),
+        content: Text('¿Confirmas que habéis terminado el CESB "${_activeCesb!['cesb']}"?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Sí'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sí, Finalizar')),
         ],
       ),
     );
@@ -111,32 +199,14 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
 
     setState(() => _submitting = true);
     try {
-      final api = ApiService.instance?.client;
-      if (api == null) throw Exception('API client not available');
-
-      final payload = <String, dynamic>{
-        'cesb': cesb,
-        'team_id': _selectedTeam!.id,
-      };
-
-      final resp = await api.post('/xiaomieco/cerrar_cesb', jsonBody: payload);
-
-      if (!mounted) return;
-
-      if (resp.ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CESB cerrado con éxito.')),
-        );
-        _cesbController.clear();
-        setState(() => _selectedTeam = null);
-        _cesbFocus.requestFocus();
-      } else {
-        final err = resp.body ?? resp.error ?? 'Error';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $err')));
+      final success = await context.read<XiaomiProvider>().finishCesb(
+        _activeCesb!['cesb'], 
+        _selectedTeam!.id
+      );
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CESB Finalizado.')));
+        await _refreshData();
       }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -149,10 +219,16 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cerrar CESB (Xiaomi ECO)'),
+        title: const Text('Gestión de Ejecución (Xiaomi ECO)'),
         automaticallyImplyLeading: false,
         backgroundColor: theme.colorScheme.surface,
         foregroundColor: theme.colorScheme.onSurface,
+        actions: [
+          IconButton(
+            onPressed: () => _refreshData(),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -160,7 +236,7 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  theme.colorScheme.primaryContainer.withOpacity(0.4),
+                  theme.colorScheme.primaryContainer.withOpacity(0.2),
                   theme.scaffoldBackgroundColor,
                 ],
                 begin: Alignment.topLeft,
@@ -171,18 +247,21 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
           if (xiaomi.isLoading && !xiaomi.isInitialized)
             const Center(child: CircularProgressIndicator())
           else
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Center(
+            SingleChildScrollView(
+              padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 80),
+              child: Align(
+                alignment: Alignment.topCenter,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 700),
+                  constraints: const BoxConstraints(maxWidth: 800),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (xiaomi.initStatus == 'missing')
                         _buildInitMissing(xiaomi)
-                      else
-                        _buildMainForm(xiaomi, theme),
+                      else ...[
+                        _buildTeamSelector(xiaomi, theme),
+                        const SizedBox(height: 12),
+                        _buildWorkControl(theme),
+                      ],
                     ],
                   ),
                 ),
@@ -190,6 +269,214 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTeamSelector(XiaomiProvider xiaomi, ThemeData theme) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Seleccionar tu equipo:', style: TextStyle(fontWeight: FontWeight.bold)),
+                if (_isSupervisor)
+                  IconButton(
+                    icon: const Icon(Icons.group_add_rounded, color: Colors.blue, size: 20),
+                    onPressed: () => _showTeamDialog(),
+                    tooltip: 'Añadir nuevo equipo',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: xiaomi.todayTeams.map((t) {
+                  final isSelected = _selectedTeam?.id == t.id;
+                  final color = _getColorFromName(t.nombre);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: GestureDetector(
+                      onLongPress: _isSupervisor ? () => _showTeamDialog(team: t) : null,
+                      child: Tooltip(
+                        message: _isSupervisor ? 'Mantén pulsado para editar equipo' : t.nombre,
+                        child: ChoiceChip(
+                          label: Text(t.nombre, style: TextStyle(color: isSelected ? Colors.white : color, fontSize: 13)),
+                          selected: isSelected,
+                          selectedColor: color,
+                          onSelected: (val) {
+                            setState(() {
+                              _selectedTeam = val ? t : null;
+                              _evaluateState();
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWorkControl(ThemeData theme) {
+    if (_selectedTeam == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.group_work_rounded, size: 64, color: theme.disabledColor.withOpacity(0.3)),
+            const SizedBox(height: 16),
+            const Text('Selecciona un equipo para ver el trabajo asignado', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    if (_activeCesb != null) {
+      return _buildActiveWorkView(theme);
+    }
+
+    if (_nextCesb != null) {
+      return _buildNextTaskView(theme);
+    }
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.done_all_rounded, size: 64, color: Colors.green),
+          const SizedBox(height: 16),
+          const Text('No hay más CESB pendientes por ahora.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const SizedBox(height: 8),
+          const Text('¡Buen trabajo!', style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveWorkView(ThemeData theme) {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.blue.withOpacity(0.3), width: 2),
+          ),
+          child: Column(
+            children: [
+              const Text('TRABAJO EN PROGRESO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.blue, letterSpacing: 2)),
+              const SizedBox(height: 20),
+              Text(_activeCesb!['cesb'] ?? '', style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
+              Text('${_activeCesb!['sku']} - ${_activeCesb!['qty']} unidades', style: const TextStyle(fontSize: 18, color: Colors.grey)),
+              const Divider(height: 40),
+              const Text('TIEMPO TRANSCURRIDO', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(height: 8),
+              Text(
+                '${_elapsed.inHours.toString().padLeft(2, '0')}:${(_elapsed.inMinutes % 60).toString().padLeft(2, '0')}:${(_elapsed.inSeconds % 60).toString().padLeft(2, '0')}',
+                style: const TextStyle(fontSize: 42, fontFamily: 'Courier', fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          height: 70,
+          child: ElevatedButton.icon(
+            onPressed: _submitting ? null : _onFinalizar,
+            icon: const Icon(Icons.check_circle_rounded, size: 28),
+            label: const Text('FINALIZAR Y CERRAR CESB', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNextTaskView(ThemeData theme) {
+    final isValidated = _nextCesb!['fecha_hora_validado'] != null;
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: theme.dividerColor.withOpacity(0.1)),
+          ),
+          child: Column(
+            children: [
+              const Text('SIGUIENTE TAREA PRIORITARIA', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 11, letterSpacing: 1.1)),
+              const SizedBox(height: 16),
+              Text(_nextCesb!['cesb'] ?? '', textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              Text('${_nextCesb!['sku']}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: (isValidated ? Colors.green : Colors.red).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(isValidated ? Icons.check_circle_rounded : Icons.warning_amber_rounded, 
+                         size: 16, color: isValidated ? Colors.green : Colors.red),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        isValidated ? 'CESB VALIDADO Y RECIBIDO' : 'DEBE VALIDARSE PRIMERO (PENDIENTE)',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isValidated ? Colors.green : Colors.red),
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 40),
+              _InfoItem(label: 'Unidades', value: '${_nextCesb!['qty']}'),
+              _InfoItem(label: 'Cajas', value: '${_nextCesb!['cartons']}'),
+              _InfoItem(label: 'Registrado el', value: (_nextCesb!['fecha_hora_registro'] ?? '').toString().replaceAll('T', ' ')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          height: 70,
+          child: ElevatedButton.icon(
+            onPressed: (_submitting || !isValidated) ? null : _onEmpezar,
+            icon: const Icon(Icons.play_arrow_rounded, size: 28),
+            label: const Text('EMPEZAR TRABAJO', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -246,155 +533,6 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
     );
   }
 
-  Widget _buildMainForm(XiaomiProvider xiaomi, ThemeData theme) {
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _cesbController,
-                focusNode: _cesbFocus,
-                decoration: const InputDecoration(
-                  labelText: 'CESB',
-                  prefixIcon: Icon(Icons.qr_code_scanner_rounded),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 20),
-              
-              const Text(
-                'Seleccionar Equipo:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              if (xiaomi.todayTeams.isEmpty)
-                const Text('No hay equipos disponibles', style: TextStyle(color: Colors.red))
-              else
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  alignment: WrapAlignment.center,
-                  children: xiaomi.todayTeams.map((t) {
-                    final isSelected = _selectedTeam?.id == t.id;
-                    final color = _getColorFromName(t.nombre);
-                    return SizedBox(
-                      width: 100,
-                      height: 100,
-                      child: Stack(
-                        children: [
-                          InkWell(
-                            onTap: () => setState(() => _selectedTeam = t),
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isSelected ? color.withOpacity(0.2) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isSelected ? color : theme.dividerColor,
-                                  width: isSelected ? 2 : 1,
-                                ),
-                              ),
-                              child: Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      width: 20, height: 20,
-                                      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      t.nombre,
-                                      style: TextStyle(
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                        fontSize: 15,
-                                        color: isSelected ? color : null,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (_isSupervisor)
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              child: IconButton(
-                                icon: const Icon(Icons.edit_rounded, size: 16),
-                                onPressed: () => _showTeamDialog(team: t),
-                                padding: const EdgeInsets.all(4),
-                                constraints: const BoxConstraints(),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              
-              if (_selectedTeam != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Miembros del equipo:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: _selectedTeam!.members.map((m) => Chip(
-                          label: Text(m, style: const TextStyle(fontSize: 11)),
-                          visualDensity: VisualDensity.compact,
-                          backgroundColor: _getColorFromName(_selectedTeam!.nombre).withOpacity(0.1),
-                        )).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _submitting ? null : _confirmAndSend,
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _submitting 
-                    ? const CircularProgressIndicator()
-                    : const Text('CERRAR CESB', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-              ),
-              if (_isSupervisor) ...[
-                const SizedBox(height: 12),
-                TextButton.icon(
-                  onPressed: () => _showTeamDialog(),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Agregar otro equipo'),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _showTeamDialog({XiaomiTeam? team}) async {
     final isEditing = team != null;
     final List<String> colors = ['Rojo', 'Azul', 'Verde', 'Amarillo', 'Naranja', 'Morado', 'Rosa', 'Marrón', 'Gris', 'Negro'];
@@ -415,7 +553,6 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
                 final users = List<Map<String, dynamic>>.from(res.body)
                     .where((u) => u['activo'] == true || u['activo'] == 1)
                     .toList();
-                // Sort users alphabetically by name
                 users.sort((a, b) => (a['nombre'] ?? '').toString().compareTo((b['nombre'] ?? '').toString()));
                 allUsers = users;
                 setDialogState(() => loadingUsers = false);
@@ -433,6 +570,7 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
           final targetTeamId = existing?.id ?? (isEditing ? team.id : null);
 
           return AlertDialog(
+            scrollable: true,
             title: Text(effectiveEditing ? 'Editar Equipo' : 'Crear Equipo'),
             content: SizedBox(
               width: 400,
@@ -441,173 +579,98 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
                 children: [
                   const Text('Color del Equipo:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: colors.map((c) {
-                      final isSelected = selectedColor == c;
-                      final col = _getColorFromName(c);
-                      return ChoiceChip(
-                        label: Text(c),
-                        selected: isSelected,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        selectedColor: col.withOpacity(0.3),
-                        labelStyle: TextStyle(
-                          color: isSelected ? col : null,
-                          fontSize: 15,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        ),
-                        onSelected: (v) {
-                          if (v) {
-                            setDialogState(() {
-                              selectedColor = c;
-                              // Sync members if team already exists for this color
-                              final xiaomi = context.read<XiaomiProvider>();
-                              final existing = xiaomi.todayTeams.cast<XiaomiTeam?>().firstWhere(
-                                (t) => t?.nombre == c,
-                                orElse: () => null,
-                              );
-                              if (existing != null) {
-                                selectedUsernames = List.from(existing.members);
-                              } else if (!isEditing) {
-                                selectedUsernames = [];
-                              }
-                            });
-                          }
-                        },
-                        avatar: CircleAvatar(backgroundColor: col, radius: 8),
-                      );
-                    }).toList(),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: colors.map((c) {
+                        final isSelected = selectedColor == c;
+                        final col = _getColorFromName(c);
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: GestureDetector(
+                            onTap: () {
+                              setDialogState(() {
+                                selectedColor = c;
+                                final existing = xiaomi.todayTeams.cast<XiaomiTeam?>().firstWhere(
+                                  (t) => t?.nombre == c,
+                                  orElse: () => null,
+                                );
+                                if (existing != null) {
+                                  selectedUsernames = List.from(existing.members);
+                                } else if (!isEditing) {
+                                  selectedUsernames = [];
+                                }
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected ? col.withOpacity(0.15) : Colors.white10,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: isSelected ? col : Colors.white24, width: 2),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(width: 12, height: 12, decoration: BoxDecoration(color: col, shape: BoxShape.circle)),
+                                  const SizedBox(width: 8),
+                                  Text(c),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   const Text('Seleccionar Miembros:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   TextField(
                     decoration: InputDecoration(
-                      hintText: 'Buscar por nombre...',
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      hintText: 'Buscar...',
+                      prefixIcon: const Icon(Icons.search_rounded),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
                     ),
                     onChanged: (v) => setDialogState(() => searchQuery = v.toLowerCase()),
                   ),
                   const SizedBox(height: 12),
-                  Container(
-                    height: 250,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Builder(
-                      builder: (context) {
-                        final xiaomi = context.watch<XiaomiProvider>();
-                        Map<String, String> assignedUsers = {};
-                        for (var t in xiaomi.todayTeams) {
-                          if (t.nombre != selectedColor) {
-                            for (var m in t.members) {
-                              assignedUsers[m] = t.nombre;
-                            }
-                          }
-                        }
-
-                        final filtered = allUsers.where((u) {
-                          final n = '${u['nombre']} ${u['apellido']}'.toLowerCase();
-                          return n.contains(searchQuery);
-                        }).toList();
-
-                        if (filtered.isEmpty && !loadingUsers) {
-                          return const Center(child: Text('Sin resultados', style: TextStyle(color: Colors.grey)));
-                        }
-
-                        return ListView.builder(
-                          itemCount: filtered.length,
-                          itemBuilder: (ctx, i) {
-                            final u = filtered[i];
-                            final username = u['usuario'] ?? u['username'] ?? '';
-                            final isSelected = selectedUsernames.contains(username);
-                            final assignedTeam = assignedUsers[username];
-                            final isUnavailable = assignedTeam != null;
-
-                            return CheckboxListTile(
-                              enabled: !isUnavailable,
-                              title: Text('${u['nombre']} ${u['apellido']}', 
-                                style: TextStyle(color: isUnavailable ? Colors.grey : null)
-                              ),
-                              subtitle: isUnavailable
-                                ? Text('Ya en equipo $assignedTeam', style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold))
-                                : Text(u['puesto'] ?? 'Operador', style: const TextStyle(fontSize: 12)),
-                              value: isSelected,
-                              onChanged: (v) {
-                                if (isUnavailable) return;
-                                setDialogState(() {
-                                  if (v == true) {
-                                    selectedUsernames.add(username);
-                                  } else {
-                                    selectedUsernames.remove(username);
-                                  }
-                                });
-                              },
-                            );
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: allUsers.length,
+                      itemBuilder: (ctx, i) {
+                        final u = allUsers[i];
+                        final name = '${u['nombre']} ${u['apellido']}';
+                        if (searchQuery.isNotEmpty && !name.toLowerCase().contains(searchQuery)) return const SizedBox.shrink();
+                        final username = u['usuario'] ?? '';
+                        final isSelected = selectedUsernames.contains(username);
+                        return CheckboxListTile(
+                          title: Text(name),
+                          value: isSelected,
+                          onChanged: (v) {
+                            setDialogState(() {
+                              if (v == true) selectedUsernames.add(username);
+                              else selectedUsernames.remove(username);
+                            });
                           },
                         );
-
                       },
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ),
             actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx), 
-                child: const Text('Cancelar')
-              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
               ElevatedButton(
                 onPressed: saving ? null : () async {
-                  if (selectedUsernames.isEmpty) {
-                    if (!effectiveEditing) return;
-                    
-                    final confirm = await showDialog<bool>(
-                      context: ctx,
-                      builder: (c) => AlertDialog(
-                        title: const Text('Eliminar Equipo'),
-                        content: const Text('Has desmarcado a todos los miembros. ¿Quieres ELIMINAR este equipo?'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('No')),
-                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Sí, eliminar')),
-                        ],
-                      ),
-                    );
-                    if (confirm != true) return;
-                  }
-
                   setDialogState(() => saving = true);
-                  try {
-                    bool success = false;
-                    if (effectiveEditing && targetTeamId != null) {
-                      success = await xiaomi.updateTeam(targetTeamId, selectedColor!, selectedUsernames);
-                    } else {
-                      success = await xiaomi.createTeam(selectedColor!, selectedUsernames);
-                    }
-                    
-                    if (success) {
-                      if (effectiveEditing && selectedUsernames.isEmpty && targetTeamId != null) {
-                        if (_selectedTeam?.id == targetTeamId) {
-                          setState(() => _selectedTeam = null);
-                        }
-                      }
-                      if (ctx.mounted) Navigator.of(ctx).pop();
-                    }
-                  } finally {
-                    if (ctx.mounted) setDialogState(() => saving = false);
-                  }
+                  final success = effectiveEditing 
+                    ? await xiaomi.updateTeam(targetTeamId!, selectedColor!, selectedUsernames)
+                    : await xiaomi.createTeam(selectedColor!, selectedUsernames);
+                  if (success && ctx.mounted) Navigator.pop(ctx);
                 },
-                child: saving 
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(effectiveEditing ? 'ACTUALIZAR' : 'CREAR'),
+                child: const Text('Guardar'),
               ),
             ],
           );
@@ -630,5 +693,34 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
       case 'negro': return Colors.black;
       default: return Colors.blueGrey;
     }
+  }
+}
+
+class _InfoItem extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InfoItem({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value, 
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

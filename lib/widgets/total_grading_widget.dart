@@ -44,18 +44,20 @@ class _TotalGradingWidgetState extends State<TotalGradingWidget> {
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(sanitized));
-      _status = 'connected';
       _reconnectAttempts = 0;
-      // Listen for incoming messages
-  _sub = _channel!.stream.listen((message) {
+      _sub = _channel!.stream.listen((message) {
+        _reconnectAttempts = 0; // Reset on success
+        setState(() => _status = 'connected');
         try {
           final data = json.decode(message.toString());
           if (data is Map && data['type'] == 'amz.count') {
             final c = data['count'];
-            if (c is int) {
-              setState(() => _count = c);
-            } else if (c is String) {
-              setState(() => _count = int.tryParse(c));
+            if (mounted) {
+              if (c is int) {
+                setState(() => _count = c);
+              } else if (c is String) {
+                setState(() => _count = int.tryParse(c));
+              }
             }
           }
         } catch (e, st) {

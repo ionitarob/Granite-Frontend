@@ -39,16 +39,19 @@ class _GradingHoyWidgetState extends State<GradingHoyWidget> {
     developer.log('GradingHoyWidget connecting to: $sanitized');
     try {
       _channel = WebSocketChannel.connect(Uri.parse(sanitized));
-      _status = 'connected';
-      _reconnectAttempts = 0;
+      _reconnectAttempts = 0; // Will be reset on first message or listen success
       _sub = _channel!.stream.listen((message) {
+        _reconnectAttempts = 0; // Reset on success
+        setState(() => _status = 'connected');
         try {
           final data = json.decode(message.toString());
           if (data is Map && data['type'] == 'amz.today') {
             final c = data['count'];
-            if (c is int) {
-              setState(() => _count = c);
-            } else if (c is String) setState(() => _count = int.tryParse(c));
+            if (mounted) {
+              if (c is int) {
+                setState(() => _count = c);
+              } else if (c is String) setState(() => _count = int.tryParse(c));
+            }
           }
         } catch (e, st) {
           developer.log('GradingHoyWidget parse error: $e', stackTrace: st);

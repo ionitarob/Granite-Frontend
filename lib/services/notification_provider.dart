@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../services/api_service.dart';
+import 'dart:math' as math;
 
 class GraniteNotification {
   final int id;
@@ -46,6 +47,8 @@ class NotificationProvider extends ChangeNotifier {
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   bool _isConnected = false;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
 
   List<GraniteNotification> get notifications => _notifications;
   bool get isLoading => _isLoading;
@@ -114,9 +117,10 @@ class NotificationProvider extends ChangeNotifier {
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      _isConnected = true;
       _subscription = _channel!.stream.listen(
         (message) {
+          _reconnectAttempts = 0; // Reset on success
+          _isConnected = true;
           try {
             final data = json.decode(message);
             if (data['type'] == 'notification.new') {
@@ -130,7 +134,7 @@ class NotificationProvider extends ChangeNotifier {
           }
         },
         onError: (e) {
-          debugPrint('WebSocket Error: $e');
+          debugPrint('WebSocket Stream Error: $e');
           _isConnected = false;
           _reconnect();
         },
@@ -141,7 +145,7 @@ class NotificationProvider extends ChangeNotifier {
         },
       );
     } catch (e) {
-      debugPrint('WebSocket Connection Error: $e');
+      debugPrint('WebSocket Synchronous Connection Error: $e');
       _isConnected = false;
       _reconnect();
     }
@@ -149,8 +153,16 @@ class NotificationProvider extends ChangeNotifier {
 
   void _reconnect() {
     _subscription?.cancel();
+    _subscription = null;
     _channel = null;
-    Timer(const Duration(seconds: 5), () {
+    
+    _reconnectTimer?.cancel();
+    
+    _reconnectAttempts++;
+    final delaySeconds = math.min(30, math.pow(2, math.min(6, _reconnectAttempts)).toInt());
+    debugPrint('NotificationProvider scheduling reconnect in ${delaySeconds}s (attempt $_reconnectAttempts)');
+
+    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
       if (apiService.currentUser != null) {
         _connectWebSocket();
       }

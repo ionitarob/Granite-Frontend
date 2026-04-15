@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import 'package:intl/intl.dart';
+import 'dart:math' as math;
 
 class AmzRecentInventoryWidget extends StatefulWidget {
   final String wsUrl;
@@ -41,23 +42,32 @@ class _AmzRecentInventoryWidgetState extends State<AmzRecentInventoryWidget> {
       _channel = WebSocketChannel.connect(Uri.parse(sanitized));
       _sub = _channel!.stream.listen(
         (message) {
-          _reconnectAttempts = 0;
+          _reconnectAttempts = 0; // Reset on success
+          _isConnected = true;
           final data = json.decode(message.toString());
           if (data is Map && data['type'] == 'amz.inventory.logs') {
             final List<dynamic> rawLogs = data['logs'] ?? [];
-            setState(() {
-              _logs = rawLogs
-                  .take(10)
-                  .map((l) => Map<String, dynamic>.from(l))
-                  .toList();
-              _isConnected = true;
-            });
+            if (mounted) {
+              setState(() {
+                _logs = rawLogs
+                    .take(10)
+                    .map((l) => Map<String, dynamic>.from(l))
+                    .toList();
+              });
+            }
           }
         },
-        onError: (_) => _handleDisconnect(),
-        onDone: () => _handleDisconnect(),
+        onError: (e) {
+          debugPrint('AmzRecentInventoryWidget Stream Error: $e');
+          _handleDisconnect();
+        },
+        onDone: () {
+          debugPrint('AmzRecentInventoryWidget Stream Closed');
+          _handleDisconnect();
+        },
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('AmzRecentInventoryWidget Synchronous Connection Error: $e');
       _handleDisconnect();
     }
   }
@@ -67,9 +77,14 @@ class _AmzRecentInventoryWidgetState extends State<AmzRecentInventoryWidget> {
     setState(() {
       _isConnected = false;
     });
-    _reconnectAttempts++;
+    
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(Duration(seconds: 5), () {
+    
+    _reconnectAttempts++;
+    final delaySeconds = math.min(30, math.pow(2, math.min(6, _reconnectAttempts)).toInt());
+    debugPrint('AmzRecentInventoryWidget scheduling reconnect in ${delaySeconds}s (attempt $_reconnectAttempts)');
+
+    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
       if (mounted) _connect();
     });
   }

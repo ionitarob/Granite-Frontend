@@ -48,6 +48,11 @@ class AgentOrder {
   final List<String> subfamilies;
   final List<String> completedFamilies;
 
+  final String? assignedTo;
+  final String? assignedToName;
+
+  String get subfamiliesDisplay => subfamilies.join(', ');
+
   AgentOrder({
     required this.idnbr,
     required this.orderNbr,
@@ -86,6 +91,8 @@ class AgentOrder {
     this.completionAuthor,
     this.subfamilies = const [],
     this.completedFamilies = const [],
+    this.assignedTo,
+    this.assignedToName,
   });
 
   factory AgentOrder.fromJson(Map<String, dynamic> json) {
@@ -180,6 +187,8 @@ class AgentOrder {
                   .where((s) => s.isNotEmpty)
                   .toList()
               : const []),
+      assignedTo: json['assigned_to'] as String?,
+      assignedToName: json['assigned_to_name'] as String?,
     );
   }
 }
@@ -372,6 +381,7 @@ class OrderOpsDetail {
   final LatestLLM? latestLLM;
   final List<WorkItem> workItems;
   final List<AgentOrderQualityLog> qualityLogs; // New field
+  final List<AgentOrderPhoto> photos; // New field
   final Map<String, dynamic>? sourceOrder;
 
   OrderOpsDetail({
@@ -379,6 +389,7 @@ class OrderOpsDetail {
     this.latestLLM,
     required this.workItems,
     required this.qualityLogs,
+    required this.photos,
     this.sourceOrder,
   });
 
@@ -393,6 +404,9 @@ class OrderOpsDetail {
           .toList(),
       qualityLogs: (json['quality_logs'] as List? ?? [])
           .map((item) => AgentOrderQualityLog.fromJson(item))
+          .toList(),
+      photos: (json['photos'] as List? ?? [])
+          .map((item) => AgentOrderPhoto.fromJson(item))
           .toList(),
       sourceOrder: json['source_order'] as Map<String, dynamic>?,
     );
