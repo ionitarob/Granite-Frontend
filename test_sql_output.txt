@@ -1,3 +1,0 @@
-﻿Running SQL for IDNBR 43771...
-Found 1 matching service lines:
-  SKU: CE06603, ID: 44, Desc: ETIQUETADO ---- de 11 a 50 unidades
