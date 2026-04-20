@@ -790,4 +790,38 @@ class OrderOpsService {
       return [];
     }
   }
+
+  // --- Printer Management ---
+
+  Future<List<AgentPrinter>> getPrinters() async {
+    final result = await _client.get('/orderops/printers');
+    if (!result.ok) throw Exception('Failed to load printers');
+    final data = result.body;
+    List<dynamic> list = [];
+    if (data is Map && data.containsKey('results')) {
+      list = data['results'];
+    } else if (data is List) {
+      list = data;
+    }
+    return list.map((e) => AgentPrinter.fromJson(e)).toList();
+  }
+
+  Future<AgentPrinter> createPrinter(String name, String ip) async {
+    final result = await _client.post(
+      '/orderops/printers/create',
+      jsonBody: {'name': name, 'ip': ip},
+    );
+    if (!result.ok) throw Exception('Failed to create printer');
+    return AgentPrinter.fromJson(result.body);
+  }
+  Future<ApiResult> directPrintPdf(String printerIp, Uint8List pdfBytes) async {
+    final base64Pdf = base64Encode(pdfBytes);
+    return await _client.post(
+      '/orderops/printers/direct-print',
+      jsonBody: {
+        'printer_ip': printerIp,
+        'pdf_base64': base64Pdf,
+      },
+    );
+  }
 }

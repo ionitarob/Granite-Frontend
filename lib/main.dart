@@ -12,6 +12,7 @@ import 'debug_http_override.dart';
 import 'services/theme_controller.dart';
 import 'services/api_service.dart';
 import 'config.dart';
+import 'services/orderops_service.dart';
 import 'dashboard_screen.dart';
 import 'screens/amazon/amazon_grading_screen.dart';
 import 'screens/amazon/amazon_proyectos_dashboard.dart';
@@ -130,6 +131,9 @@ class MainApp extends StatelessWidget {
             apiService: Provider.of<ApiService>(ctx, listen: false),
           ),
           update: (ctx, api, previous) => previous ?? XiaomiProvider(apiService: api),
+        ),
+        ProxyProvider<ApiService, OrderOpsService>(
+          update: (ctx, api, previous) => previous ?? OrderOpsService(api.client),
         ),
       ],
       child: Consumer<ThemeController>(

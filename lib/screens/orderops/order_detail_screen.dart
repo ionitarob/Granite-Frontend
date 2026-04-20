@@ -14,10 +14,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:flutter/services.dart';
 
+import '../../widgets/pdf_preview_dialog.dart';
+import '../../models/agent_models.dart';
+
 import '../../api_client.dart';
 import '../../services/api_service.dart';
 import '../../services/orderops_service.dart';
-import '../../models/agent_models.dart';
 import '../../widgets/animated_background.dart';
 import '../../config.dart';
 import '../servers/registro_servidor_screen.dart';
@@ -113,6 +115,46 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     _obsController.dispose();
     _obsFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _exportActa(String orderNbr) async {
+    setState(() => _isExporting = true);
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      // Construct the normalized order number if needed (e.g. 23-12345-01)
+      final num = orderNbr.trim();
+      final res = await api.client.getBytes('/docgen/order/$num/pdf');
+      if (!mounted) return;
+
+      if (!res.ok || res.body is! List<int>) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo generar el acta (${res.statusCode})')),
+        );
+        return;
+      }
+
+      final pdfBytes = Uint8List.fromList(res.body as List<int>);
+      final suggested = 'Acta_$num.pdf';
+
+      if (mounted) {
+        await showDialog(
+          context: context,
+          builder: (context) => PdfPreviewDialog(
+            pdfBytes: pdfBytes,
+            fileName: suggested,
+            service: _orderOpsService!,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error exportando: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   String _normalizeProyectoName(String? value) {
@@ -493,6 +535,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               focusNode: FocusNode(canRequestFocus: false),
               onPressed: _loadData,
             ),
+            if (_detail != null)
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf, color: Colors.orangeAccent),
+                tooltip: 'Exportar acta',
+                onPressed: () => _exportActa(_detail!.agentOrder.orderNbr),
+              ),
           ],
         ),
         body: Stack(

@@ -49,6 +49,7 @@ class NotificationProvider extends ChangeNotifier {
   bool _isConnected = false;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
+  String? _lastToken;
 
   List<GraniteNotification> get notifications => _notifications;
   bool get isLoading => _isLoading;
@@ -62,11 +63,20 @@ class NotificationProvider extends ChangeNotifier {
   }
 
   void _onUserChanged() {
+    final currentToken = apiService.client.accessToken;
     if (apiService.currentUser != null) {
       fetchNotifications();
+      
+      // If token changed, disconnect existing socket so it reconnects with new token
+      if (currentToken != _lastToken) {
+        debugPrint('Token changed from $_lastToken to $currentToken. Reconnecting WebSocket.');
+        _disconnectWebSocket();
+        _lastToken = currentToken;
+      }
       _connectWebSocket();
     } else {
       _disconnectWebSocket();
+      _lastToken = null;
       _notifications = [];
       notifyListeners();
     }

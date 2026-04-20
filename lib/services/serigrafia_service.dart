@@ -40,8 +40,14 @@ class SerigrafiaService {
   Future<List<SerigrafiaStandard>> getStandards() async {
     final res = await client.get('/orderops/serigrafia/standards');
     if (res.ok && res.body != null) {
-       final results = res.body?['results'] as List? ?? res.body as List? ?? [];
-       return results.map((j) => SerigrafiaStandard.fromJson(j)).toList();
+      final data = res.body;
+      List<dynamic> results = [];
+      if (data is Map && data.containsKey('results')) {
+        results = data['results'] as List? ?? [];
+      } else if (data is List) {
+        results = data;
+      }
+      return results.map((j) => SerigrafiaStandard.fromJson(j)).toList();
     }
     return []; // Fallback to empty
   }
@@ -110,7 +116,13 @@ class SerigrafiaService {
     final query = 'idnbr=$idnbr${labelName != null ? '&label_name=$labelName' : ''}';
     final res = await client.get('/orderops/serigrafia/registries?$query');
     if (res.ok && res.body != null) {
-      final results = res.body['results'] as List? ?? [];
+      final data = res.body;
+      List<dynamic> results = [];
+      if (data is Map && data.containsKey('results')) {
+        results = data['results'] as List? ?? [];
+      } else if (data is List) {
+        results = data;
+      }
       return results.map((e) => Map<String, dynamic>.from(e)).toList();
     }
     return [];

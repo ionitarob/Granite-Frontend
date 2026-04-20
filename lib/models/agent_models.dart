@@ -628,3 +628,34 @@ class AgentOrderService {
     );
   }
 }
+
+class AgentPrinter {
+  final int id;
+  final String name;
+  final String ip;
+  final DateTime? createdAt;
+
+  AgentPrinter({
+    required this.id,
+    required this.name,
+    required this.ip,
+    this.createdAt,
+  });
+
+  factory AgentPrinter.fromJson(Map<String, dynamic> json) {
+    return AgentPrinter(
+      id: json['id'] as int? ?? 0,
+      name: json['name'] as String? ?? '',
+      ip: json['ip'] as String? ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'])
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'ip': ip,
+      };
+}

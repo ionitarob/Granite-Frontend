@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../services/order_input_formatter.dart';
 import '../../services/orderops_service.dart';
 import '../../services/sound_player.dart';
 import '../../widgets/main_sidebar.dart';
+import '../../widgets/pdf_preview_dialog.dart';
 import '../../utils/formatters.dart';
 
 enum _SerialPanel { assign, match, upload, recent }
@@ -77,6 +79,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
   bool _templatesLoading = false;
   bool _templateUploading = false;
   List<Map<String, dynamic>> _templates = [];
+
+  // Sequence Generation
+  List<String> _sequenceQueue = [];
+  String? _lastPromptedOrder;
 
   @override
   void initState() {
@@ -178,7 +184,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         // Just focus the inventory field of that row
         row.inventoryFocus.requestFocus();
         final currentSaved = _orderSerials.length;
-        _showSnack('Serial capturado. Escanea Inventario/IMEI para la Unidad ${currentSaved + targetIndex + 1}');
+        _showSnack(
+          'Serial capturado. Escanea Inventario/IMEI para la Unidad ${currentSaved + targetIndex + 1}',
+        );
       } else {
         // Auto-save
         final ok = await _saveRow(targetIndex);
@@ -193,7 +201,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     } else {
       // No slots available
       SoundPlayer.playError();
-      _showSnack('ERROR: Todas las unidades están llenas. No se puede añadir "$serial".');
+      _showSnack(
+        'ERROR: Todas las unidades están llenas. No se puede añadir "$serial".',
+      );
       _quickScanFocus.requestFocus();
     }
   }
@@ -239,7 +249,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _normalizeOrder(String raw) => OrderInputFormatter.normalize(raw.trim());
+  String _normalizeOrder(String raw) =>
+      OrderInputFormatter.normalize(raw.trim());
 
   bool _isValidOrder(String value) => _orderFormatRegex.hasMatch(value);
 
@@ -262,12 +273,16 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
   Future<void> _autoAttachExcelToArchivos(String numOrden) async {
     final orderId = _resolveOrderIdForArchivos();
     if (orderId == null) {
-      _showSnack('Match completado, pero no hay id de orden para adjuntar en Archivos');
+      _showSnack(
+        'Match completado, pero no hay id de orden para adjuntar en Archivos',
+      );
       return;
     }
     final client = _clientOrNull();
     if (client == null) {
-      _showSnack('Match completado, pero no hay servicio API para adjuntar Excel');
+      _showSnack(
+        'Match completado, pero no hay servicio API para adjuntar Excel',
+      );
       return;
     }
 
@@ -278,7 +293,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       );
       if (!mounted) return;
       if (!res.ok || res.body is! List<int>) {
-        _showSnack('Match completado, pero no se pudo generar Excel (${res.statusCode})');
+        _showSnack(
+          'Match completado, pero no se pudo generar Excel (${res.statusCode})',
+        );
         return;
       }
 
@@ -286,11 +303,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       final defaultName = 'serial_matches_${numOrden.replaceAll('-', '')}.xlsx';
       final fileName = _filenameFromHeaders(headers) ?? defaultName;
 
-      final uploaded = await OrderOpsService(client).uploadPhoto(
-        orderId,
-        fileName,
-        res.body as List<int>,
-      );
+      final uploaded = await OrderOpsService(
+        client,
+      ).uploadPhoto(orderId, fileName, res.body as List<int>);
       if (!mounted) return;
       _showSnack(
         uploaded
@@ -303,7 +318,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       if (mounted) setState(() => _exportingExcel = false);
     }
   }
-
 
   Future<void> _completeOrderAndAttach(String numOrden) async {
     final removed = _resizeMatchRows(0);
@@ -364,18 +378,187 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           .toList();
 
       final bool hasInventoryCodes = serials.any(
-        (s) => (s['inventory_code'] ?? s['inventory'] ?? '').toString().trim().isNotEmpty,
+        (s) => (s['inventory_code'] ?? s['inventory'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty,
       );
       _applyOrderData(
         order: Map<String, dynamic>.from(orderMap),
         serials: serials,
         manualDouble: (orderMap['manual_double'] == true) || hasInventoryCodes,
       );
+      await _fetchOrderSequence(numOrden);
+      _quickScanFocus.requestFocus();
     } catch (e) {
       _showSnack('Error refrescando orden: $e');
     } finally {
       if (mounted) setState(() => _loadingOrder = false);
     }
+  }
+
+  Future<({int count, String? sourceOrder})> _getExistingCodesCount(
+    String numOrden,
+  ) async {
+    final client = _clientOrNull();
+    if (client == null) return (count: 0, sourceOrder: null);
+    try {
+      final res = await client.get(
+        '$_basePath/get-sequence?order_nbr=${Uri.encodeComponent(numOrden)}&search_orphans=true',
+      );
+      if (res.ok && res.body is Map) {
+        final body = res.body as Map;
+        final codes = body['codes'] as List?;
+        final source = body['source_order']?.toString();
+        return (count: codes?.length ?? 0, sourceOrder: source);
+      }
+    } catch (_) {}
+    return (count: 0, sourceOrder: null);
+  }
+
+  Future<void> _fetchOrderSequence(
+    String numOrden, {
+    bool searchOrphans = false,
+  }) async {
+    final client = _clientOrNull();
+    if (client == null) return;
+    try {
+      final res = await client.get(
+        '$_basePath/get-sequence?order_nbr=${Uri.encodeComponent(numOrden)}&search_orphans=$searchOrphans',
+      );
+      if (res.ok && res.body is Map) {
+        final body = res.body as Map;
+        final codes = body['codes'] as List?;
+        if (codes != null && mounted) {
+          setState(() {
+            _sequenceQueue = codes.map((e) => e.toString()).toList();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _showSequenceDialog() async {
+    final numOrden = _orderCtrl.text.trim();
+    if (numOrden.isEmpty) {
+      _showSnack('Por favor ingresa un número de orden primero');
+      return;
+    }
+
+    // Check for orphans/existing
+    final existing = await _getExistingCodesCount(numOrden);
+
+    if (!mounted) return;
+
+    final ctrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gestionar Secuencia'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (existing.count > 0 && existing.sourceOrder != numOrden) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.tealAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.tealAccent.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Se encontraron ${existing.count} códigos sin usar de la orden ${existing.sourceOrder}.',
+                        style: const TextStyle(fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.tealAccent.withOpacity(0.2),
+                          foregroundColor: Colors.tealAccent,
+                        ),
+                        onPressed: () async {
+                          Navigator.of(ctx).pop();
+                          await _fetchOrderSequence(
+                            numOrden,
+                            searchOrphans: true,
+                          );
+                          _showSnack(
+                            'Secuencia recuperada de ${existing.sourceOrder}',
+                          );
+                        },
+                        icon: const Icon(Icons.auto_fix_high_rounded),
+                        label: const Text('Reutilizar estos códigos'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+              const Text(
+                'Nueva Secuencia',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () async {
+                  final units = (_orderInfo?['unidades'] as num?)?.toInt() ?? 0;
+                  final List<String>? generated =
+                      await showDialog<List<String>>(
+                        context: ctx,
+                        builder: (c) =>
+                            _SequenceSetupDialog(targetCount: units),
+                      );
+                  if (generated != null && generated.isNotEmpty) {
+                    Navigator.of(ctx).pop();
+                    await _saveSequenceToBackend(numOrden, generated);
+                    await _fetchOrderSequence(numOrden);
+                    _showSnack('Se han activado ${generated.length} códigos.');
+                  }
+                },
+                icon: const Icon(Icons.settings_suggest_rounded),
+                label: const Text('ABRIR GENERADOR DE SECUENCIAS'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveSequenceToBackend(
+    String numOrden,
+    List<String> codes,
+  ) async {
+    if (codes.isEmpty) return;
+    final client = _clientOrNull();
+    if (client == null) return;
+    try {
+      await client.post(
+        '$_basePath/save-sequence',
+        jsonBody: {'order_nbr': numOrden, 'codes': codes},
+      );
+    } catch (_) {}
   }
 
   Future<void> _fetchNextInventory() async {
@@ -615,13 +798,14 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     required List<Map<String, String>> serials,
     int? unitsOverride,
     bool? manualDouble,
+    List<String>? sequence,
   }) {
     final normalized = Map<String, dynamic>.from(order);
     final numOrdenRaw = normalized['num_orden'];
     normalized['num_orden'] =
         (numOrdenRaw == null || numOrdenRaw.toString().trim().isEmpty)
-      ? _normalizeOrder(_orderCtrl.text)
-      : _normalizeOrder(numOrdenRaw.toString());
+        ? _normalizeOrder(_orderCtrl.text)
+        : _normalizeOrder(numOrdenRaw.toString());
     final resolvedUnits =
         unitsOverride ??
         int.tryParse(normalized['unidades']?.toString() ?? '') ??
@@ -639,19 +823,21 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       _orderInfo = normalized;
       _orderSerials = serials;
       _duplicateRows.clear();
+      if (sequence != null) {
+        _sequenceQueue = sequence;
+      }
     });
-    
 
     _disposeRowsLater(removed);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // No longer stealing focus to Maestro here.
-      // Callers who want focus should request it explicitly.
+      _checkCompletionAndPrompt();
     });
   }
 
-  ({int units, bool doubleEntry})? _existingManualConfig(String numOrden) {
+  ({int units, bool doubleEntry, List<String>? sequence})?
+  _existingManualConfig(String numOrden) {
     if (_orderInfo == null) return null;
     if (_orderInfo!['manual'] != true) return null;
     if (_orderInfo!['num_orden']?.toString() != numOrden) return null;
@@ -661,14 +847,13 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         : int.tryParse(unitsValue?.toString() ?? '');
     if (parsedUnits == null || parsedUnits <= 0) return null;
     final bool doubleEntry = _orderInfo!['manual_double'] == true;
-    return (units: parsedUnits, doubleEntry: doubleEntry);
+    return (units: parsedUnits, doubleEntry: doubleEntry, sequence: null);
   }
 
   bool get _isManualDouble => _orderInfo?['manual_double'] == true;
 
-  Future<({int units, bool doubleEntry})?> _promptManualUnits(
-    String numOrden,
-  ) async {
+  Future<({int units, bool doubleEntry, List<String>? sequence})?>
+  _promptManualUnits(String numOrden) async {
     final result = await showDialog<_ManualOrderPromptResult>(
       context: context,
       barrierDismissible: false,
@@ -682,7 +867,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       _showSnack('Introduce un número válido de unidades');
       return null;
     }
-    return (units: parsed, doubleEntry: result.doubleEntry);
+    return (
+      units: parsed,
+      doubleEntry: result.doubleEntry,
+      sequence: result.sequence,
+    );
   }
 
   Future<void> _fetchOrder() async {
@@ -713,7 +902,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       );
       if (!mounted) return;
       if (res.statusCode == 404) {
-        final isEmbeddedMatchFlow = widget.matchOnly || widget.isEmbedded || _tabs.index == 1;
+        final isEmbeddedMatchFlow =
+            widget.matchOnly || widget.isEmbedded || _tabs.index == 1;
         setState(() => _loadingOrder = false);
         if (isEmbeddedMatchFlow) {
           final manualConfig = await _promptManualUnits(numOrden);
@@ -736,7 +926,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             );
             if (!mounted) return;
             if (!regRes.ok || regRes.body is! Map) {
-              _showSnack('No se pudo registrar la orden (${regRes.statusCode})');
+              _showSnack(
+                'No se pudo registrar la orden (${regRes.statusCode})',
+              );
               return;
             }
             final map = regRes.body as Map;
@@ -759,34 +951,96 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             _applyOrderData(
               order: Map<String, dynamic>.from(orderMap),
               serials: serials,
-              manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true),
+              manualDouble:
+                  manualConfig.doubleEntry ||
+                  (orderMap['manual_double'] == true),
             );
             _quickScanFocus.requestFocus();
+            if (manualConfig.sequence != null &&
+                manualConfig.sequence!.isNotEmpty) {
+              await _saveSequenceToBackend(numOrden, manualConfig.sequence!);
+              await _fetchOrderSequence(numOrden);
+            }
           } catch (e) {
             _showSnack('Error registrando orden: $e');
           }
           return;
         }
         setState(() => _loadingOrder = false);
+
+        final detection = await _getExistingCodesCount(numOrden);
+        final existingCodesCount = detection.count;
+        final sourceOrder = detection.sourceOrder;
+
+        bool useExisting = false;
+        if (existingCodesCount > 0) {
+          final isSameOrder = sourceOrder == numOrden;
+          final msg = isSameOrder
+              ? 'Se encontraron $existingCodesCount códigos de inventario previos para esta orden.'
+              : 'No hay secuencia para esta orden, pero se encontró una sin terminar en la orden "$sourceOrder" ($existingCodesCount códigos).';
+
+          useExisting =
+              await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(
+                    isSameOrder
+                        ? 'Secuencia detectada'
+                        : 'Reutilizar secuencia',
+                  ),
+                  content: Text(
+                    '$msg ¿Deseas usar esos códigos o configurar una nueva secuencia?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('NUEVA'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('USAR ESTOS'),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+        }
+
         final existingManual = _existingManualConfig(numOrden);
         final manualConfig =
             existingManual ?? await _promptManualUnits(numOrden);
         if (!mounted) return;
         if (manualConfig != null) {
-            _applyOrderData(
-              order: {
-                'num_orden': numOrden,
-                'unidades': manualConfig.units,
-                'manual': true,
-                'manual_double': manualConfig.doubleEntry,
-              },
-              serials: const <Map<String, String>>[],
-              unitsOverride: manualConfig.units,
-              manualDouble: manualConfig.doubleEntry,
-            );
-            _quickScanFocus.requestFocus();
+          final seqToUse = useExisting ? null : manualConfig.sequence;
+
+          _applyOrderData(
+            order: {
+              'num_orden': numOrden,
+              'unidades': manualConfig.units,
+              'manual': true,
+              'manual_double': useExisting || manualConfig.doubleEntry,
+            },
+            serials: const <Map<String, String>>[],
+            unitsOverride: manualConfig.units,
+            manualDouble: useExisting || manualConfig.doubleEntry,
+          );
+          _quickScanFocus.requestFocus();
+
+          if (useExisting) {
+            // Claiming codes from the other order involves saving them for the current order
+            await _fetchOrderSequence(numOrden, searchOrphans: true);
+            if (_sequenceQueue.isNotEmpty) {
+              await _saveSequenceToBackend(numOrden, _sequenceQueue);
+            }
+          } else if (seqToUse != null && seqToUse.isNotEmpty) {
+            await _saveSequenceToBackend(numOrden, seqToUse);
+            await _fetchOrderSequence(numOrden);
+          }
+
           if (existingManual == null) {
-            final mode = manualConfig.doubleEntry ? 'doble' : 'unitario';
+            final mode = (useExisting || manualConfig.doubleEntry)
+                ? 'doble'
+                : 'unitario';
             _showSnack(
               'Orden manual ($mode) preparada. Escanea ${manualConfig.units} unidades.',
             );
@@ -798,7 +1052,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         // TRICK: If the server returns a 500 but it's clearly a missing order
         // (common in dev/staging environments with complex SQL triggers),
         // we still allow the manual registration prompt if we are in one of the match flows.
-        final isEmbeddedMatchFlow = widget.matchOnly || widget.isEmbedded || _tabs.index == 1;
+        final isEmbeddedMatchFlow =
+            widget.matchOnly || widget.isEmbedded || _tabs.index == 1;
 
         if (isEmbeddedMatchFlow) {
           setState(() => _loadingOrder = false);
@@ -819,7 +1074,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             );
             if (!mounted) return;
             if (!regRes.ok || regRes.body is! Map) {
-              _showSnack('No se pudo registrar la orden (${regRes.statusCode})');
+              _showSnack(
+                'No se pudo registrar la orden (${regRes.statusCode})',
+              );
               return;
             }
             final map = regRes.body as Map;
@@ -842,8 +1099,21 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             _applyOrderData(
               order: Map<String, dynamic>.from(orderMap),
               serials: serials,
-              manualDouble: manualConfig.doubleEntry || (orderMap['manual_double'] == true) || serials.any((s) => (s['inventory_code'] ?? s['inventory'] ?? '').toString().trim().isNotEmpty),
+              manualDouble:
+                  manualConfig.doubleEntry ||
+                  (orderMap['manual_double'] == true) ||
+                  serials.any(
+                    (s) => (s['inventory_code'] ?? s['inventory'] ?? '')
+                        .toString()
+                        .trim()
+                        .isNotEmpty,
+                  ),
             );
+            if (manualConfig.sequence != null &&
+                manualConfig.sequence!.isNotEmpty) {
+              await _saveSequenceToBackend(numOrden, manualConfig.sequence!);
+              await _fetchOrderSequence(numOrden);
+            }
           } catch (e) {
             _showSnack('Error registrando orden: $e');
           }
@@ -886,6 +1156,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               'Orden manual ($mode) preparada. Escanea ${manualConfig.units} unidades.',
             );
           }
+          if (manualConfig.sequence != null &&
+              manualConfig.sequence!.isNotEmpty) {
+            await _saveSequenceToBackend(numOrden, manualConfig.sequence!);
+            await _fetchOrderSequence(numOrden);
+          }
         }
         return;
       }
@@ -899,13 +1174,17 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           )
           .toList();
       final bool hasInventoryCodes = serials.any(
-        (s) => (s['inventory_code'] ?? s['inventory'] ?? '').toString().trim().isNotEmpty,
+        (s) => (s['inventory_code'] ?? s['inventory'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty,
       );
       _applyOrderData(
         order: order,
         serials: serials,
         manualDouble: (order['manual_double'] == true) || hasInventoryCodes,
       );
+      await _fetchOrderSequence(numOrden);
     } catch (e) {
       _showSnack('Error obteniendo orden: $e');
     } finally {
@@ -970,9 +1249,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Serial duplicado'),
-            content: Text(
-              'El serial "$serial" ya está en la fila ${i + 1}.',
-            ),
+            content: Text('El serial "$serial" ya está en la fila ${i + 1}.'),
             actions: [
               FilledButton(
                 onPressed: () => Navigator.of(ctx).pop(),
@@ -987,7 +1264,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
     return false;
   }
-
 
   Future<void> _lookupInventory(int index) async {
     if (index < 0 || index >= _matchRows.length) return;
@@ -1070,7 +1346,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
     // Check if already in saved list (Rescan logic)
     final existingMatch = _orderSerials.firstWhere(
-      (s) => s['serial'] == serial && (manualDouble ? s['inventory_code'] == row.inventory.text.trim() : true),
+      (s) =>
+          s['serial'] == serial &&
+          (manualDouble
+              ? s['inventory_code'] == row.inventory.text.trim()
+              : true),
       orElse: () => {},
     );
 
@@ -1089,17 +1369,27 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     // If not in saved list, ask for confirmation (New assignment logic)
     bool confirmAdd = !forceConfirm;
     if (forceConfirm) {
-      confirmAdd = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Confirmar nueva asignaci\u00f3n'),
-          content: Text('El serial "$serial" no est\u00e1 registrado en esta orden. \u00bfDeseas agregarlo como un nuevo registro?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCELAR')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('AGREGAR')),
-          ],
-        ),
-      ) ?? false;
+      confirmAdd =
+          await showDialog<bool>(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: const Text('Confirmar nueva asignaci\u00f3n'),
+              content: Text(
+                'El serial "$serial" no est\u00e1 registrado en esta orden. \u00bfDeseas agregarlo como un nuevo registro?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('CANCELAR'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(c, true),
+                  child: const Text('AGREGAR'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
     }
 
     if (!confirmAdd) {
@@ -1128,7 +1418,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         SoundPlayer.playSuccess();
         row.serial.clear();
         row.inventory.clear();
-        final completedOrder = _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text;
+        final completedOrder =
+            _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text;
         await _refreshOrderAfterSave(completedOrder);
         return true;
       }
@@ -1136,28 +1427,41 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       // Handle Conflict (duplicate serial)
       if (res.statusCode == 400 || res.statusCode == 409) {
         final body = res.body;
-        if (body is Map && body['error'] == 'serial already assigned to another order') {
+        if (body is Map &&
+            body['error'] == 'serial already assigned to another order') {
           final existingOrder = body['num_orden'];
           final replace = await showDialog<bool>(
             context: context,
             builder: (c) => AlertDialog(
               title: const Text('Serial ya asignado'),
-              content: Text('Este serial está asignado a la orden "$existingOrder". ¿Deseas reemplazarlo y asignarlo a esta orden?'),
+              content: Text(
+                'Este serial está asignado a la orden "$existingOrder". ¿Deseas reemplazarlo y asignarlo a esta orden?',
+              ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('CANCELAR')),
-                FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('REEMPLAZAR')),
+                TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('CANCELAR'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(c, true),
+                  child: const Text('REEMPLAZAR'),
+                ),
               ],
             ),
           );
 
           if (replace == true) {
             payload['replace'] = true;
-            final resRetry = await client.post('$_basePath/match', jsonBody: payload);
+            final resRetry = await client.post(
+              '$_basePath/match',
+              jsonBody: payload,
+            );
             if (resRetry.ok) {
               SoundPlayer.playSuccess();
               row.serial.clear();
               row.inventory.clear();
-              final completedOrder = _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text;
+              final completedOrder =
+                  _orderInfo?['num_orden']?.toString() ?? _orderCtrl.text;
               await _refreshOrderAfterSave(completedOrder);
               return true;
             }
@@ -1246,6 +1550,46 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       _showSnack('Error importando: $e');
     } finally {
       if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _checkCompletionAndPrompt() async {
+    if (_orderInfo == null) return;
+    final total = int.tryParse(_orderInfo!['unidades']?.toString() ?? '0') ?? 0;
+    if (total <= 0) return;
+    if (_orderSerials.length < total) return;
+
+    // Only for Manipulacion y Etiquetado
+    final fam = _orderInfo!['familia']?.toString().toUpperCase() ?? '';
+    if (!fam.contains('MANIPULAC') || !fam.contains('ETIQUETADO')) return;
+
+    final orderNbr = _orderInfo!['num_orden']?.toString() ?? '';
+    if (_lastPromptedOrder == orderNbr) return;
+    _lastPromptedOrder = orderNbr;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¡Orden Completada!'),
+        content: const Text(
+          '¿Quieres exportar o imprimir un acta en esta orden?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('AHORA NO'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('EXPORTAR / IMPRIMIR'),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed == true && mounted) {
+      await _exportActa();
     }
   }
 
@@ -1379,7 +1723,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             decoration: const InputDecoration(labelText: 'Número de orden'),
             inputFormatters: [OrderInputFormatter()],
             autofocus: true,
-            onSubmitted: (_) => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
+            onSubmitted: (_) =>
+                Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
           ),
           actions: [
             TextButton(
@@ -1387,7 +1732,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
               child: const Text('Exportar'),
             ),
           ],
@@ -1406,28 +1752,28 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
     }
     setState(() => _exporting = true);
     try {
-      final res = await client.getBytes('/docgen/order/$num/pdf');
+      final res = await client.getBytes('/docgen/order/$num/pdf?stream=true');
       if (!mounted) return;
       if (!res.ok || res.body is! List<int>) {
-        _showSnack('No se pudo exportar (${res.statusCode})');
+        _showSnack('No se pudo generar el acta (${res.statusCode})');
         return;
       }
-      final headers = res.headers ?? const {};
+
+      final headers = res.headers ?? const <String, String>{};
       final suggested = _filenameFromHeaders(headers) ?? _defaultActaName(num);
-      final ext = suggested.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
-      final path = await FilePicker.platform.saveFile(
-        fileName: suggested,
-        type: FileType.custom,
-        allowedExtensions: [ext],
-        dialogTitle: 'Guardar acta',
-      );
-      if (path == null) {
-        _showSnack('Descarga cancelada');
-        return;
+      final pdfBytes = Uint8List.fromList(res.body as List<int>);
+
+      if (mounted) {
+        final service = Provider.of<OrderOpsService>(context, listen: false);
+        await showDialog(
+          context: context,
+          builder: (context) => PdfPreviewDialog(
+            pdfBytes: pdfBytes,
+            fileName: suggested,
+            service: service,
+          ),
+        );
       }
-      final file = File(path);
-      await file.writeAsBytes(res.body as List<int>, flush: true);
-      _showSnack('Archivo guardado en $path');
     } catch (e) {
       _showSnack('Error exportando: $e');
     } finally {
@@ -1449,7 +1795,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
             decoration: const InputDecoration(labelText: 'Número de orden'),
             inputFormatters: [OrderInputFormatter()],
             autofocus: true,
-            onSubmitted: (_) => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
+            onSubmitted: (_) =>
+                Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
           ),
           actions: [
             TextButton(
@@ -1457,7 +1804,8 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_normalizeOrder(ctrl.text)),
               child: const Text('Exportar'),
             ),
           ],
@@ -1485,7 +1833,7 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         _showSnack('No se pudo exportar (${res.statusCode})');
         return;
       }
-      final headers = res.headers ?? const {};
+      final headers = res.headers ?? const <String, String>{};
       final suggested =
           _filenameFromHeaders(headers) ?? 'serial_matches_export.xlsx';
       final path = await FilePicker.platform.saveFile(
@@ -1660,7 +2008,9 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
     final totalUnits = (_orderInfo?['unidades'] as num?)?.toInt() ?? 0;
     final savedUnits = _orderSerials.length;
-    final progress = totalUnits > 0 ? (savedUnits / totalUnits).clamp(0.0, 1.0) : 0.0;
+    final progress = totalUnits > 0
+        ? (savedUnits / totalUnits).clamp(0.0, 1.0)
+        : 0.0;
     final manualDouble = _isManualDouble;
     final mq = MediaQuery.of(context);
     final isSmall = mq.size.width < 700;
@@ -1691,7 +2041,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               if (_orderInfo != null) ...[
                 const SizedBox(width: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(8),
@@ -1699,13 +2052,50 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                   ),
                   child: Row(
                     children: [
-                      const Text('DOBLE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54)),
-                      const SizedBox(width: 8),
+                      // SECUENCIA BUTTON
+                      TextButton.icon(
+                        onPressed: _showSequenceDialog,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(
+                          Icons.list_alt_rounded,
+                          size: 16,
+                          color: Colors.tealAccent,
+                        ),
+                        label: const Text(
+                          'SECUENCIA',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.tealAccent,
+                          ),
+                        ),
+                      ),
+                      const VerticalDivider(
+                        width: 16,
+                        color: Colors.white10,
+                        indent: 8,
+                        endIndent: 8,
+                      ),
+                      const Text(
+                        'DOBLE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white54,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
                       SizedBox(
                         height: 32,
                         child: Switch(
                           value: manualDouble,
-                          onChanged: (val) => setState(() => _orderInfo!['manual_double'] = val),
+                          onChanged: (val) => setState(
+                            () => _orderInfo!['manual_double'] = val,
+                          ),
                           activeColor: primaryColor,
                         ),
                       ),
@@ -1722,7 +2112,11 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.search_rounded, size: 64, color: isDark ? Colors.white24 : Colors.black12),
+                  Icon(
+                    Icons.search_rounded,
+                    size: 64,
+                    color: isDark ? Colors.white24 : Colors.black12,
+                  ),
                   const SizedBox(height: 16),
                   const Text('Ingresa un número de orden para comenzar'),
                 ],
@@ -1731,171 +2125,407 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           ] else ...[
             const SizedBox(height: 24),
             // HEADER CARD (Progress & Info)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  primaryColor.withOpacity(0.15),
-                  primaryColor.withOpacity(0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: primaryColor.withOpacity(0.2)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'ORDEN ${_orderInfo!['num_orden']}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            manualDouble ? 'MODO DOBLE (Serial + IMEI)' : 'MODO UNITARIO (Solo Serial)',
-                            style: TextStyle(
-                              color: manualDouble ? Colors.orangeAccent : Colors.cyanAccent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      '$savedUnits / $totalUnits',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: progress >= 1 ? Colors.greenAccent : primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 10,
-                    backgroundColor: isDark ? Colors.white10 : Colors.black12,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progress >= 1 ? Colors.greenAccent : primaryColor,
-                    ),
-                  ),
-                ),
-                if (_orderInfo?['manual'] == true) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.edit_note_rounded, size: 14, color: Colors.white70),
-                        const SizedBox(width: 4),
-                        const Text('Registro Manual Externo', style: TextStyle(fontSize: 11, color: Colors.white70)),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-
-          const SizedBox(height: 24),
-
-          // MASTER SCANNER CARD
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [primaryColor.withOpacity(0.5), primaryColor.withOpacity(0.1)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Container(
-              padding: const EdgeInsets.all(16),
+            Container(
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [
+                    primaryColor.withOpacity(0.15),
+                    primaryColor.withOpacity(0.05),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: primaryColor.withOpacity(0.2)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(Icons.center_focus_strong, color: primaryColor, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'ESCÁNER MAESTRO',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.1,
-                          color: primaryColor,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'ORDEN ${_orderInfo!['num_orden']}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              manualDouble
+                                  ? 'MODO DOBLE (Serial + IMEI)'
+                                  : 'MODO UNITARIO (Solo Serial)',
+                              style: TextStyle(
+                                color: manualDouble
+                                    ? Colors.orangeAccent
+                                    : Colors.cyanAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const Spacer(),
-                      const Icon(Icons.info_outline, size: 14, color: Colors.white24),
+                      Text(
+                        '$savedUnits / $totalUnits',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: progress >= 1
+                              ? Colors.greenAccent
+                              : primaryColor,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _quickScanCtrl,
-                    focusNode: _quickScanFocus,
-                    autofocus: true,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-                    decoration: InputDecoration(
-                      hintText: 'Escaneo rápido o verificación...',
-                      prefixIcon: const Icon(Icons.qr_code_scanner),
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.03),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 10,
+                      backgroundColor: isDark ? Colors.white10 : Colors.black12,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progress >= 1 ? Colors.greenAccent : primaryColor,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                     ),
-                    onSubmitted: _handleQuickScan,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Usa este campo para verificar si un serial ya existe o para capturar rápidamente el siguiente.',
-                    style: TextStyle(fontSize: 11, color: Colors.white38),
-                  ),
+                  if (_orderInfo?['manual'] == true) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.edit_note_rounded,
+                            size: 14,
+                            color: Colors.white70,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'Registro Manual Externo',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-          ),
 
-          const SizedBox(height: 24),
+            const SizedBox(height: 24),
 
-          // PENDING SLOTS (New Design)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
+            // MASTER SCANNER CARD
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    primaryColor.withOpacity(0.5),
+                    primaryColor.withOpacity(0.1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.center_focus_strong,
+                          color: primaryColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'ESCÁNER MAESTRO',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.1,
+                            color: primaryColor,
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.white24,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _quickScanCtrl,
+                      focusNode: _quickScanFocus,
+                      autofocus: true,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Escaneo rápido o verificación...',
+                        prefixIcon: const Icon(Icons.qr_code_scanner),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.03),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                          horizontal: 12,
+                        ),
+                      ),
+                      onSubmitted: _handleQuickScan,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Usa este campo para verificar si un serial ya existe o para capturar rápidamente el siguiente.',
+                      style: TextStyle(fontSize: 11, color: Colors.white38),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // PENDING SLOTS (New Design)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'PENDIENTES DE VINCULACIÓN',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                    color: Colors.white54,
+                  ),
+                ),
+                if (_matchRows.isNotEmpty)
+                  Text(
+                    '${_matchRows.length.formattedInt} UNIDADES',
+                    style: const TextStyle(fontSize: 10, color: Colors.white30),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            if (_matchRows.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(24),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline_rounded,
+                      color: Colors.greenAccent,
+                      size: 40,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '¡Todas las unidades vinculadas!',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _exporting ? null : _exportActa,
+                      icon: _exporting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.picture_as_pdf),
+                      label: const Text('Exportar Acta (PDF)'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _matchRows.length,
+                itemBuilder: (_, index) {
+                  final row = _matchRows[index];
+                  final duplicate = _duplicateRows.contains(index);
+
+                  return Container(
+                    key: ValueKey(row),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.04)
+                          : Colors.black.withOpacity(0.02),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: duplicate
+                            ? Colors.redAccent.withOpacity(0.5)
+                            : Colors.white10,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primaryColor.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'UNIDAD ${(savedUnits + index + 1).formattedInt}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                ),
+                              ),
+                            ),
+                            if (duplicate) ...[
+                              const SizedBox(width: 8),
+                              const Text(
+                                'VALOR DUPLICADO',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                            const Spacer(),
+                            if (row.isSaving)
+                              const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            else
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 16,
+                                  color: Colors.white24,
+                                ),
+                                onPressed: () {
+                                  row.serial.clear();
+                                  row.inventory.clear();
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (isSmall || !manualDouble)
+                          Column(
+                            children: [
+                              _buildModernInput(
+                                controller: row.serial,
+                                focusNode: row.focus,
+                                label: manualDouble
+                                    ? 'SERIAL / SN'
+                                    : 'SERIAL ÚNICO',
+                                icon: Icons.qr_code_scanner_rounded,
+                                onSubmitted: (val) =>
+                                    _handleSerialSubmit(index, val),
+                              ),
+                              if (manualDouble) ...[
+                                const SizedBox(height: 12),
+                                _buildModernInput(
+                                  controller: row.inventory,
+                                  focusNode: row.inventoryFocus,
+                                  label: 'IMEI / INVENTARIO',
+                                  icon: Icons.inventory_2_rounded,
+                                  onSubmitted: (_) =>
+                                      _handleInventorySubmit(index),
+                                ),
+                              ],
+                            ],
+                          )
+                        else
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildModernInput(
+                                  controller: row.serial,
+                                  focusNode: row.focus,
+                                  label: 'SERIAL / SN',
+                                  icon: Icons.qr_code_scanner_rounded,
+                                  onSubmitted: (val) =>
+                                      _handleSerialSubmit(index, val),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildModernInput(
+                                  controller: row.inventory,
+                                  focusNode: row.inventoryFocus,
+                                  label: 'IMEI / INVENTARIO',
+                                  icon: Icons.inventory_2_rounded,
+                                  onSubmitted: (_) =>
+                                      _handleInventorySubmit(index),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+            const SizedBox(height: 32),
+
+            // HISTORY SECTION (Previously registered)
+            if (_orderSerials.isNotEmpty) ...[
               const Text(
-                'PENDIENTES DE VINCULACIÓN',
+                'RECIÉN VINCULADOS',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
@@ -1903,182 +2533,48 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                   color: Colors.white54,
                 ),
               ),
-              if (_matchRows.isNotEmpty)
-                Text(
-                  '${_matchRows.length.formattedInt} UNIDADES',
-                  style: const TextStyle(fontSize: 10, color: Colors.white30),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.02),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
                 ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          if (_matchRows.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(24),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: const Column(
-                children: [
-                  Icon(Icons.check_circle_outline_rounded, color: Colors.greenAccent, size: 40),
-                  const SizedBox(height: 12),
-                  const Text('¡Todas las unidades vinculadas!', style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-            )
-          else
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _matchRows.length,
-              itemBuilder: (_, index) {
-                final row = _matchRows[index];
-                final duplicate = _duplicateRows.contains(index);
-
-                return Container(
-                  key: ValueKey(row),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.02),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: duplicate ? Colors.redAccent.withOpacity(0.5) : Colors.white10,
-                    ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _orderSerials.length.clamp(0, 10), // Show last 10
+                  separatorBuilder: (_, __) => const Divider(
+                    height: 1,
+                    color: Colors.white10,
+                    indent: 16,
+                    endIndent: 16,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: primaryColor.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'UNIDAD ${(savedUnits + index + 1).formattedInt}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: primaryColor,
-                              ),
-                            ),
-                          ),
-                          if (duplicate) ...[
-                            const SizedBox(width: 8),
-                            const Text(
-                              'VALOR DUPLICADO',
-                              style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                          const Spacer(),
-                          if (row.isSaving)
-                            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          else
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              icon: const Icon(Icons.clear, size: 16, color: Colors.white24),
-                              onPressed: () { row.serial.clear(); row.inventory.clear(); },
-                            ),
-                        ],
+                  itemBuilder: (_, index) {
+                    final item =
+                        _orderSerials[(_orderSerials.length - 1) - index];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(
+                        Icons.check_circle_rounded,
+                        color: Colors.greenAccent,
+                        size: 18,
                       ),
-                      const SizedBox(height: 12),
-                      if (isSmall || !manualDouble)
-                        Column(
-                          children: [
-                            _buildModernInput(
-                              controller: row.serial,
-                              focusNode: row.focus,
-                              label: manualDouble ? 'SERIAL / SN' : 'SERIAL ÚNICO',
-                              icon: Icons.qr_code_scanner_rounded,
-                              onSubmitted: (val) => _handleSerialSubmit(index, val),
-                            ),
-                            if (manualDouble) ...[
-                              const SizedBox(height: 12),
-                              _buildModernInput(
-                                controller: row.inventory,
-                                focusNode: row.inventoryFocus,
-                                label: 'IMEI / INVENTARIO',
-                                icon: Icons.inventory_2_rounded,
-                                onSubmitted: (_) => _handleInventorySubmit(index),
-                              ),
-                            ],
-                          ],
-                        )
-                      else
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildModernInput(
-                                controller: row.serial,
-                                focusNode: row.focus,
-                                label: 'SERIAL / SN',
-                                icon: Icons.qr_code_scanner_rounded,
-                                onSubmitted: (val) => _handleSerialSubmit(index, val),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildModernInput(
-                                controller: row.inventory,
-                                focusNode: row.inventoryFocus,
-                                label: 'IMEI / INVENTARIO',
-                                icon: Icons.inventory_2_rounded,
-                                onSubmitted: (_) => _handleInventorySubmit(index),
-                              ),
-                            ),
-                          ],
+                      title: Text(item['serial'] ?? '-'),
+                      subtitle: item['inventory_code']?.isNotEmpty == true
+                          ? Text(item['inventory_code']!)
+                          : null,
+                      trailing: Text(
+                        '#${(_orderSerials.length - index).formattedInt}',
+                        style: const TextStyle(
+                          color: Colors.white24,
+                          fontSize: 10,
                         ),
-                    ],
-                  ),
-                );
-              },
-            ),
-
-          const SizedBox(height: 32),
-
-          // HISTORY SECTION (Previously registered)
-          if (_orderSerials.isNotEmpty) ...[
-            const Text(
-              'RECIÉN VINCULADOS',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-                color: Colors.white54,
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.02),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _orderSerials.length.clamp(0, 10), // Show last 10
-                separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white10, indent: 16, endIndent: 16),
-                itemBuilder: (_, index) {
-                  final item = _orderSerials[(_orderSerials.length - 1) - index];
-                  return ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 18),
-                    title: Text(item['serial'] ?? '-'),
-                    subtitle: item['inventory_code']?.isNotEmpty == true ? Text(item['inventory_code']!) : null,
-                    trailing: Text('#${(_orderSerials.length - index).formattedInt}', style: const TextStyle(color: Colors.white24, fontSize: 10)),
-                  );
-                },
-              ),
-            ),
             ],
           ],
         ],
@@ -2114,7 +2610,10 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Colors.cyanAccent),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
       ),
     );
   }
@@ -2128,7 +2627,32 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       return;
     }
     if (_isManualDouble) {
-      _matchRows[index].inventoryFocus.requestFocus();
+      if (_sequenceQueue.isNotEmpty) {
+        // Auto-fill from sequence
+        final nextCode = _sequenceQueue.removeAt(0);
+        _matchRows[index].inventory.text = nextCode;
+        _handleInventorySubmit(index);
+      } else {
+        // Try autocomplete from database
+        final client = _clientOrNull();
+        if (client != null) {
+          try {
+            final res = await client.get('$_basePath/serial-to-inventory?serial=$val');
+            if (res.ok && res.body is Map) {
+              final code = res.body['inventory_code']?.toString();
+              if (code != null && code.isNotEmpty) {
+                _matchRows[index].inventory.text = code;
+                _duplicateRows.remove(index);
+                _handleInventorySubmit(index);
+                return;
+              }
+            }
+          } catch (e) {
+            debugPrint('Autocomplete error: $e');
+          }
+        }
+        _matchRows[index].inventoryFocus.requestFocus();
+      }
     } else {
       final saved = await _saveRow(index, forceConfirm: false);
       if (saved) {
@@ -2182,17 +2706,26 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                     : const Icon(Icons.delete_sweep),
                 label: Text(_resetting ? 'Reseteando...' : 'Reset tabla'),
               ),
-              FilledButton.icon(
-                onPressed: _exporting ? null : _exportActa,
-                icon: _exporting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.picture_as_pdf),
-                label: Text(_exporting ? 'Exportando...' : 'Exportar acta'),
-              ),
+              if (_orderInfo != null &&
+                  (_orderInfo!['familia']?.toString().toUpperCase().contains(
+                            'MANIPULAC',
+                          ) ==
+                          true &&
+                      _orderInfo!['familia']?.toString().toUpperCase().contains(
+                            'ETIQUETADO',
+                          ) ==
+                          true))
+                FilledButton.icon(
+                  onPressed: _exporting ? null : _exportActa,
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.picture_as_pdf),
+                  label: Text(_exporting ? 'Exportando...' : 'Exportar acta'),
+                ),
               FilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.green[700],
@@ -2352,15 +2885,41 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
                     ),
                   ),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Manipulacion y Etiquetado',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Manipulacion y Etiquetado',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (_sequenceQueue.isNotEmpty)
+                          Chip(
+                            avatar: const Icon(
+                              Icons.auto_fix_high,
+                              size: 14,
+                              color: Colors.cyanAccent,
+                            ),
+                            label: Text(
+                              'SEQ: ${_sequenceQueue.length}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.cyanAccent,
+                              ),
+                            ),
+                            backgroundColor: Colors.cyanAccent.withOpacity(0.1),
+                            onDeleted: () =>
+                                setState(() => _sequenceQueue.clear()),
+                          ),
+                      ],
                     ),
-                    SizedBox(height: 4),
-                    Text(
+                    const SizedBox(height: 4),
+                    const Text(
                       'Modo Match directo para esta orden',
                       style: TextStyle(fontSize: 13, color: Colors.white70),
                     ),
@@ -2379,6 +2938,28 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
         appBar: AppBar(
           leading: const EdgeNavHandle(),
           title: const Text('VINCULAR SERIAL (MATCH)'),
+          actions: [
+            if (_sequenceQueue.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Chip(
+                  avatar: const Icon(
+                    Icons.auto_fix_high,
+                    size: 14,
+                    color: Colors.cyanAccent,
+                  ),
+                  label: Text(
+                    'SEQ: ${_sequenceQueue.length}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.cyanAccent,
+                    ),
+                  ),
+                  backgroundColor: Colors.cyanAccent.withOpacity(0.1),
+                  onDeleted: () => setState(() => _sequenceQueue.clear()),
+                ),
+              ),
+          ],
           bottom: TabBar(controller: _tabs, tabs: tabs, isScrollable: true),
         ),
         body: TabBarView(controller: _tabs, children: views),
@@ -2391,10 +2972,12 @@ class _ManualOrderPromptResult {
   const _ManualOrderPromptResult({
     required this.unitsText,
     required this.doubleEntry,
+    this.sequence,
   });
 
   final String unitsText;
   final bool doubleEntry;
+  final List<String>? sequence;
 }
 
 class _ManualUnitsDialog extends StatefulWidget {
@@ -2409,6 +2992,7 @@ class _ManualUnitsDialog extends StatefulWidget {
 class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
   late final TextEditingController _ctrl;
   bool _doubleEntry = false;
+  List<String>? _sequence;
 
   @override
   void initState() {
@@ -2427,8 +3011,23 @@ class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
       _ManualOrderPromptResult(
         unitsText: _ctrl.text.trim(),
         doubleEntry: _doubleEntry,
+        sequence: _sequence,
       ),
     );
+  }
+
+  Future<void> _configureSequence() async {
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) =>
+          _SequenceSetupDialog(targetCount: int.tryParse(_ctrl.text) ?? 0),
+    );
+    if (result != null) {
+      setState(() {
+        _sequence = result;
+        _doubleEntry = true; // Auto-enable double if sequence is set
+      });
+    }
   }
 
   @override
@@ -2476,6 +3075,33 @@ class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
                 : 'Solo Serial (S/N)',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          if (_doubleEntry) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _configureSequence,
+                icon: Icon(
+                  _sequence != null ? Icons.check_circle : Icons.auto_fix_high,
+                ),
+                label: Text(
+                  _sequence != null
+                      ? 'Secuencia activa (${_sequence!.length})'
+                      : 'Configurar secuencia automática',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _sequence != null
+                      ? Colors.greenAccent
+                      : Colors.cyanAccent,
+                  side: BorderSide(
+                    color: _sequence != null
+                        ? Colors.greenAccent
+                        : Colors.cyanAccent,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
       actions: [
@@ -2507,5 +3133,245 @@ class _MatchRow {
     inventory.dispose();
     focus.dispose();
     inventoryFocus.dispose();
+  }
+}
+
+enum _SequenceSegmentType { static, numeric }
+
+class _SequenceSegment {
+  _SequenceSegment({
+    this.type = _SequenceSegmentType.static,
+    this.staticValue = '',
+    this.start = 1,
+    this.end = 10,
+    this.padding = 0,
+  });
+
+  _SequenceSegmentType type;
+  String staticValue;
+  int start;
+  int end;
+  int padding;
+
+  int get count =>
+      type == _SequenceSegmentType.numeric ? (end - start).abs() + 1 : 1;
+}
+
+class _SequenceSetupDialog extends StatefulWidget {
+  const _SequenceSetupDialog({required this.targetCount});
+  final int targetCount;
+
+  @override
+  State<_SequenceSetupDialog> createState() => _SequenceSetupDialogState();
+}
+
+class _SequenceSetupDialogState extends State<_SequenceSetupDialog> {
+  final List<_SequenceSegment> _segments = [
+    _SequenceSegment(type: _SequenceSegmentType.static, staticValue: 'HZ'),
+    _SequenceSegment(
+      type: _SequenceSegmentType.numeric,
+      start: 1,
+      end: 10,
+      padding: 1,
+    ),
+  ];
+
+  List<String> _generate() {
+    int maxCount = 0;
+    for (var s in _segments) {
+      if (s.type == _SequenceSegmentType.numeric) {
+        if (s.count > maxCount) maxCount = s.count;
+      }
+    }
+    if (maxCount == 0)
+      maxCount = widget.targetCount > 0 ? widget.targetCount : 1;
+    if (maxCount > 5000) maxCount = 5000;
+
+    List<String> results = [];
+    for (int i = 0; i < maxCount; i++) {
+      String code = '';
+      for (var s in _segments) {
+        if (s.type == _SequenceSegmentType.static) {
+          code += s.staticValue;
+        } else {
+          int val = s.start < s.end ? s.start + i : s.start - i;
+          String sVal = val.toString();
+          if (s.padding > sVal.length) {
+            sVal = sVal.padLeft(s.padding, '0');
+          }
+          code += sVal;
+        }
+      }
+      results.add(code);
+    }
+    return results;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = _generate();
+
+    return AlertDialog(
+      title: const Text('Configurar Secuencia'),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Define los segmentos de la secuencia (ej: HZ + 1-1000 + GW)',
+              style: TextStyle(fontSize: 12, color: Colors.white60),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _segments.length,
+                itemBuilder: (ctx, index) {
+                  final s = _segments[index];
+                  return Card(
+                    color: Colors.white.withOpacity(0.05),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Row(
+                        children: [
+                          DropdownButton<_SequenceSegmentType>(
+                            value: s.type,
+                            onChanged: (v) => setState(() => s.type = v!),
+                            items: const [
+                              DropdownMenuItem(
+                                value: _SequenceSegmentType.static,
+                                child: Text('Estatico'),
+                              ),
+                              DropdownMenuItem(
+                                value: _SequenceSegmentType.numeric,
+                                child: Text('Número'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 8),
+                          if (s.type == _SequenceSegmentType.static)
+                            Expanded(
+                              child: TextField(
+                                decoration: const InputDecoration(
+                                  hintText: 'Texto ej: HZ',
+                                ),
+                                onChanged: (v) =>
+                                    setState(() => s.staticValue = v),
+                                controller:
+                                    TextEditingController(text: s.staticValue)
+                                      ..selection = TextSelection.collapsed(
+                                        offset: s.staticValue.length,
+                                      ),
+                              ),
+                            )
+                          else ...[
+                            Expanded(
+                              child: TextField(
+                                decoration: const InputDecoration(
+                                  labelText: 'Inicio',
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (v) => setState(
+                                  () => s.start = int.tryParse(v) ?? 0,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Text('-'),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: TextField(
+                                decoration: const InputDecoration(
+                                  labelText: 'Fin',
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (v) => setState(
+                                  () => s.end = int.tryParse(v) ?? 0,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 60,
+                              child: TextField(
+                                decoration: const InputDecoration(
+                                  labelText: 'Dígitos',
+                                ),
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(fontSize: 12),
+                                onChanged: (v) => setState(
+                                  () => s.padding = int.tryParse(v) ?? 0,
+                                ),
+                              ),
+                            ),
+                          ],
+                          IconButton(
+                            icon: const Icon(
+                              Icons.remove_circle_outline,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            onPressed: () =>
+                                setState(() => _segments.removeAt(index)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () =>
+                  setState(() => _segments.add(_SequenceSegment())),
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Agregar segmento'),
+            ),
+            const Divider(height: 32),
+            const Text(
+              'VISTA PREVIA (Primeros 5):',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white38,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: preview
+                  .take(5)
+                  .map(
+                    (e) => Chip(
+                      label: Text(e, style: const TextStyle(fontSize: 10)),
+                    ),
+                  )
+                  .toList(),
+            ),
+            if (preview.length > 5)
+              const Text('...', style: TextStyle(color: Colors.white24)),
+            const SizedBox(height: 8),
+            Text(
+              'Se generarán ${preview.length} códigos.',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.cyanAccent,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('CANCELAR'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _generate()),
+          child: const Text('USAR SECUENCIA'),
+        ),
+      ],
+    );
   }
 }

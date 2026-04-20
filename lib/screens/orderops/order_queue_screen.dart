@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../services/api_service.dart';
 import '../../services/orderops_service.dart';
@@ -24,6 +25,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   List<AgentOrder> _orders = [];
   bool _loading = true;
   bool _syncingOrders = false;
+  bool _importingCsv = false;
   double _syncProgress = 0.0;
   String _syncMessage = '';
   String? _error;
@@ -292,6 +294,72 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     }
   }
 
+  Future<void> _handleImportCsv() async {
+    if (_importingCsv) return;
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: true,
+    );
+
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+
+    setState(() => _importingCsv = true);
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final res = await apiService.client.postMultipart(
+        '/docgen/import/csv',
+        fileFieldName: 'file',
+        fileName: file.name,
+        fileBytes: file.bytes!,
+      );
+
+      if (!mounted) return;
+
+      if (res.ok) {
+        final body = res.body as Map;
+        final summary = body['summary'] as Map;
+        final total = summary['total'] ?? 0;
+        final success = summary['success'] ?? 0;
+        final failed = summary['failed'] ?? 0;
+
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Importación Completada'),
+            content: Text(
+              'Total filas: $total\n'
+              'Éxito: $success\n'
+              'Fallidos: $failed',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+        _loadOrders();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al importar: ${res.statusCode}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importingCsv = false);
+    }
+  }
+
   void _onOrderTap(AgentOrder order) {
     Navigator.of(context)
         .push(
@@ -501,6 +569,24 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
               onPressed: _handleSyncOrders,
               tooltip: 'Sincronizar Ordenes (SFTP)',
             ),
+        if (canSync)
+          _importingCsv
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(
+                    Icons.cloud_upload_rounded,
+                    color: Colors.orangeAccent,
+                  ),
+                  onPressed: _handleImportCsv,
+                  tooltip: 'Importar Ordenes (CSV)',
+                ),
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: () => _loadOrders(),
