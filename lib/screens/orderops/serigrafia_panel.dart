@@ -294,10 +294,15 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
   Widget _buildBrowseRegistryButton() {
     return ElevatedButton.icon(
-      onPressed: _showRegistryPicker,
-      icon: const Icon(Icons.search_rounded),
-      label: const Text('BUSCAR REGISTRO'),
-      style: ElevatedButton.styleFrom(backgroundColor: Colors.white12, foregroundColor: Colors.cyan, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16)),
+      onPressed: _showRegistryManager,
+      icon: const Icon(Icons.history_rounded),
+      label: const Text('HISTORIAL / BUSCAR'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white10, 
+        foregroundColor: Colors.cyan, 
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 
@@ -343,40 +348,224 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     }
   }
 
-  Future<void> _showRegistryPicker() async {
+  Future<void> _showRegistryManager({String? initialQuery}) async {
     final registries = await _serigrafiaService.getRegistries(widget.order.idnbr);
     if (!mounted) return;
 
+    final searchCtrl = TextEditingController(text: initialQuery ?? '');
+    String searchQuery = initialQuery ?? '';
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Registros del Proyecto', style: TextStyle(color: Colors.cyan)),
-        content: SizedBox(
-          width: 500,
-          height: 400,
-          child: registries.isEmpty 
-            ? const Center(child: Text('No hay registros previos', style: TextStyle(color: Colors.white24)))
-            : ListView.builder(
-                itemCount: registries.length,
-                itemBuilder: (context, index) {
-                  final r = registries[index];
-                  final data = r['data'] as Map;
-                  final time = r['created_at'].toString().split('T').first;
-                  return ListTile(
-                    title: Text(data['CI'] ?? data['CI_CODE'] ?? 'Sin CI', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    subtitle: Text('${data['MAC'] ?? ''} | ${data['DSN'] ?? ''}\n$time - ${r['operator']}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
-                    isThreeLine: true,
-                    onTap: () {
-                      _applyRegistryToExcel(r);
-                      Navigator.pop(ctx);
-                    },
-                  );
-                },
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final filtered = registries.where((r) {
+              final dataStr = (r['data'] ?? {}).toString().toLowerCase();
+              final ci = (r['ci'] ?? '').toString().toLowerCase();
+              final serial = (r['serial'] ?? '').toString().toLowerCase();
+              final op = (r['operator'] ?? '').toString().toLowerCase();
+              final q = searchQuery.toLowerCase();
+              
+              return dataStr.contains(q) || ci.contains(q) || serial.contains(q) || op.contains(q);
+            }).toList();
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              title: Row(
+                children: [
+                  const Icon(Icons.history_rounded, color: Colors.cyan),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('Historial de Registros', style: TextStyle(color: Colors.cyan))),
+                  SizedBox(
+                    width: 250,
+                    child: TextField(
+                      controller: searchCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Buscar CI, Serial...',
+                        prefixIcon: const Icon(Icons.search, size: 16),
+                        suffixIcon: searchQuery.isNotEmpty 
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 16), 
+                              onPressed: () {
+                                searchCtrl.clear();
+                                setDialogState(() => searchQuery = '');
+                              },
+                            )
+                          : null,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (v) => setDialogState(() => searchQuery = v),
+                    ),
+                  ),
+                ],
               ),
+              content: SizedBox(
+                width: 700,
+                height: 500,
+                child: filtered.isEmpty
+                    ? const Center(child: Text('No hay registros registrados aún', style: TextStyle(color: Colors.white24)))
+                    : ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final r = filtered[index];
+                          final data = r['data'] as Map;
+                          final time = r['created_at'].toString().split('T').first;
+                          return Card(
+                            color: Colors.white.withOpacity(0.03),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            child: ListTile(
+                              leading: const Icon(Icons.inventory_2_outlined, color: Colors.cyan, size: 24),
+                              title: Text(data['CI'] ?? data['CI_CODE'] ?? 'Sin CI', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                              subtitle: Text('${data['MAC'] ?? ''} | ${data['SERIAL'] ?? data['Serial'] ?? ''}\n$time - ${r['operator']}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_note_rounded, color: Colors.cyan, size: 22),
+                                    tooltip: 'Editar Registro',
+                                    onPressed: () => _showEditRegistryDialog(r).then((updatedData) async {
+                                      if (updatedData != null) {
+                                         final refreshed = await _serigrafiaService.getRegistries(widget.order.idnbr);
+                                         setDialogState(() {
+                                            registries.clear();
+                                            registries.addAll(refreshed);
+                                         });
+                                      }
+                                    }),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 22),
+                                    tooltip: 'Eliminar Registro',
+                                    onPressed: () async {
+                                      final ok = await _showConfirmDelete(r['id']);
+                                      if (ok) {
+                                        final refreshed = await _serigrafiaService.getRegistries(widget.order.idnbr);
+                                        setDialogState(() {
+                                          registries.clear();
+                                          registries.addAll(refreshed);
+                                        });
+                                      }
+                                    },
+                                  ),
+                                  const VerticalDivider(width: 20, indent: 10, endIndent: 10),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      _applyRegistryToExcel(r);
+                                      Navigator.pop(ctx);
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.cyan.withOpacity(0.12), 
+                                      foregroundColor: Colors.cyan,
+                                      elevation: 0,
+                                    ),
+                                    child: const Text('USAR EN EXCEL'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CERRAR')),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<Map<String, String>?> _showEditRegistryDialog(Map<String, dynamic> registry) async {
+    final rawData = registry['data'] as Map;
+    final controllers = <String, TextEditingController>{};
+    rawData.forEach((k, v) {
+      controllers[k.toString()] = TextEditingController(text: v.toString());
+    });
+
+    final res = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Editar Datos del Registro', style: TextStyle(color: Colors.cyan)),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Modifica los valores escaneados para este registro:', style: TextStyle(fontSize: 12, color: Colors.white38)),
+                const SizedBox(height: 16),
+                ...controllers.entries.map((e) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TextField(
+                      controller: e.value,
+                      decoration: InputDecoration(
+                        labelText: e.key, 
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELAR')),
+          FilledButton(
+            onPressed: () async {
+              final newData = <String, String>{};
+              controllers.forEach((k, v) => newData[k] = v.text.trim());
+              
+              final updateRes = await _serigrafiaService.updateRegistry(registry['id'], {
+                'data': newData,
+                'ci': newData['CI'] ?? newData['CI_CODE'],
+                'serial': newData['SERIAL'] ?? newData['Serial'],
+              });
+              
+              if (updateRes.ok) {
+                if (mounted) Navigator.pop(ctx, newData);
+              } else {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${updateRes.error}'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('GUARDAR CAMBIOS'),
+          ),
+        ],
       ),
     );
+    controllers.forEach((k, v) => v.dispose());
+    return res;
+  }
+
+  Future<bool> _showConfirmDelete(int id) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Eliminar Registro Histórico'),
+        content: const Text('¿Estás seguro de que deseas eliminar este registro?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ELIMINAR', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final res = await _serigrafiaService.deleteRegistry(id);
+      return res.ok;
+    }
+    return false;
   }
 
   void _applyRegistryToExcel(Map<String, dynamic> registry) {
@@ -843,7 +1032,44 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text('PASO 4: ESCANEO Y REGISTRO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
-            Text('Fila ${_currentRowIndex + 1} de ${sheet.maxRows}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.cyan)),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.history_toggle_off_rounded, size: 22, color: Colors.cyan),
+                  tooltip: 'Ver Historial de Registros',
+                  onPressed: _showRegistryManager,
+                ),
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: _advanceToNextEmptyRow,
+                  icon: const Icon(Icons.fast_forward_rounded, size: 16, color: Colors.cyan),
+                  label: const Text('VOLVER AL ACTUAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.cyan.withOpacity(0.05),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(width: 1, height: 20, color: Colors.white12),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.cyan),
+                  tooltip: 'Fila Anterior',
+                  onPressed: _currentRowIndex > 1
+                      ? () => setState(() => _currentRowIndex--)
+                      : null,
+                ),
+                Text('Fila ${_currentRowIndex + 1} de ${sheet.maxRows}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.cyan),
+                  tooltip: 'Siguiente Fila',
+                  onPressed: _currentRowIndex < sheet.maxRows - 1
+                      ? () => setState(() => _currentRowIndex++)
+                      : null,
+                ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -889,9 +1115,15 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           if (ciValue != null) ...[
             const Text('CÓDIGO DE INVENTARIO (CI)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.cyan, letterSpacing: 2)),
             const SizedBox(height: 8),
-            Text(
-              ciValue!,
-              style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1),
+            GestureDetector(
+              onTap: () => _showRegistryManager(initialQuery: ciValue),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Text(
+                  ciValue!,
+                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1),
+                ),
+              ),
             ),
             const SizedBox(height: 24),
             Divider(color: Colors.white.withOpacity(0.05), indent: 40, endIndent: 40),
@@ -989,14 +1221,84 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     }
     
     if (fieldToScan == null) {
-      return const Center(
+      if (_printing) {
+        return const Center(
+          child: Column(
+            children: [
+              Icon(Icons.print_rounded, color: Colors.green, size: 64),
+              SizedBox(height: 16),
+              Text('Imprimiendo...', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              SizedBox(height: 8),
+              CircularProgressIndicator(),
+            ],
+          ),
+        );
+      }
+      
+      return Center(
         child: Column(
           children: [
-            Icon(Icons.check_circle_rounded, color: Colors.green, size: 64),
-            SizedBox(height: 16),
-            Text('Procesando...', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            SizedBox(height: 8),
-            CircularProgressIndicator(),
+            const Icon(Icons.verified_rounded, color: Colors.green, size: 64),
+            const SizedBox(height: 16),
+            const Text('Fila Completada', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green)),
+            const Text('Esta fila ya tiene todos los datos registrados.', style: TextStyle(fontSize: 13, color: Colors.white38)),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final values = <String, String>{};
+                    final sheet = _excel!.tables.values.first;
+                    final row = sheet.rows[_currentRowIndex];
+                    for (final v in _allVariables) {
+                      final colName = _variableToColumnMapping[v];
+                      final colIdx = _excelHeaders.indexOf(colName ?? '');
+                      if (colIdx != -1) {
+                         values[v] = row[colIdx]?.value?.toString() ?? '';
+                      }
+                    }
+                    _printAndSubmit(values);
+                  },
+                  icon: const Icon(Icons.print_rounded),
+                  label: const Text('REIMPRIMIR ETIQUETA'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.cyan, 
+                    foregroundColor: Colors.white, 
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                       final sheet = _excel!.tables.values.first;
+                       for (final v in _allVariables) {
+                         final colName = _variableToColumnMapping[v];
+                         final colIdx = _excelHeaders.indexOf(colName ?? '');
+                         if (colIdx != -1) {
+                            sheet.updateCell(
+                              excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
+                              '',
+                            );
+                         }
+                       }
+                       _currentCiCode = null;
+                       _isUsingExistingRegistry = false;
+                    });
+                  },
+                  icon: const Icon(Icons.edit_note_rounded),
+                  label: const Text('BORRAR Y RE-ESCANEAR'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange, 
+                    side: const BorderSide(color: Colors.orange), 
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       );
@@ -1069,10 +1371,11 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
            if (api != null) {
               final res = await api.client.postMultipart(
                 '/orderops/agent-orders/${widget.order.idnbr}/photos',
+                fields: {'overwrite': 'true'},
                 files: [
                   MultipartAttachment(
                     fieldName: 'file',
-                    fileName: 'SERIGRAFIA_ACTUALIZADA_${_selectedAttachment!.fileName}',
+                    fileName: _selectedAttachment!.fileName,
                     bytes: bytes,
                   )
                 ],

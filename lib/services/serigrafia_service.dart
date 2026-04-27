@@ -128,6 +128,16 @@ class SerigrafiaService {
     return [];
   }
 
+  /// Update an existing registry record
+  Future<ApiResult> updateRegistry(int id, Map<String, dynamic> data) async {
+    return await client.put('/orderops/serigrafia/registry/$id', jsonBody: data);
+  }
+
+  /// Delete a registry record
+  Future<ApiResult> deleteRegistry(int id) async {
+    return await client.delete('/orderops/serigrafia/registry/$id');
+  }
+
   /// Download Excel attachment and parse headers
   Future<Excel?> downloadAndParseExcel(String filePath) async {
     try {
