@@ -376,7 +376,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                 children: [
                   const Icon(Icons.history_rounded, color: Colors.cyan),
                   const SizedBox(width: 12),
-                  const Expanded(child: Text('Historial de Registros', style: TextStyle(color: Colors.cyan))),
+                  Expanded(child: Text('Historial de Registros', style: const TextStyle(color: Colors.cyan))),
                   SizedBox(
                     width: 250,
                     child: TextField(
@@ -1316,22 +1316,118 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           autofocus: true,
           textAlign: TextAlign.center,
           decoration: const InputDecoration(labelText: 'EN ESPERA DE ESCANEO...', border: OutlineInputBorder()),
-          onSubmitted: (val) {
-            if (val.trim().isNotEmpty) {
-               setState(() {
-                  final sheet = _excel!.tables.values.first;
-                  final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[fieldToScan!]!);
-                  sheet.updateCell(
-                    excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
-                    val.trim(),
-                  );
-               });
-               _checkCompletionAndSubmit();
+          onSubmitted: (val) async {
+            final scanValue = val.trim();
+            if (scanValue.isEmpty) return;
+            
+            // 1. Check for duplicates
+            bool isDuplicate = _checkForDuplicate(fieldToScan!, scanValue);
+            if (isDuplicate) {
+               bool proceed = await _showValidationWarning(
+                 'VALOR DUPLICADO',
+                 'El valor "$scanValue" ya ha sido registrado en otra fila. ¿Deseas registrarlo de todos modos?'
+               );
+               if (!proceed) return;
             }
+
+            // 2. Check for length anomaly
+            int? expectedLength = _getExpectedLength(fieldToScan!);
+            if (expectedLength != null && scanValue.length != expectedLength) {
+               bool proceed = await _showValidationWarning(
+                 'ANOMALÍA DE LONGITUD',
+                 'La longitud de este escaneo (${scanValue.length}) es diferente a la del primer registro ($expectedLength).\n¿Deseas registrar esta anomalía?'
+               );
+               if (!proceed) return;
+            }
+
+            setState(() {
+               final sheet = _excel!.tables.values.first;
+               final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[fieldToScan!]!);
+               sheet.updateCell(
+                 excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
+                 scanValue,
+               );
+               if (fieldToScan == 'CI' || fieldToScan == 'CI_CODE') {
+                 _currentCiCode = scanValue;
+               }
+            });
+            _checkCompletionAndSubmit();
           },
         ),
       ],
     );
+  }
+
+  bool _checkForDuplicate(String variable, String value) {
+    if (_excel == null) return false;
+    final sheet = _excel!.tables.values.first;
+    final colName = _variableToColumnMapping[variable];
+    final colIdx = _excelHeaders.indexOf(colName ?? '');
+    if (colIdx == -1) return false;
+
+    // Check all rows for duplicates
+    for (int i = 1; i < sheet.maxRows; i++) {
+       if (i == _currentRowIndex) continue;
+       final row = sheet.rows[i];
+       if (row.length > colIdx) {
+          final cellVal = row[colIdx]?.value?.toString().trim();
+          if (cellVal == value) return true;
+       }
+    }
+    return false;
+  }
+
+  int? _getExpectedLength(String variable) {
+    if (_excel == null) return null;
+    final sheet = _excel!.tables.values.first;
+    final colName = _variableToColumnMapping[variable];
+    final colIdx = _excelHeaders.indexOf(colName ?? '');
+    if (colIdx == -1) return null;
+
+    // Find the first row (starting from index 1) that has a non-empty value in this column
+    // and use its length as a reference
+    for (int i = 1; i < sheet.maxRows; i++) {
+       final row = sheet.rows[i];
+       if (row.length > colIdx) {
+          final val = row[colIdx]?.value?.toString().trim() ?? '';
+          if (val.isNotEmpty) return val.length;
+       }
+    }
+    return null;
+  }
+
+  Future<bool> _showValidationWarning(String title, String message) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            const SizedBox(width: 12),
+            Text(title, style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(color: Colors.white, fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCELAR', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange, 
+              foregroundColor: Colors.black,
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            child: const Text('CONFIRMAR REGISTRO'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   Widget _buildFooterActions() {
