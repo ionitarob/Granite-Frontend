@@ -125,47 +125,52 @@ class _TablaPulserasState extends State<TablaPulseras> {
         if (widget.isLoading)
           const LinearProgressIndicator(),
         if (widget.isLoading) const SizedBox(height: 12),
-        if (filtered.isEmpty)
-          Card(
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                hasQuery
-                    ? 'Sin resultados para "${_searchController.text}".'
-                    : 'No hay pulseras registradas todavía.',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-          )
-        else
-          ...filtered.map((p) {
-            final idRaw = p['id'] ?? p['imei'] ?? '';
-            final imei = p['imei'] ?? '';
-            final created = p['created_at'] ?? p['fecha'] ?? '';
-            final id = _parseId(idRaw);
-            return Card(
-              child: ListTile(
-                title: Text('IMEI: $imei'),
-                subtitle: Text('ID: $idRaw  •  $created'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.onEditar != null)
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => widget.onEditar!(id, p),
+        Expanded(
+          child: filtered.isEmpty
+              ? Card(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      hasQuery
+                          ? 'Sin resultados para "${_searchController.text}".'
+                          : 'No hay pulseras registradas todavía.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final p = filtered[index];
+                    final idRaw = p['id'] ?? p['imei'] ?? '';
+                    final imei = p['imei'] ?? '';
+                    final created = p['created_at'] ?? p['fecha'] ?? '';
+                    final id = _parseId(idRaw);
+                    return Card(
+                      child: ListTile(
+                        title: Text('IMEI: $imei'),
+                        subtitle: Text('ID: $idRaw  •  $created'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (widget.onEditar != null)
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => widget.onEditar!(id, p),
+                              ),
+                            if (widget.onEliminar != null)
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => widget.onEliminar!(id),
+                              ),
+                          ],
+                        ),
                       ),
-                    if (widget.onEliminar != null)
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => widget.onEliminar!(id),
-                      ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-            );
-          }),
+        ),
         if (filtered.isNotEmpty && (widget.onPrevPage != null || widget.onNextPage != null))
           Padding(
             padding: const EdgeInsets.only(top: 16),

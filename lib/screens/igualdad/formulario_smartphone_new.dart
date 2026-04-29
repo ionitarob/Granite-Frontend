@@ -151,65 +151,64 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth > 640;
-                      final fields = [
-                        Expanded(
-                          child: TextFormField(
-                            controller: widget.bateriaController,
-                            decoration: _inputDecoration(
-                              theme,
-                              palette,
-                              '% batería',
-                              Icons.battery_charging_full,
-                            ),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: palette.textPrimary,
-                            ),
-                            cursorColor: palette.textPrimary,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(3),
-                            ],
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return null; // optional
-                              }
-                              final parsed = int.tryParse(value);
-                              if (parsed == null ||
-                                  parsed < 0 ||
-                                  parsed > 100) {
-                                return '0 a 100';
-                              }
-                              return null;
-                            },
-                          ),
+                      
+                      final batteryField = TextFormField(
+                        controller: widget.bateriaController,
+                        decoration: _inputDecoration(
+                          theme,
+                          palette,
+                          '% batería',
+                          Icons.battery_charging_full,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: widget.cometaController,
-                            decoration: _inputDecoration(
-                              theme,
-                              palette,
-                              'Versión Cometa',
-                              Icons.system_update_alt,
-                            ),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: palette.textPrimary,
-                            ),
-                            cursorColor: palette.textPrimary,
-                          ),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: palette.textPrimary,
                         ),
-                      ];
+                        cursorColor: palette.textPrimary,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ],
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return null; // optional
+                          }
+                          final parsed = int.tryParse(value);
+                          if (parsed == null || parsed < 0 || parsed > 100) {
+                            return '0 a 100';
+                          }
+                          return null;
+                        },
+                      );
+
+                      final cometaField = TextFormField(
+                        controller: widget.cometaController,
+                        decoration: _inputDecoration(
+                          theme,
+                          palette,
+                          'Versión Cometa',
+                          Icons.system_update_alt,
+                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: palette.textPrimary,
+                        ),
+                        cursorColor: palette.textPrimary,
+                      );
 
                       if (isWide) {
-                        return Row(children: fields);
+                        return Row(
+                          children: [
+                            Expanded(child: batteryField),
+                            const SizedBox(width: 16),
+                            Expanded(child: cometaField),
+                          ],
+                        );
                       }
                       return Column(
                         children: [
-                          fields[0],
+                          batteryField,
                           const SizedBox(height: 16),
-                          fields[2],
+                          cometaField,
                         ],
                       );
                     },

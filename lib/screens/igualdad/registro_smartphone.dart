@@ -328,99 +328,102 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
 
           // Contenido glass
           SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Theme.of(context).dividerColor),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Flecha atrás
-                          Align(
-                            alignment: Alignment.topLeft,
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.arrow_back,
-                                color: Theme.of(context).colorScheme.onSurface,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      child: Container(
+                        width: double.infinity,
+                        height: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Theme.of(context).dividerColor),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Flecha atrás
+                            Align(
+                              alignment: Alignment.topLeft,
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.arrow_back,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                                onPressed: () => Navigator.of(context).pop(),
+                                tooltip: 'Volver',
                               ),
-                              onPressed: () => Navigator.of(context).pop(),
-                              tooltip: 'Volver',
                             ),
-                          ),
-                          const SizedBox(height: 16),
+                            const SizedBox(height: 16),
 
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final isDesktop = constraints.maxWidth > 900;
-                                if (isDesktop) {
-                                  return Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        flex: 4,
-                                        child: SingleChildScrollView(
-                                          child: Column(
-                                            children: [
-                                              _buildFormulario(),
-                                              const SizedBox(height: 24),
-                                              ResumenStock(
-                                                stockReal: stockReal,
-                                                idimActivoVals: idimActivoVals,
-                                                oystaActivoVals: oystaActivoVals,
-                                                idimCodigo: idimCodigo,
-                                                oystaCodigo: oystaCodigo,
-                                              ),
-                                            ],
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final isDesktop = constraints.maxWidth > 900;
+                                  if (isDesktop) {
+                                    return Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          flex: 4,
+                                          child: SingleChildScrollView(
+                                            child: Column(
+                                              children: [
+                                                _buildFormulario(),
+                                                const SizedBox(height: 24),
+                                                ResumenStock(
+                                                  stockReal: stockReal,
+                                                  idimActivoVals: idimActivoVals,
+                                                  oystaActivoVals: oystaActivoVals,
+                                                  idimCodigo: idimCodigo,
+                                                  oystaCodigo: oystaCodigo,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 32),
-                                      Expanded(
-                                        flex: 6,
-                                        child: _buildTabla(),
-                                      ),
-                                    ],
-                                  );
-                                } else {
-                                  return SingleChildScrollView(
-                                    child: Column(
-                                      children: [
-                                        _buildFormulario(),
-                                        const SizedBox(height: 24),
-                                        ResumenStock(
-                                          stockReal: stockReal,
-                                          idimActivoVals: idimActivoVals,
-                                          oystaActivoVals: oystaActivoVals,
-                                          idimCodigo: idimCodigo,
-                                          oystaCodigo: oystaCodigo,
+                                        const SizedBox(width: 32),
+                                        Expanded(
+                                          flex: 6,
+                                          child: _buildTabla(),
                                         ),
-                                        const SizedBox(height: 24),
-                                        SizedBox(height: 600, child: _buildTabla()),
                                       ],
-                                    ),
-                                  );
-                                }
-                              },
+                                    );
+                                  } else {
+                                    return SingleChildScrollView(
+                                      child: Column(
+                                        children: [
+                                          _buildFormulario(),
+                                          const SizedBox(height: 24),
+                                          ResumenStock(
+                                            stockReal: stockReal,
+                                            idimActivoVals: idimActivoVals,
+                                            oystaActivoVals: oystaActivoVals,
+                                            idimCodigo: idimCodigo,
+                                            oystaCodigo: oystaCodigo,
+                                          ),
+                                          const SizedBox(height: 24),
+                                          SizedBox(height: 600, child: _buildTabla()),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
           // Sidebar handle (left edge) — placed on top so it's always reachable

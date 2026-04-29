@@ -341,107 +341,105 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
           ),
 
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              child: Column(
-                children: [
-                  // Volver
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                      child: Material(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surface.withOpacity(0.2),
-                        child: IconButton(
-                          icon: Icon(
-                            Icons.arrow_back,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Panel glass
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surface.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Theme.of(context).dividerColor,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                  child: Column(
+                    children: [
+                      // Volver
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                          child: Material(
+                            color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.arrow_back,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                              onPressed: () => Navigator.of(context).pop(),
                             ),
                           ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final isDesktop = constraints.maxWidth > 900;
-                              if (isDesktop) {
-                                return Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      flex: 4,
-                                      child: SingleChildScrollView(
-                                        child: Column(
-                                          children: [
-                                            _buildFormulario(),
-                                            const SizedBox(height: 24),
-                                            ResumenStock(
-                                              stockReal: stockReal,
-                                              idimActivoVals: idimActivoVals,
-                                              oystaActivoVals: oystaActivoVals,
-                                              idimCodigo: idimCodigo,
-                                              oystaCodigo: oystaCodigo,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Panel glass
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Theme.of(context).dividerColor),
+                              ),
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final isDesktop = constraints.maxWidth > 900;
+                                  if (isDesktop) {
+                                    return Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          flex: 4,
+                                          child: SingleChildScrollView(
+                                            child: Column(
+                                              children: [
+                                                _buildFormulario(),
+                                                const SizedBox(height: 24),
+                                                ResumenStock(
+                                                  stockReal: stockReal,
+                                                  idimActivoVals: idimActivoVals,
+                                                  oystaActivoVals: oystaActivoVals,
+                                                  idimCodigo: idimCodigo,
+                                                  oystaCodigo: oystaCodigo,
+                                                ),
+                                              ],
                                             ),
-                                          ],
+                                          ),
                                         ),
+                                        const SizedBox(width: 32),
+                                        Expanded(
+                                          flex: 6,
+                                          child: _buildTabla(),
+                                        ),
+                                      ],
+                                    );
+                                  } else {
+                                    return SingleChildScrollView(
+                                      child: Column(
+                                        children: [
+                                          _buildFormulario(),
+                                          const SizedBox(height: 24),
+                                          ResumenStock(
+                                            stockReal: stockReal,
+                                            idimActivoVals: idimActivoVals,
+                                            oystaActivoVals: oystaActivoVals,
+                                            idimCodigo: idimCodigo,
+                                            oystaCodigo: oystaCodigo,
+                                          ),
+                                          const SizedBox(height: 24),
+                                          SizedBox(height: 600, child: _buildTabla()),
+                                        ],
                                       ),
-                                    ),
-                                    const SizedBox(width: 32),
-                                    Expanded(
-                                      flex: 6,
-                                      child: _buildTabla(),
-                                    ),
-                                  ],
-                                );
-                              } else {
-                                return SingleChildScrollView(
-                                  child: Column(
-                                    children: [
-                                      _buildFormulario(),
-                                      const SizedBox(height: 24),
-                                      ResumenStock(
-                                        stockReal: stockReal,
-                                        idimActivoVals: idimActivoVals,
-                                        oystaActivoVals: oystaActivoVals,
-                                        idimCodigo: idimCodigo,
-                                        oystaCodigo: oystaCodigo,
-                                      ),
-                                      const SizedBox(height: 24),
-                                      SizedBox(height: 600, child: _buildTabla()),
-                                    ],
-                                  ),
-                                );
-                              }
-                            },
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
           Positioned(top: 12, left: 6, child: const EdgeNavHandle()),

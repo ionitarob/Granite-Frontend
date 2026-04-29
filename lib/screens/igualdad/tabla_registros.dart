@@ -122,47 +122,52 @@ class _TablaRegistrosState extends State<TablaRegistros> {
         if (widget.isLoading)
           const LinearProgressIndicator(),
         if (widget.isLoading) const SizedBox(height: 12),
-        if (filtered.isEmpty)
-          Card(
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                hasQuery
-                    ? 'Sin resultados para "${_searchController.text}".'
-                    : 'No hay registros disponibles.',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-          )
-        else
-          ...filtered.map((r) {
-            final idRaw = r['id'] ?? '';
-            final imei = r['imei'] ?? '';
-            final tipo = r['tipo'] ?? '';
-            final id = _parseId(idRaw);
-            return Card(
-              child: ListTile(
-                title: Text('IMEI: $imei'),
-                subtitle: Text('ID: $idRaw  •  Tipo: $tipo'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.onEditar != null)
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => widget.onEditar!(id, r),
+        Expanded(
+          child: filtered.isEmpty
+              ? Card(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      hasQuery
+                          ? 'Sin resultados para "${_searchController.text}".'
+                          : 'No hay registros disponibles.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final r = filtered[index];
+                    final idRaw = r['id'] ?? '';
+                    final imei = r['imei'] ?? '';
+                    final tipo = r['tipo'] ?? '';
+                    final id = _parseId(idRaw);
+                    return Card(
+                      child: ListTile(
+                        title: Text('IMEI: $imei'),
+                        subtitle: Text('ID: $idRaw  •  Tipo: $tipo'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (widget.onEditar != null)
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => widget.onEditar!(id, r),
+                              ),
+                            if (widget.onEliminar != null)
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => widget.onEliminar!(id),
+                              ),
+                          ],
+                        ),
                       ),
-                    if (widget.onEliminar != null)
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => widget.onEliminar!(id),
-                      ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-            );
-          }),
+        ),
         if (filtered.isNotEmpty && (widget.onPrevPage != null || widget.onNextPage != null))
           Padding(
             padding: const EdgeInsets.only(top: 16),
