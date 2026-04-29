@@ -334,12 +334,15 @@ class IgualdadApi {
     await _doPost('/igualdad/registrar_pulsera', jsonBody: body);
   }
 
-  /// Obtiene las pulseras con paginación desde el servidor.
   static Future<Map<String, dynamic>> getUltimasPulseras({
     int page = 1,
     int perPage = 10,
+    String? query,
   }) async {
-    final q = '?page=${page.toString()}&per_page=${perPage.toString()}';
+    String q = '?page=${page.toString()}&per_page=${perPage.toString()}';
+    if (query != null && query.trim().isNotEmpty) {
+      q += '&q=${Uri.encodeQueryComponent(query.trim())}';
+    }
     final body = await _doGet('/igualdad/pulseras$q');
     return Map<String, dynamic>.from(body as Map);
   }
@@ -349,9 +352,9 @@ class IgualdadApi {
     await _doDelete('/igualdad/pulsera/$id');
   }
 
-  // PUT /igualdad/pulsera/:id
+  // PUT /igualdad/pulsera/:id/edit
   static Future<void> updatePulsera(int id, Map<String, dynamic> body) async {
-    await _doPut('/igualdad/pulsera/$id', jsonBody: body);
+    await _doPut('/igualdad/pulsera/$id/edit', jsonBody: body);
   }
 
   // POST /igualdad/cerrar_expedicion

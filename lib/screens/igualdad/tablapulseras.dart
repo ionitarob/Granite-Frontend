@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class TablaPulseras extends StatefulWidget {
@@ -11,6 +12,9 @@ class TablaPulseras extends StatefulWidget {
   final void Function(int id)? onEliminar;
   final void Function(int id, Map<String, dynamic> nuevo)? onEditar;
   final void Function(int page)? onPageChanged;
+  final ValueChanged<String>? onSearchChanged;
+  final String searchQuery;
+  final bool isLoading;
 
   const TablaPulseras({
     super.key,
@@ -24,6 +28,9 @@ class TablaPulseras extends StatefulWidget {
     this.onEliminar,
     this.onEditar,
     this.onPageChanged,
+    this.onSearchChanged,
+    this.searchQuery = '',
+    this.isLoading = false,
   });
 
   @override
@@ -32,22 +39,39 @@ class TablaPulseras extends StatefulWidget {
 
 class _TablaPulserasState extends State<TablaPulseras> {
   late final TextEditingController _searchController;
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    _searchController = TextEditingController();
+    _searchController = TextEditingController(text: widget.searchQuery);
     _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant TablaPulseras oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.searchQuery != oldWidget.searchQuery &&
+        widget.searchQuery != _searchController.text) {
+      _searchController.text = widget.searchQuery;
+    }
   }
 
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
   void _onSearchChanged() {
+    _debounce?.cancel();
+    if (widget.onSearchChanged != null) {
+      _debounce = Timer(const Duration(milliseconds: 400), () {
+        widget.onSearchChanged!(_searchController.text.trim());
+      });
+    }
     setState(() {});
   }
 
@@ -59,22 +83,30 @@ class _TablaPulserasState extends State<TablaPulseras> {
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.trim().toLowerCase();
-    final source = query.isEmpty
-        ? widget.registros
-        : (widget.allRegistros ?? widget.registros);
-    final filtered = query.isEmpty
-        ? source
-        : source.where((registro) {
-            final imei = registro['imei']?.toString().toLowerCase() ?? '';
-            final id = registro['id']?.toString().toLowerCase() ?? '';
-            final fecha =
-                registro['created_at']?.toString().toLowerCase() ??
-                registro['fecha']?.toString().toLowerCase() ??
-                '';
-            return imei.contains(query) ||
-                id.contains(query) ||
-                fecha.contains(query);
-          }).toList();
+    final bool remoteSearch = widget.onSearchChanged != null;
+    final List<Map<String, dynamic>> filtered;
+    
+    if (remoteSearch) {
+      filtered = widget.registros;
+    } else {
+      final source = query.isEmpty
+          ? widget.registros
+          : (widget.allRegistros ?? widget.registros);
+      filtered = query.isEmpty
+          ? source
+          : source.where((registro) {
+              final imei = registro['imei']?.toString().toLowerCase() ?? '';
+              final id = registro['id']?.toString().toLowerCase() ?? '';
+              final fecha =
+                  registro['created_at']?.toString().toLowerCase() ??
+                  registro['fecha']?.toString().toLowerCase() ??
+                  '';
+              return imei.contains(query) ||
+                  id.contains(query) ||
+                  fecha.contains(query);
+            }).toList();
+    }
+    final hasQuery = _searchController.text.trim().isNotEmpty;
 
     final theme = Theme.of(context);
 
@@ -90,15 +122,18 @@ class _TablaPulserasState extends State<TablaPulseras> {
           ),
         ),
         const SizedBox(height: 16),
+        if (widget.isLoading)
+          const LinearProgressIndicator(),
+        if (widget.isLoading) const SizedBox(height: 12),
         if (filtered.isEmpty)
           Card(
             color: theme.colorScheme.surfaceContainerHighest,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                query.isEmpty
-                    ? 'No hay pulseras registradas todavía.'
-                    : 'Sin resultados para "$query".',
+                hasQuery
+                    ? 'Sin resultados para "${_searchController.text}".'
+                    : 'No hay pulseras registradas todavía.',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -131,6 +166,29 @@ class _TablaPulserasState extends State<TablaPulseras> {
               ),
             );
           }),
+        if (filtered.isNotEmpty && (widget.onPrevPage != null || widget.onNextPage != null))
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: widget.onPrevPage,
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Anterior'),
+                ),
+                Text(
+                  'Página ${widget.paginaActual ?? 1}' + (widget.totalItems != null && widget.registrosPorPagina != null ? ' de ${(widget.totalItems! / widget.registrosPorPagina!).ceil()}' : ''),
+                  style: theme.textTheme.bodyMedium,
+                ),
+                ElevatedButton.icon(
+                  onPressed: widget.onNextPage,
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Siguiente'),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

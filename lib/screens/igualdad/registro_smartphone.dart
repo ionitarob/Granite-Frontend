@@ -9,7 +9,9 @@ import '../../../models/smartphone.dart';
 import 'formulario_smartphone_new.dart';
 import 'resumen_stock.dart';
 import 'tabla_registros.dart';
+import 'dialogo_editar_smartphone.dart';
 import '../../widgets/main_sidebar.dart';
+import '../../widgets/animated_background.dart';
 
 class RegistroSmartphoneScreen extends StatefulWidget {
   const RegistroSmartphoneScreen({super.key});
@@ -20,25 +22,6 @@ class RegistroSmartphoneScreen extends StatefulWidget {
 }
 
 class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
-  // Background gradient animation
-  // Background gradient animation
-  List<List<Color>> get _gradients => [
-    [
-      Theme.of(context).colorScheme.primary,
-      Theme.of(context).colorScheme.secondary,
-    ],
-    [
-      Theme.of(context).colorScheme.secondary,
-      Theme.of(context).colorScheme.tertiary,
-    ],
-    [
-      Theme.of(context).colorScheme.tertiary,
-      Theme.of(context).colorScheme.primary,
-    ],
-  ];
-  int _currentGradient = 0;
-  Timer? _timer;
-
   // Pagination state
   int _paginaActual = 1;
   static const int _registrosPorPagina = 10;
@@ -85,25 +68,22 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   @override
   void initState() {
     super.initState();
-    // Start gradient animation
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      setState(() {
-        _currentGradient = (_currentGradient + 1) % _gradients.length;
-      });
-    });
+    _loadData();
+    _cargarUltimosRegistros();
     _imeiController.addListener(_onImeiChanged);
-    _cargarRegistroActivo();
-  _cargarUltimosRegistros();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _imeiController.removeListener(_onImeiChanged);
     _imeiController.dispose();
     _bateriaController.dispose();
     _cometaController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    await _cargarRegistroActivo();
   }
 
   void _onImeiChanged() {
@@ -278,7 +258,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       });
       await _cargarRegistroActivo();
       setState(() => _paginaActual = 1);
-  await _cargarUltimosRegistros();
+      await _cargarUltimosRegistros();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -299,7 +279,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         const SnackBar(content: Text('Registro eliminado correctamente')),
       );
       await _cargarRegistroActivo();
-  await _cargarUltimosRegistros();
+      await _cargarUltimosRegistros();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -310,8 +290,15 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
 
   Future<void> _editarSmartphone(
     int id,
-    Map<String, dynamic> nuevosDatos,
+    Map<String, dynamic> antiguosDatos,
   ) async {
+    final Map<String, dynamic>? nuevosDatos = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => DialogoEditarSmartphone(datos: antiguosDatos),
+    );
+
+    if (nuevosDatos == null) return;
+
     try {
       await IgualdadApi.updateSmartphone(id, nuevosDatos);
       if (!mounted) return;
@@ -319,7 +306,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         const SnackBar(content: Text('Registro actualizado correctamente')),
       );
       await _cargarRegistroActivo();
-  await _cargarUltimosRegistros();
+      await _cargarUltimosRegistros();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -330,32 +317,20 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final gradient = _gradients[_currentGradient];
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Fondo degradado animado
-          AnimatedContainer(
-            duration: const Duration(seconds: 5),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: gradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
+          const Positioned.fill(
+            child: AnimatedBackgroundWidget(intensity: 0.2),
           ),
 
           // Contenido glass
           SafeArea(
             child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 32,
-                ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: BackdropFilter(
@@ -364,13 +339,9 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surface.withOpacity(0.2),
+                        color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
+                        border: Border.all(color: Theme.of(context).dividerColor),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,73 +360,60 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
                           ),
                           const SizedBox(height: 16),
 
-                          // Formulario
-                          FormularioSmartphoneNew(
-                            imeiController: _imeiController,
-                            bateriaController: _bateriaController,
-                            cometaController: _cometaController,
-                            opcionesRegistro: _opcionesRegistro,
-                            tipoRegistroSeleccionado: _tipoRegistroSeleccionado,
-                            registroSeleccionado: _registroSeleccionado,
-                            tipoSmartphone: _tipoSmartphone,
-                            radioValues: _radioValues,
-                            onChangeRegistro: (t, id) => setState(() {
-                              _tipoRegistroSeleccionado = t;
-                              _registroSeleccionado = id;
-                            }),
-                            onChangeTipoSmartphone: (t) =>
-                                setState(() => _tipoSmartphone = t),
-                            onRegistrar: () => _registrarSmartphone(),
-                            isSubmitting: _registrando,
-                            isLookupInProgress: _lookupLoading,
-                            lookupResult: _lookupResult,
-                            lookupError: _lookupError,
-                            lookupImeiSearched: _lastLookupImei,
-                          ),
-
-                          const SizedBox(height: 32),
-                          Divider(color: Theme.of(context).dividerColor),
-                          const SizedBox(height: 16),
-
-                          // Resumen y tabla
-                          ResumenStock(
-                            stockReal: stockReal,
-                            idimActivoVals: idimActivoVals,
-                            oystaActivoVals: oystaActivoVals,
-                            idimCodigo: idimCodigo,
-                            oystaCodigo: oystaCodigo,
-                          ),
-                          const SizedBox(height: 16),
-
-                          // ← PAGE BUTTONS → TABLE
-                          TablaRegistros(
-                            registros: ultimosRegistros,
-                            paginaActual: _paginaActual,
-                            totalItems: _totalItems,
-                            registrosPorPagina: _registrosPorPagina,
-                            searchQuery: _searchQuery,
-                            onSearchChanged: _onSearchQueryChanged,
-                            isLoading: _cargandoRegistros,
-                            onPrevPage: _paginaActual > 1
-                                ? () {
-                                    setState(() => _paginaActual--);
-                                    _cargarUltimosRegistros();
-                                  }
-                                : null,
-                            onNextPage:
-                                _paginaActual * _registrosPorPagina <
-                                    _totalItems
-                                ? () {
-                                    setState(() => _paginaActual++);
-                                    _cargarUltimosRegistros();
-                                  }
-                                : null,
-                            onEliminar: _eliminarSmartphone,
-                            onEditar: _editarSmartphone,
-                            onPageChanged: (p) {
-                              setState(() => _paginaActual = p);
-                              _cargarUltimosRegistros();
-                            },
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isDesktop = constraints.maxWidth > 900;
+                                if (isDesktop) {
+                                  return Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        flex: 4,
+                                        child: SingleChildScrollView(
+                                          child: Column(
+                                            children: [
+                                              _buildFormulario(),
+                                              const SizedBox(height: 24),
+                                              ResumenStock(
+                                                stockReal: stockReal,
+                                                idimActivoVals: idimActivoVals,
+                                                oystaActivoVals: oystaActivoVals,
+                                                idimCodigo: idimCodigo,
+                                                oystaCodigo: oystaCodigo,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 32),
+                                      Expanded(
+                                        flex: 6,
+                                        child: _buildTabla(),
+                                      ),
+                                    ],
+                                  );
+                                } else {
+                                  return SingleChildScrollView(
+                                    child: Column(
+                                      children: [
+                                        _buildFormulario(),
+                                        const SizedBox(height: 24),
+                                        ResumenStock(
+                                          stockReal: stockReal,
+                                          idimActivoVals: idimActivoVals,
+                                          oystaActivoVals: oystaActivoVals,
+                                          idimCodigo: idimCodigo,
+                                          oystaCodigo: oystaCodigo,
+                                        ),
+                                        const SizedBox(height: 24),
+                                        SizedBox(height: 600, child: _buildTabla()),
+                                      ],
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
                           ),
                         ],
                       ),
@@ -466,9 +424,66 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
             ),
           ),
           // Sidebar handle (left edge) — placed on top so it's always reachable
-          Positioned(top: 12, left: 6, child: const EdgeNavHandle()),
+          const Positioned(top: 12, left: 6, child: EdgeNavHandle()),
         ],
       ),
+    );
+  }
+
+  Widget _buildFormulario() {
+    return FormularioSmartphoneNew(
+      imeiController: _imeiController,
+      bateriaController: _bateriaController,
+      cometaController: _cometaController,
+      opcionesRegistro: _opcionesRegistro,
+      tipoRegistroSeleccionado: _tipoRegistroSeleccionado,
+      registroSeleccionado: _registroSeleccionado,
+      tipoSmartphone: _tipoSmartphone,
+      radioValues: _radioValues,
+      onChangeRegistro: (t, id) => setState(() {
+        _tipoRegistroSeleccionado = t;
+        _registroSeleccionado = id;
+      }),
+      onChangeTipoSmartphone: (t) =>
+          setState(() => _tipoSmartphone = t),
+      onRegistrar: () => _registrarSmartphone(),
+      isSubmitting: _registrando,
+      isLookupInProgress: _lookupLoading,
+      lookupResult: _lookupResult,
+      lookupError: _lookupError,
+      lookupImeiSearched: _lastLookupImei,
+    );
+  }
+
+  Widget _buildTabla() {
+    return TablaRegistros(
+      registros: ultimosRegistros,
+      paginaActual: _paginaActual,
+      totalItems: _totalItems,
+      registrosPorPagina: _registrosPorPagina,
+      searchQuery: _searchQuery,
+      onSearchChanged: _onSearchQueryChanged,
+      isLoading: _cargandoRegistros,
+      onPrevPage: _paginaActual > 1
+          ? () {
+              setState(() => _paginaActual--);
+              _cargarUltimosRegistros();
+            }
+          : null,
+      onNextPage:
+          _paginaActual * _registrosPorPagina <
+              _totalItems
+          ? () {
+              setState(() => _paginaActual++);
+              _cargarUltimosRegistros();
+            }
+          : null,
+      onEliminar: _eliminarSmartphone,
+      onEditar: _editarSmartphone,
+      onPageChanged: (p) {
+        setState(() => _paginaActual = p);
+        _cargarUltimosRegistros();
+      },
     );
   }
 }

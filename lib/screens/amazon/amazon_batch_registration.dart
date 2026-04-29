@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
+import '../../services/serigrafia_service.dart';
 import '../../widgets/animated_background.dart';
 import '../../utils/formatters.dart';
 import '../../themes/amazon_theme.dart';
@@ -35,6 +36,8 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
   bool _hasAlertedCurrentShuttle = false;
   bool _shuttleSubmitting = false;
 
+  List<SerigrafiaStandard> _standards = [];
+
   final _random = math.Random();
 
   @override
@@ -42,6 +45,7 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
     super.initState();
     _fetchMetrics();
     _fetchQCTemplates();
+    _fetchStandards();
     _connectMetricsSocket();
     
     // Catch Tab or Enter from scanner to submit automatically
@@ -141,6 +145,25 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
       );
       if (res.ok && mounted)
         setState(() => _qcTemplates = res.body['results'] ?? []);
+    } catch (_) {}
+  }
+
+  bool get _requiresMac {
+    final activeLabelUrl = _metrics?['label_url'] ?? widget.batch['label_url'];
+    if (activeLabelUrl != null && _standards.isNotEmpty) {
+      try {
+        final std = _standards.firstWhere((s) => s.url == activeLabelUrl);
+        return std.variables.contains('MAC');
+      } catch (_) {}
+    }
+    return true; // Default to true if not found or no label selected
+  }
+
+  Future<void> _fetchStandards() async {
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final list = await SerigrafiaService(api.client).getStandards();
+      if (mounted) setState(() => _standards = list);
     } catch (_) {}
   }
 
@@ -247,6 +270,7 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
         jsonBody: {
           'dsn': dsn,
           'reprint_only': reprintOnly,
+          'require_mac': _requiresMac,
         },
       );
 
@@ -520,6 +544,68 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
               ],
             ),
           ),
+          _buildLabelSelector(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabelSelector() {
+    final userRole = (ApiService.instance?.currentUser?.role ?? '').toLowerCase();
+    final isElevated = !userRole.contains('operario') || userRole.contains('chief') || userRole.contains('admin');
+    final activeLabelName = _metrics?['label_name'] ?? widget.batch['label_name'];
+    final activeLabelUrl = _metrics?['label_url'] ?? widget.batch['label_url'];
+
+    SerigrafiaStandard? selectedStandard;
+    if (activeLabelUrl != null && _standards.isNotEmpty) {
+      try {
+        selectedStandard = _standards.firstWhere((s) => s.url == activeLabelUrl);
+      } catch (_) {}
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.label_important_outline_rounded, size: 16, color: Colors.cyanAccent),
+          const SizedBox(width: 8),
+          if (isElevated && _standards.isNotEmpty)
+            DropdownButton<SerigrafiaStandard>(
+              value: selectedStandard,
+              hint: const Text('Configurar Etiqueta', style: TextStyle(fontSize: 12, color: Colors.white38)),
+              underline: const SizedBox(),
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.cyanAccent, size: 16),
+              style: const TextStyle(fontSize: 12, color: Colors.cyanAccent, fontWeight: FontWeight.bold),
+              dropdownColor: const Color(0xFF1A1A1A),
+              items: _standards.map((s) => DropdownMenuItem(
+                value: s,
+                child: Text(s.name),
+              )).toList(),
+              onChanged: (v) async {
+                if (v == null) return;
+                final api = Provider.of<ApiService>(context, listen: false);
+                final res = await api.client.patch('/amz/batches/${widget.batch['id']}', jsonBody: {
+                  'label_url': v.url,
+                  'label_name': v.name,
+                });
+                if (res.ok) {
+                   _fetchMetrics(); // Force refresh to get new label_name in UI immediately
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Etiqueta cambiada a ${v.name}'), backgroundColor: Colors.green));
+                } else {
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.body['error'] ?? 'Error')));
+                }
+              },
+            )
+          else
+            Text(
+              activeLabelName ?? 'Etiqueta por Defecto',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.cyanAccent),
+            ),
         ],
       ),
     );
@@ -571,35 +657,37 @@ class _AmazonBatchRegistrationState extends State<AmazonBatchRegistration> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 32),
-            TextFormField(
-              controller: _macCtrl,
-              readOnly: true,
-              focusNode: FocusNode(canRequestFocus: false),
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                labelText: 'DIRECCIÓN MAC (AUTOFILL)',
-                labelStyle: const TextStyle(
+            if (_requiresMac) ...[
+              const SizedBox(height: 32),
+              TextFormField(
+                controller: _macCtrl,
+                readOnly: true,
+                focusNode: FocusNode(canRequestFocus: false),
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  labelText: 'DIRECCIÓN MAC (AUTOFILL)',
+                  labelStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white38,
+                  ),
+                  floatingLabelAlignment: FloatingLabelAlignment.center,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.lan_rounded,
+                    color: Colors.white38,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white10,
+                ),
+                style: const TextStyle(
+                  fontSize: 22,
+                  color: Colors.orange,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white38,
                 ),
-                floatingLabelAlignment: FloatingLabelAlignment.center,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                prefixIcon: const Icon(
-                  Icons.lan_rounded,
-                  color: Colors.white38,
-                ),
-                filled: true,
-                fillColor: Colors.white10,
               ),
-              style: const TextStyle(
-                fontSize: 22,
-                color: Colors.orange,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            ],
             const SizedBox(height: 64),
             Row(
               children: [

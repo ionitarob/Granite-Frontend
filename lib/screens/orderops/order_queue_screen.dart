@@ -123,10 +123,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     if (!silent) setState(() => _loading = true);
 
     try {
-      final allOrders = await _orderOpsService!.getAgentOrders(limit: 240);
-      final allowedStates = {'1', '2', '3', '4'};
-      final orders = allOrders.where((o) => allowedStates.contains(o.estado.trim())).toList();
-      
+      final allOrders = await _orderOpsService!.getAgentOrders(limit: 100000);
+      final orders = allOrders.toList();
+
       setState(() {
         _orders = orders;
         _error = null;
@@ -351,9 +350,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _importingCsv = false);
@@ -409,7 +408,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         String? primaryFamily = order.family;
         if (result.isEmpty) {
           primaryFamily = '';
-        } else if (primaryFamily == null || primaryFamily.isEmpty || !result.contains(primaryFamily)) {
+        } else if (primaryFamily == null ||
+            primaryFamily.isEmpty ||
+            !result.contains(primaryFamily)) {
           primaryFamily = result.first;
         }
 
@@ -422,9 +423,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         if (ok) await _loadOrders();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error: $e')));
         }
       } finally {
         if (mounted) setState(() => _loading = false);
@@ -776,13 +777,17 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       list = list.where((o) => o.estado == _selectedEstado).toList();
     }
     if (_filterByMe) {
-      final currentUser =
-          Provider.of<ApiService>(context, listen: false).currentUser;
+      final currentUser = Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).currentUser;
       if (currentUser != null) {
         list = list
-            .where((o) =>
-                o.assignedTo == currentUser.username ||
-                o.assignedTo == currentUser.id.toString())
+            .where(
+              (o) =>
+                  o.assignedTo == currentUser.username ||
+                  o.assignedTo == currentUser.id.toString(),
+            )
             .toList();
       }
     }
@@ -1262,7 +1267,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                               } else if (prioText.contains('3')) {
                                 prioText = 'Baja';
                                 prioColor = Colors.green;
-                              } else if (prioText.toLowerCase().contains('alta')) {
+                              } else if (prioText.toLowerCase().contains(
+                                'alta',
+                              )) {
                                 prioColor = Colors.red;
                               }
 
@@ -1322,7 +1329,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                       Expanded(
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: _StatusBadge(status: order.estado, isNative: true),
+                          child: _StatusBadge(
+                            status: order.estado,
+                            isNative: true,
+                          ),
                         ),
                       ),
                       if (order.family == null || order.family!.isEmpty)

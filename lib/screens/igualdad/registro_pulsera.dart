@@ -7,7 +7,9 @@ import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
 import 'formulario_pulsera_new.dart';
 import 'resumen_stock.dart';
 import 'tablapulseras.dart';
+import 'dialogo_editar_pulsera.dart';
 import '../../widgets/main_sidebar.dart';
+import '../../widgets/animated_background.dart';
 
 class RegistroPulseraScreen extends StatefulWidget {
   const RegistroPulseraScreen({super.key});
@@ -17,25 +19,6 @@ class RegistroPulseraScreen extends StatefulWidget {
 }
 
 class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
-  // ─── Fondo animado ──────────────────────────────────────────────────────
-  // ─── Fondo animado ──────────────────────────────────────────────────────
-  List<List<Color>> get _gradients => [
-    [
-      Theme.of(context).colorScheme.primary,
-      Theme.of(context).colorScheme.secondary,
-    ],
-    [
-      Theme.of(context).colorScheme.secondary,
-      Theme.of(context).colorScheme.tertiary,
-    ],
-    [
-      Theme.of(context).colorScheme.tertiary,
-      Theme.of(context).colorScheme.primary,
-    ],
-  ];
-  int _currentGradient = 0;
-  Timer? _timer;
-
   // ─── Formulario ────────────────────────────────────────────────────────
   final _imeiController = TextEditingController();
   final _bateriaController = TextEditingController();
@@ -64,13 +47,14 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
   String? idimCodigo;
   String? oystaCodigo;
 
-  // ─── Paginación ───────────────────────────────────────────────────────
   int _paginaActual = 1;
   static const int _porPagina = 10;
   static const int _maxBusquedaPulseras = 500;
   int _totalItems = 0;
   List<Map<String, dynamic>> _pagePulseras = [];
   List<Map<String, dynamic>> _allPulseras = [];
+  bool _cargandoRegistros = false;
+  String _searchQuery = '';
 
   @override
   void didChangeDependencies() {
@@ -84,16 +68,10 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     _loadData();
     _loadPulseras(1, refreshAll: true);
     _imeiController.addListener(_onImeiChanged);
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      setState(() {
-        _currentGradient = (_currentGradient + 1) % _gradients.length;
-      });
-    });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _imeiController.removeListener(_onImeiChanged);
     _imeiController.dispose();
     _bateriaController.dispose();
@@ -185,12 +163,24 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     }
   }
 
+  void _onSearchQueryChanged(String query) {
+    final normalized = query.trim();
+    if (normalized == _searchQuery) return;
+    setState(() {
+      _searchQuery = normalized;
+      _paginaActual = 1;
+    });
+    _loadPulseras(1);
+  }
+
   // Carga una página de pulseras desde el servidor
   Future<void> _loadPulseras(int page, {bool refreshAll = false}) async {
+    setState(() => _cargandoRegistros = true);
     try {
       final result = await IgualdadApi.getUltimasPulseras(
         page: page,
         perPage: _porPagina,
+        query: _searchQuery.isEmpty ? null : _searchQuery,
       );
       if (!mounted) return;
       final pageData = List<Map<String, dynamic>>.from(result['data'] as List);
@@ -205,9 +195,9 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       final bool necesitaAll = refreshAll ||
           _allPulseras.isEmpty ||
           _allPulseras.length != expectedCache;
-      if (necesitaAll) {
+      if (necesitaAll && _searchQuery.isEmpty) {
         await _cargarPulserasParaBusqueda(expectedCache);
-      } else if (page == 1 && _allPulseras.isNotEmpty) {
+      } else if (page == 1 && _allPulseras.isNotEmpty && _searchQuery.isEmpty) {
         setState(() {
           _allPulseras = [
             ...pageData,
@@ -220,6 +210,8 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error cargando pulseras: $e')));
+    } finally {
+      if (mounted) setState(() => _cargandoRegistros = false);
     }
   }
 
@@ -313,15 +305,22 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     }
   }
 
-  Future<void> _editarPulsera(int id, Map<String, dynamic> nuevosDatos) async {
+  Future<void> _editarPulsera(int id, Map<String, dynamic> antiguosDatos) async {
+    final Map<String, dynamic>? nuevosDatos = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => DialogoEditarPulsera(datos: antiguosDatos),
+    );
+
+    if (nuevosDatos == null) return;
+
     try {
       await IgualdadApi.updatePulsera(id, nuevosDatos);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Pulsera actualizada')));
-    await _loadData();
-    await _loadPulseras(_paginaActual, refreshAll: true);
+      await _loadData();
+      await _loadPulseras(_paginaActual, refreshAll: true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -332,26 +331,18 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final gradient = _gradients[_currentGradient];
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          AnimatedContainer(
-            duration: const Duration(seconds: 5),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: gradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
+          const Positioned.fill(
+            child: AnimatedBackgroundWidget(intensity: 0.2),
           ),
 
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Column(
                 children: [
                   // Volver
@@ -392,63 +383,58 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
                               color: Theme.of(context).dividerColor,
                             ),
                           ),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                FormularioPulseraNew(
-                                  imeiController: _imeiController,
-                                  bateriaController: _bateriaController,
-                                  opcionesRegistro: _opcionesRegistro,
-                                  tipoRegistroSeleccionado:
-                                      _tipoRegistroSeleccionado,
-                                  registroSeleccionado: _registroSeleccionado,
-                                  radioValues: _radioValues,
-                                  onChangeRegistro: (t, id) {
-                                    setState(() {
-                                      _tipoRegistroSeleccionado = t;
-                                      _registroSeleccionado = id;
-                                    });
-                                  },
-                                  onChangeRadio: (k, v) =>
-                                      setState(() => _radioValues[k] = v),
-                                  onRegistrar: _registrarPulsera,
-                                  isSubmitting: _registrando,
-                                  isLookupInProgress: _lookupLoading,
-                                  lookupResult: _lookupResult,
-                                  lookupError: _lookupError,
-                                  lookupImeiSearched: _lastLookupImei,
-                                ),
-
-                                const SizedBox(height: 24),
-                                ResumenStock(
-                                  stockReal: stockReal,
-                                  idimActivoVals: idimActivoVals,
-                                  oystaActivoVals: oystaActivoVals,
-                                  idimCodigo: idimCodigo,
-                                  oystaCodigo: oystaCodigo,
-                                ),
-
-                                const SizedBox(height: 24),
-                                TablaPulseras(
-                                  registros: _pagePulseras,
-                                  allRegistros: _allPulseras,
-                                  paginaActual: _paginaActual,
-                                  totalItems: _totalItems,
-                                  registrosPorPagina: _porPagina,
-                                  onPrevPage: _paginaActual > 1
-                                      ? () => _loadPulseras(_paginaActual - 1)
-                                      : null,
-                                  onNextPage:
-                                      _paginaActual * _porPagina < _totalItems
-                                      ? () => _loadPulseras(_paginaActual + 1)
-                                      : null,
-                                  onEliminar: _eliminarPulsera,
-                                  onEditar: _editarPulsera,
-                                  onPageChanged: (p) => _loadPulseras(p),
-                                ),
-                              ],
-                            ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isDesktop = constraints.maxWidth > 900;
+                              if (isDesktop) {
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      flex: 4,
+                                      child: SingleChildScrollView(
+                                        child: Column(
+                                          children: [
+                                            _buildFormulario(),
+                                            const SizedBox(height: 24),
+                                            ResumenStock(
+                                              stockReal: stockReal,
+                                              idimActivoVals: idimActivoVals,
+                                              oystaActivoVals: oystaActivoVals,
+                                              idimCodigo: idimCodigo,
+                                              oystaCodigo: oystaCodigo,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 32),
+                                    Expanded(
+                                      flex: 6,
+                                      child: _buildTabla(),
+                                    ),
+                                  ],
+                                );
+                              } else {
+                                return SingleChildScrollView(
+                                  child: Column(
+                                    children: [
+                                      _buildFormulario(),
+                                      const SizedBox(height: 24),
+                                      ResumenStock(
+                                        stockReal: stockReal,
+                                        idimActivoVals: idimActivoVals,
+                                        oystaActivoVals: oystaActivoVals,
+                                        idimCodigo: idimCodigo,
+                                        oystaCodigo: oystaCodigo,
+                                      ),
+                                      const SizedBox(height: 24),
+                                      SizedBox(height: 600, child: _buildTabla()),
+                                    ],
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         ),
                       ),
@@ -461,6 +447,52 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
           Positioned(top: 12, left: 6, child: const EdgeNavHandle()),
         ],
       ),
+    );
+  }
+  Widget _buildFormulario() {
+    return FormularioPulseraNew(
+      imeiController: _imeiController,
+      bateriaController: _bateriaController,
+      opcionesRegistro: _opcionesRegistro,
+      tipoRegistroSeleccionado: _tipoRegistroSeleccionado,
+      registroSeleccionado: _registroSeleccionado,
+      radioValues: _radioValues,
+      onChangeRegistro: (t, id) {
+        setState(() {
+          _tipoRegistroSeleccionado = t;
+          _registroSeleccionado = id;
+        });
+      },
+      onChangeRadio: (k, v) => setState(() => _radioValues[k] = v),
+      onRegistrar: _registrarPulsera,
+      isSubmitting: _registrando,
+      isLookupInProgress: _lookupLoading,
+      lookupResult: _lookupResult,
+      lookupError: _lookupError,
+      lookupImeiSearched: _lastLookupImei,
+    );
+  }
+
+  Widget _buildTabla() {
+    return TablaPulseras(
+      registros: _pagePulseras,
+      allRegistros: _allPulseras,
+      paginaActual: _paginaActual,
+      totalItems: _totalItems,
+      registrosPorPagina: _porPagina,
+      searchQuery: _searchQuery,
+      isLoading: _cargandoRegistros,
+      onSearchChanged: _onSearchQueryChanged,
+      onPrevPage: _paginaActual > 1
+          ? () => _loadPulseras(_paginaActual - 1)
+          : null,
+      onNextPage:
+          _paginaActual * _porPagina < _totalItems
+          ? () => _loadPulseras(_paginaActual + 1)
+          : null,
+      onEliminar: _eliminarPulsera,
+      onEditar: _editarPulsera,
+      onPageChanged: (page) => _loadPulseras(page),
     );
   }
 }

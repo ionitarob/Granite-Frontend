@@ -163,6 +163,29 @@ class _TablaRegistrosState extends State<TablaRegistros> {
               ),
             );
           }),
+        if (filtered.isNotEmpty && (widget.onPrevPage != null || widget.onNextPage != null))
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: widget.onPrevPage,
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Anterior'),
+                ),
+                Text(
+                  'Página ${widget.paginaActual ?? 1}' + (widget.totalItems != null && widget.registrosPorPagina != null ? ' de ${(widget.totalItems! / widget.registrosPorPagina!).ceil()}' : ''),
+                  style: theme.textTheme.bodyMedium,
+                ),
+                ElevatedButton.icon(
+                  onPressed: widget.onNextPage,
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Siguiente'),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

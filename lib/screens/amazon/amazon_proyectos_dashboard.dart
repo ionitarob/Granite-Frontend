@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
+import '../../services/serigrafia_service.dart';
 import '../../widgets/main_sidebar.dart';
 import '../../widgets/animated_background.dart';
 import '../../themes/amazon_theme.dart';
@@ -20,11 +21,21 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
   dynamic _selectedProject;
   List<dynamic> _batches = [];
   bool _loadingBatches = false;
+  List<SerigrafiaStandard> _standards = [];
 
   @override
   void initState() {
     super.initState();
     _fetchProjects();
+    _fetchStandards();
+  }
+
+  Future<void> _fetchStandards() async {
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final list = await SerigrafiaService(api.client).getStandards();
+      if (mounted) setState(() => _standards = list);
+    } catch (_) {}
   }
 
   Future<void> _fetchProjects() async {
@@ -86,6 +97,7 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
       context: context,
       builder: (ctx) => _CreateBatchDialog(
         projectId: _selectedProject['id'],
+        standards: _standards,
         onCreated: () => _fetchBatches(_selectedProject),
       ),
     );
@@ -366,6 +378,12 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
                     Icon(Icons.track_changes_rounded, size: 14, color: Colors.orange.withOpacity(0.5)),
                     const SizedBox(width: 4),
                     Text('Meta: ${batch['daily_production'] ?? 0}', style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                    if (batch['label_name'] != null) ...[
+                      const SizedBox(width: 12),
+                      const Icon(Icons.label_important_outline_rounded, size: 14, color: Colors.cyanAccent),
+                      const SizedBox(width: 4),
+                      Text('${batch['label_name']}', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 11)),
+                    ],
                   ],
                 ),
               ],
@@ -415,10 +433,17 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
     final dailyCtrl = TextEditingController(text: batch['daily_production']?.toString() ?? '0');
     final totalUnitsCtrl = TextEditingController(text: batch['total_units']?.toString() ?? '0');
     final qcPctCtrl = TextEditingController(text: batch['qc_percentage']?.toString() ?? '10.0');
+    SerigrafiaStandard? selectedStandard;
+    if (batch['label_url'] != null) {
+      try {
+        selectedStandard = _standards.firstWhere((s) => s.url == batch['label_url']);
+      } catch (_) {}
+    }
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
         title: Text('Gestionar Lote: ${batch['name']}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -455,6 +480,23 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
                 prefixIcon: Icon(Icons.fact_check, color: Colors.green),
               ),
             ),
+            const SizedBox(height: 16),
+            if (_standards.isNotEmpty)
+              DropdownButtonFormField<SerigrafiaStandard>(
+                isExpanded: true,
+                value: selectedStandard,
+                decoration: const InputDecoration(
+                  labelText: 'Etiqueta Bartender',
+                  prefixIcon: Icon(Icons.label_outline_rounded, color: Colors.cyan),
+                ),
+                items: _standards.map((s) => DropdownMenuItem(
+                  value: s,
+                  child: Text(s.name, overflow: TextOverflow.ellipsis),
+                )).toList(),
+                onChanged: (v) => setDialogState(() => selectedStandard = v),
+              )
+            else
+              const Text('No hay etiquetas en el repositorio', style: TextStyle(color: Colors.white38, fontSize: 12)),
           ],
         ),
         actions: [
@@ -471,6 +513,8 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
                 'daily_production': daily,
                 'total_units': total,
                 'qc_percentage': qc,
+                if (selectedStandard != null) 'label_url': selectedStandard!.url,
+                if (selectedStandard != null) 'label_name': selectedStandard!.name,
               });
               if (res.ok) {
                 Navigator.pop(ctx);
@@ -482,7 +526,7 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
             child: const Text('GUARDAR Y COMENZAR'),
           ),
         ],
-      ),
+      )),
     );
   }
 }
@@ -581,8 +625,9 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
 
 class _CreateBatchDialog extends StatefulWidget {
   final int projectId;
+  final List<SerigrafiaStandard> standards;
   final VoidCallback onCreated;
-  const _CreateBatchDialog({required this.projectId, required this.onCreated});
+  const _CreateBatchDialog({required this.projectId, required this.standards, required this.onCreated});
 
   @override
   State<_CreateBatchDialog> createState() => _CreateBatchDialogState();
@@ -594,6 +639,7 @@ class _CreateBatchDialogState extends State<_CreateBatchDialog> {
   final _unitsCtrl = TextEditingController();
   final _dailyCtrl = TextEditingController();
   double _qcPct = 10.0;
+  SerigrafiaStandard? _selectedStandard;
   bool _submitting = false;
 
   @override
@@ -635,6 +681,23 @@ class _CreateBatchDialogState extends State<_CreateBatchDialog> {
               divisions: 20,
               onChanged: (v) => setState(() => _qcPct = v),
             ),
+            const SizedBox(height: 16),
+            if (widget.standards.isNotEmpty)
+              DropdownButtonFormField<SerigrafiaStandard>(
+                isExpanded: true,
+                value: _selectedStandard,
+                decoration: const InputDecoration(
+                  labelText: 'Etiqueta Bartender (Opcional)',
+                  prefixIcon: Icon(Icons.label_outline_rounded, color: Colors.cyan),
+                ),
+                items: widget.standards.map((s) => DropdownMenuItem(
+                  value: s,
+                  child: Text(s.name, overflow: TextOverflow.ellipsis),
+                )).toList(),
+                onChanged: (v) => setState(() => _selectedStandard = v),
+              )
+            else
+              const Text('No hay etiquetas en el repositorio', style: TextStyle(color: Colors.white38, fontSize: 12)),
           ],
         ),
       ),
@@ -658,6 +721,8 @@ class _CreateBatchDialogState extends State<_CreateBatchDialog> {
         'total_units': int.parse(_unitsCtrl.text),
         'qc_percentage': _qcPct,
         'daily_production': int.parse(_dailyCtrl.text),
+        if (_selectedStandard != null) 'label_url': _selectedStandard!.url,
+        if (_selectedStandard != null) 'label_name': _selectedStandard!.name,
       });
       if (res.ok) {
         widget.onCreated();
