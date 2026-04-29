@@ -510,7 +510,7 @@ class SentinelService {
     return SentinelSwitch.fromJson(res.body);
   }
 
-  Future<List<String>> fetchAvailableImages() async {
+  Future<List<Map<String, dynamic>>> fetchAvailableImages() async {
     final api = ApiService.instance;
     if (api == null) throw Exception('ApiService not initialized');
 
@@ -519,7 +519,6 @@ class SentinelService {
       throw Exception('Failed to load available images: ${res.error}');
     }
 
-    // Check if the backend returns a List directly or a Map with an 'images' key
     List<dynamic> images;
     if (res.body is List) {
       images = res.body;
@@ -529,11 +528,14 @@ class SentinelService {
       images = [];
     }
 
-    return images.map((e) {
-      if (e is Map && e.containsKey('name')) {
-        return e['name'].toString();
+    return images.map<Map<String, dynamic>>((e) {
+      if (e is Map) {
+        return {
+          'name': e['name']?.toString() ?? '',
+          'type': e['type']?.toString() ?? 'wim', // 'wim' | 'dualboot'
+        };
       }
-      return e.toString();
+      return {'name': e.toString(), 'type': 'wim'};
     }).toList();
   }
 

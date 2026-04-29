@@ -45,7 +45,7 @@ class SentinelProvider extends ChangeNotifier {
 
   final List<SentinelEvent> _events = [];
   final List<Map<String, String>> _chatMessages = [];
-  List<String> _availableImages = []; // New
+  List<Map<String, dynamic>> _availableImages = [];
   bool _isLoading = false;
   bool _isThinking = false;
   bool _isConnected = false;
@@ -89,7 +89,8 @@ class SentinelProvider extends ChangeNotifier {
   List<SentinelSwitch> get switches => _switches;
   SentinelSwitch? get selectedSwitch => _selectedSwitch;
   List<SentinelPort> get ports => _selectedSwitch?.ports ?? [];
-  List<String> get availableImages => _availableImages; // New getter
+  /// Rich image list — each entry has 'name' and 'type' ('wim' | 'dualboot')
+  List<Map<String, dynamic>> get availableImages => _availableImages;
 
   bool _isDoneStage(String? stage) {
     final s = (stage ?? '').toLowerCase();
