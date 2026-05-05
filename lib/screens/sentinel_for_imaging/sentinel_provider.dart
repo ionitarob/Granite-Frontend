@@ -46,6 +46,8 @@ class SentinelProvider extends ChangeNotifier {
   final List<SentinelEvent> _events = [];
   final List<Map<String, String>> _chatMessages = [];
   List<Map<String, dynamic>> _availableImages = [];
+  String? _imagesError; // non-null when last loadAvailableImages() failed
+  String? get imagesError => _imagesError;
   bool _isLoading = false;
   bool _isThinking = false;
   bool _isConnected = false;
@@ -622,9 +624,12 @@ class SentinelProvider extends ChangeNotifier {
     try {
       final imgs = await _service.fetchAvailableImages();
       _availableImages = imgs;
+      _imagesError = null;
       notifyListeners();
     } catch (e) {
       print('Error loading images: $e');
+      _imagesError = e.toString();
+      notifyListeners();
     }
   }
 

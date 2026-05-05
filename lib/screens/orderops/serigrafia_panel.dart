@@ -46,6 +46,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   // Phase 4: Execution
   int _currentRowIndex = 1; // 1-indexed, starts after header
   bool _printing = false;
+  List<Map<String, dynamic>> _registries = [];
   
   // CI Inventory
   bool _requiresCI = false;
@@ -91,7 +92,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           _excel = doc;
           final sheet = doc.tables.values.first;
           if (sheet.maxRows > 0) {
-            _excelHeaders = sheet.rows.first.map((c) => c?.value?.toString() ?? '').toList();
+            _excelHeaders = sheet.rows.first.map((c) => c?.value?.toString()?.trim() ?? '').toList();
           } else {
              _excelHeaders = [];
           }
@@ -152,10 +153,18 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     if (_excel == null || _selectedStandard == null) return;
     
     // Validate mapping
+    if (_allVariables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('El estándar seleccionado no tiene variables configuradas. Verifica el repositorio.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
     for (final v in _allVariables) {
-      if (!_variableToColumnMapping.containsKey(v)) {
+      final colName = _variableToColumnMapping[v];
+      if (colName == null || colName.isEmpty || !_excelHeaders.contains(colName)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Falta mapear la variable $v')),
+          SnackBar(content: Text('Falta mapear o es inválida la variable $v')),
         );
         return;
       }
@@ -170,7 +179,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     
     // Show a loading indicator if needed, but since we are at Step 4, 
     // we can just run it once at the start.
-    final registries = await _serigrafiaService.getRegistries(widget.order.idnbr);
+    final registries = await _serigrafiaService.getRegistries(widget.order.idnbr, labelName: _selectedStandard!.name, includeProject: true);
+    _registries = registries;
+    
     if (registries.isEmpty) {
       _advanceToNextEmptyRow();
       return;
@@ -186,15 +197,32 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         // Find a matching registry record for this row
         Map<String, dynamic>? match;
         
-        // Strategy: Key matching. Try to find any variable that exists in the Excel row
-        // and matches a registry record.
+        // Strategy: Key matching. Only attempt to match on known unique identifiers
+        // to prevent copying data based on generic fields like 'PRODUCTO' or 'MODELO'.
+        final uniqueKeys = ['CI', 'CI_CODE', 'SERIAL'];
+        
         for (final v in _allVariables) {
-          final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[v] ?? '');
+          if (!uniqueKeys.contains(v.toUpperCase().trim())) continue;
+          
+          final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+          if (targetHeader.isEmpty) continue;
+          
+          int colIdx = -1;
+          for (int k = 0; k < _excelHeaders.length; k++) {
+            if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+              colIdx = k;
+              break;
+            }
+          }
+          
           if (colIdx != -1) {
             final excelVal = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
-            if (excelVal.isNotEmpty) {
+            if (excelVal.isNotEmpty && excelVal.toLowerCase() != 'null') {
               // Try to find a registry that has this value for the same variable
               match = registries.where((r) {
+                // Only auto-fill from the CURRENT order to avoid false completions from other orders in the same project.
+                if (r['is_current_order'] != true) return false;
+                
                 final data = r['data'] as Map;
                 // Case-insensitive variable lookup
                 dynamic regVal;
@@ -213,7 +241,17 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         if (match != null) {
           final data = match['data'] as Map;
           for (final v in _allVariables) {
-            final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[v] ?? '');
+            final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+            if (targetHeader.isEmpty) continue;
+            
+            int colIdx = -1;
+            for (int k = 0; k < _excelHeaders.length; k++) {
+              if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+                colIdx = k;
+                break;
+              }
+            }
+            
             if (colIdx != -1) {
               final excelVal = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
               if (excelVal.isEmpty) {
@@ -242,20 +280,59 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     if (_excel == null || _selectedStandard == null) return;
     final sheet = _excel!.tables.values.first;
     
-    for (int i = 1; i < sheet.maxRows; i++) {
-      final row = sheet.rows[i];
-      bool allFilled = true;
-      for (final variableName in _allVariables) {
-        final colHeader = _variableToColumnMapping[variableName];
-        final colIndex = _excelHeaders.indexOf(colHeader ?? '');
-        if (colIndex != -1) {
-          final cellValue = row.length > colIndex ? row[colIndex]?.value?.toString() ?? '' : '';
-          if (cellValue.trim().isEmpty) {
-            allFilled = false;
+    // Performance optimization: Fetch rows once to avoid O(N^2) complexity
+    final rows = sheet.rows;
+    final maxRows = sheet.maxRows;
+    
+    // Pre-calculate column indices to avoid repeated indexOf calls and handle case/spacing
+    final colIndices = <String, int>{};
+    for (final v in _allVariables) {
+      final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+      int foundIdx = -1;
+      if (targetHeader.isNotEmpty) {
+        for (int k = 0; k < _excelHeaders.length; k++) {
+          if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+            foundIdx = k;
             break;
           }
         }
       }
+      colIndices[v] = foundIdx;
+    }
+    
+    // Search for the first incomplete row
+    for (int i = 1; i < maxRows; i++) {
+      // Handle sparse rows in excel package
+      if (i >= rows.length) {
+        setState(() {
+          _currentRowIndex = i;
+          _currentCiCode = null;
+        });
+        if (_requiresCI) _fetchNextCI();
+        return;
+      }
+
+      final row = rows[i];
+      bool allFilled = true;
+      
+      for (final variableName in _allVariables) {
+        final colIndex = colIndices[variableName] ?? -1;
+        
+        if (colIndex != -1) {
+          final cellValue = row.length > colIndex ? row[colIndex]?.value?.toString()?.trim() ?? '' : '';
+          
+          // Improved empty check: handle empty strings and common null-placeholders
+          if (cellValue.isEmpty || cellValue.toLowerCase() == 'null' || cellValue.toLowerCase() == 'undefined') {
+            allFilled = false;
+            break;
+          }
+        } else {
+          // If a variable is not mapped to an existing column, it's considered empty/incomplete
+          allFilled = false;
+          break;
+        }
+      }
+      
       if (!allFilled) {
         setState(() {
           _currentRowIndex = i;
@@ -268,6 +345,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         return;
       }
     }
+    
     // If we get here, all rows are filled
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Todas las filas están completas')),
@@ -329,14 +407,22 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     bool isComplete = true;
     
     for (final v in _allVariables) {
-      final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[v] ?? '');
+      final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+      int colIdx = -1;
+      for (int k = 0; k < _excelHeaders.length; k++) {
+        if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+          colIdx = k;
+          break;
+        }
+      }
+      
       if (colIdx != -1) {
-        final val = row.length > colIdx ? row[colIdx]?.value?.toString() ?? '' : '';
-        if (val.trim().isEmpty) {
+        final val = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
+        if (val.isEmpty || val.toLowerCase() == 'null' || val.toLowerCase() == 'undefined') {
           isComplete = false;
           break;
         }
-        values[v] = val.trim();
+        values[v] = val;
       } else {
         isComplete = false;
         break;
@@ -349,8 +435,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   }
 
   Future<void> _showRegistryManager({String? initialQuery}) async {
-    final registries = await _serigrafiaService.getRegistries(widget.order.idnbr);
-    if (!mounted) return;
+    // Fetch registries with includeProject: true to ensure we have all data for duplicate detection,
+    // but we will be careful about what we use for auto-syncing.
+    final registries = await _serigrafiaService.getRegistries(widget.order.idnbr, labelName: _selectedStandard!.name, includeProject: true);
 
     final searchCtrl = TextEditingController(text: initialQuery ?? '');
     String searchQuery = initialQuery ?? '';
@@ -1086,14 +1173,21 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     String? ciValue;
 
     for (final v in _allVariables) {
-      final colName = _variableToColumnMapping[v];
-      final colIdx = _excelHeaders.indexOf(colName ?? '');
+      final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+      int colIdx = -1;
+      for (int k = 0; k < _excelHeaders.length; k++) {
+        if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+          colIdx = k;
+          break;
+        }
+      }
+      
       if (colIdx != -1) {
-        final val = row.length > colIdx ? row[colIdx]?.value?.toString() ?? '' : '';
+        final val = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
         mappedValues[v] = val;
         // Check if this variable is CI or CI_CODE for a prominent display
         if (v.toUpperCase() == 'CI' || v.toUpperCase() == 'CI_CODE') {
-          if (val.isNotEmpty) ciValue = val;
+          if (val.isNotEmpty && val.toLowerCase() != 'null') ciValue = val;
         }
       }
     }
@@ -1169,14 +1263,23 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   }
 
   Widget _buildScanningUI() {
-    // Determine which field is currently being scanned
+    final sheet = _excel!.tables.values.first;
     String? fieldToScan;
     for (final v in _allVariables) {
-      final colName = _variableToColumnMapping[v];
-      final colIdx = _excelHeaders.indexOf(colName ?? '');
-      final sheet = _excel!.tables.values.first;
-      final val = sheet.rows[_currentRowIndex][colIdx]?.value?.toString() ?? '';
-      if (val.trim().isEmpty) {
+      final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+      int colIdx = -1;
+      for (int k = 0; k < _excelHeaders.length; k++) {
+        if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+          colIdx = k;
+          break;
+        }
+      }
+      
+      final val = (colIdx != -1 && sheet.rows[_currentRowIndex].length > colIdx) 
+          ? sheet.rows[_currentRowIndex][colIdx]?.value?.toString()?.trim() ?? '' 
+          : '';
+      
+      if (val.isEmpty || val.toLowerCase() == 'null' || val.toLowerCase() == 'undefined') {
         fieldToScan = v;
         break;
       }
@@ -1361,19 +1464,47 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   bool _checkForDuplicate(String variable, String value) {
     if (_excel == null) return false;
     final sheet = _excel!.tables.values.first;
-    final colName = _variableToColumnMapping[variable];
-    final colIdx = _excelHeaders.indexOf(colName ?? '');
-    if (colIdx == -1) return false;
-
-    // Check all rows for duplicates
-    for (int i = 1; i < sheet.maxRows; i++) {
-       if (i == _currentRowIndex) continue;
-       final row = sheet.rows[i];
-       if (row.length > colIdx) {
-          final cellVal = row[colIdx]?.value?.toString().trim();
-          if (cellVal == value) return true;
-       }
+    final targetHeader = _variableToColumnMapping[variable]?.toUpperCase().trim() ?? '';
+    
+    int colIdx = -1;
+    for (int k = 0; k < _excelHeaders.length; k++) {
+      if (_excelHeaders[k].toUpperCase().trim() == targetHeader) {
+        colIdx = k;
+        break;
+      }
     }
+
+    // 1. Check all rows in current Excel for duplicates
+    if (colIdx != -1) {
+      for (int i = 1; i < sheet.maxRows; i++) {
+         if (i == _currentRowIndex) continue;
+         final row = sheet.rows[i];
+         if (row.length > colIdx) {
+            final cellVal = row[colIdx]?.value?.toString()?.trim();
+            if (cellVal != null && cellVal.isNotEmpty && cellVal.toLowerCase() != 'null' && cellVal == value) return true;
+         }
+      }
+    }
+
+    // 2. Check database registries (fetched project-wide)
+    for (final r in _registries) {
+      // If it's a registry from THIS order, we probably already caught it in the Excel check,
+      // but checking here is a good safety measure for unsaved/other sessions.
+      final data = r['data'] is Map ? r['data'] as Map : {};
+      for (final entry in data.entries) {
+        final rk = entry.key.toString().toUpperCase().trim();
+        final rv = entry.value?.toString()?.trim();
+        
+        // Match the variable name (case-insensitive)
+        if (rk == variable.toUpperCase().trim()) {
+          if (rv != null && rv.isNotEmpty && rv == value) {
+            // Found a duplicate in the database!
+            return true;
+          }
+        }
+      }
+    }
+
     return false;
   }
 

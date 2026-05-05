@@ -112,8 +112,8 @@ class SerigrafiaService {
   }
 
   /// List scan/print registrations for an order/project
-  Future<List<Map<String, dynamic>>> getRegistries(int idnbr, {String? labelName}) async {
-    final query = 'idnbr=$idnbr${labelName != null ? '&label_name=$labelName' : ''}';
+  Future<List<Map<String, dynamic>>> getRegistries(int idnbr, {String? labelName, bool includeProject = false}) async {
+    final query = 'idnbr=$idnbr${labelName != null ? '&label_name=$labelName' : ''}${includeProject ? '&include_project=true' : ''}';
     final res = await client.get('/orderops/serigrafia/registries?$query');
     if (res.ok && res.body != null) {
       final data = res.body;

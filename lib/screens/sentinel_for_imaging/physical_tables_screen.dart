@@ -1481,6 +1481,28 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
             style: SentinelTheme.subHeader.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 8),
+          if (provider.imagesError != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: SentinelTheme.error.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: SentinelTheme.error.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: SentinelTheme.error, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Error cargando imágenes: ${provider.imagesError}',
+                      style: SentinelTheme.label.copyWith(color: SentinelTheme.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Opacity(
             opacity: _enabled ? 1.0 : 0.55,
             child: Container(
@@ -1494,7 +1516,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                 child: DropdownButton2<String>(
                   value: _selectedImage,
                   hint: Text(
-                    'Selecc. Imagen (WIM/ESD/FFU)',
+                    'Selecc. Imagen (WIM/ESD/Dual-Boot)',
                     style: SentinelTheme.body.copyWith(
                       color: SentinelTheme.textDisabled,
                     ),
@@ -1525,24 +1547,62 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                   ),
                   items:
                       images.map((img) {
-                        return DropdownMenuItem(
-                          value: img,
-                          child: Text(
-                            img,
-                            overflow: TextOverflow.ellipsis,
-                            style: SentinelTheme.body.copyWith(
-                              color: Colors.white,
-                            ),
+                        final name = img['name']?.toString() ?? '';
+                        final isDualBoot = img['type']?.toString() == 'dualboot';
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: SentinelTheme.body.copyWith(
+                                    color: isDualBoot
+                                        ? Colors.purple[200]
+                                        : Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isDualBoot
+                                      ? Colors.purple.withOpacity(0.25)
+                                      : Colors.cyan.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: isDualBoot
+                                        ? Colors.purple
+                                        : Colors.cyan,
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Text(
+                                  isDualBoot ? 'DUAL-BOOT' : 'WIM',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white70,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }).toList()..addAll(
                         // Ensure the currently selected image is in the list to avoid crash
                         (_selectedImage != null &&
                                 _selectedImage!.isNotEmpty &&
-                                !images.contains(_selectedImage))
+                                !images.any((img) => img['name'] == _selectedImage))
                             ? [
-                                DropdownMenuItem(
-                                  value: _selectedImage,
+                                DropdownMenuItem<String>(
+                                  value: _selectedImage!,
                                   child: Text(
                                     '$_selectedImage (Archived)',
                                     style: SentinelTheme.body.copyWith(
@@ -1836,7 +1896,7 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                   child: DropdownButton2<String>(
                     value: _selectedImage,
                     hint: Text(
-                      'Seleccionar Imagen',
+                      'Selecc. Imagen (WIM/ESD/Dual-Boot)',
                       style: SentinelTheme.label.copyWith(
                         color: SentinelTheme.textDisabled,
                       ),
@@ -1871,23 +1931,62 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                     ),
                     items:
                         images.map((img) {
-                          return DropdownMenuItem(
-                            value: img,
-                            child: Text(
-                              img,
-                              overflow: TextOverflow.ellipsis,
-                              style: SentinelTheme.body.copyWith(
-                                color: Colors.white,
-                              ),
+                          final name = img['name']?.toString() ?? '';
+                          final isDualBoot =
+                              img['type']?.toString() == 'dualboot';
+                          return DropdownMenuItem<String>(
+                            value: name,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: SentinelTheme.body.copyWith(
+                                      color: isDualBoot
+                                          ? Colors.purple[200]
+                                          : Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isDualBoot
+                                        ? Colors.purple.withOpacity(0.25)
+                                        : Colors.cyan.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: isDualBoot
+                                          ? Colors.purple
+                                          : Colors.cyan,
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    isDualBoot ? 'DUAL-BOOT' : 'WIM',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white70,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         }).toList()..addAll(
                           (_selectedImage != null &&
                                   _selectedImage!.isNotEmpty &&
-                                  !images.contains(_selectedImage))
+                                  !images.any((img) => img['name'] == _selectedImage))
                               ? [
-                                  DropdownMenuItem(
-                                    value: _selectedImage,
+                                  DropdownMenuItem<String>(
+                                    value: _selectedImage!,
                                     child: Text(
                                       '$_selectedImage (Archived)',
                                       style: SentinelTheme.body.copyWith(

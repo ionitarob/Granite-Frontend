@@ -1119,6 +1119,28 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
             style: SentinelTheme.subHeader.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 8),
+          if (provider.imagesError != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: SentinelTheme.error.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: SentinelTheme.error.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: SentinelTheme.error, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Error cargando imágenes: ${provider.imagesError}',
+                      style: SentinelTheme.label.copyWith(color: SentinelTheme.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: SentinelTheme.glassDecoration(
