@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -40,8 +41,12 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   List<String> _excelHeaders = [];
   bool _loadingExcel = false;
   
-  // Phase 3: Mapping
+  // Phase 3: Mapping & Filtering
   Map<String, String> _variableToColumnMapping = {};
+  int? _startCiFilter;
+  int? _endCiFilter;
+  final TextEditingController _startCiController = TextEditingController();
+  final TextEditingController _endCiController = TextEditingController();
   
   // Phase 4: Execution
   int _currentRowIndex = 1; // 1-indexed, starts after header
@@ -55,6 +60,13 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   
   // Registry Picking mode (if variable 'CI' exists)
   bool _isUsingExistingRegistry = false;
+
+  excel_pkg.Sheet? get _firstSheet {
+    if (_excel == null) return null;
+    final sheets = _excel!.sheets;
+    if (sheets.isEmpty) return null;
+    return sheets.values.first;
+  }
 
   @override
   void initState() {
@@ -90,11 +102,11 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       if (doc != null && mounted) {
         setState(() {
           _excel = doc;
-          final sheet = doc.tables.values.first;
-          if (sheet.maxRows > 0) {
-            _excelHeaders = sheet.rows.first.map((c) => c?.value?.toString()?.trim() ?? '').toList();
+          // Use sheets instead of tables for 4.x compatibility and check if empty
+          if (doc.sheets.values.isNotEmpty) {
+            _excelHeaders = _serigrafiaService.getExcelHeaders(doc);
           } else {
-             _excelHeaders = [];
+            _excelHeaders = [];
           }
           _selectedAttachment = photo;
           _currentStep = 3;
@@ -138,10 +150,13 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           final colName = _variableToColumnMapping['CI_CODE'];
           final colIdx = _excelHeaders.indexOf(colName ?? '');
           if (colIdx != -1 && _currentCiCode != null) {
-             _excel!.tables.values.first.updateCell(
-               excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
-               _currentCiCode!,
-             );
+             final sheet = _excel?.sheets.values.isNotEmpty == true ? _firstSheet : null;
+             if (sheet != null) {
+               sheet.updateCell(
+                 excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
+                 excel_pkg.TextCellValue(_currentCiCode!),
+               );
+             }
           }
         });
       }
@@ -174,6 +189,30 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     _syncExcelWithDatabase();
   }
 
+  Future<void> _saveAndUploadToServer({bool silent = false}) async {
+    if (_excel == null) return;
+    try {
+      final bytes = _excel!.encode();
+      if (bytes != null) {
+        final originalName = _selectedAttachment?.fileName ?? "serigrafia.xlsx";
+        // Always use a specific "Corrected" name on the server
+        final targetName = "SERIGRAFIA_CORREGIDO_$originalName";
+        
+        final res = await _serigrafiaService.uploadExcel(widget.order.idnbr, Uint8List.fromList(bytes), targetName);
+        
+        if (!silent && mounted) {
+           if (res.ok) {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel sincronizado y guardado en Archivos'), backgroundColor: Colors.green));
+           } else {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar Excel: ${res.error}'), backgroundColor: Colors.red));
+           }
+        }
+      }
+    } catch (e) {
+      if (!silent) debugPrint('Error en _saveAndUploadToServer: $e');
+    }
+  }
+
   Future<void> _syncExcelWithDatabase() async {
     if (_excel == null) return;
     
@@ -188,7 +227,8 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     }
     
     setState(() {
-      final sheet = _excel!.tables.values.first;
+      final sheet = _firstSheet;
+      if (sheet == null) return;
       
       // Iterate through each row in the Excel (skip header)
       for (int i = 1; i < sheet.maxRows; i++) {
@@ -218,18 +258,13 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           if (colIdx != -1) {
             final excelVal = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
             if (excelVal.isNotEmpty && excelVal.toLowerCase() != 'null') {
-              // Try to find a registry that has this value for the same variable
+              // SMART MATCH: Try to find a registry by this value as EITHER a CI or a Serial
               match = registries.where((r) {
-                // Only auto-fill from the CURRENT order to avoid false completions from other orders in the same project.
-                if (r['is_current_order'] != true) return false;
-                
                 final data = r['data'] as Map;
-                // Case-insensitive variable lookup
-                dynamic regVal;
-                data.forEach((rk, rv) {
-                  if (rk.toString().toUpperCase() == v.toUpperCase()) regVal = rv;
-                });
-                return regVal?.toString()?.trim() == excelVal;
+                final regCi = (data['CI'] ?? data['CI_CODE'])?.toString();
+                final regSerial = data['SERIAL']?.toString();
+                
+                return regCi == excelVal || regSerial == excelVal;
               }).firstOrNull;
               
               if (match != null) break;
@@ -237,7 +272,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           }
         }
         
-        // If we found a match, fill in the missing fields in Excel from the Registry
+        // If we found a match in DB, fix the Excel columns using DB data
         if (match != null) {
           final data = match['data'] as Map;
           for (final v in _allVariables) {
@@ -253,17 +288,24 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             }
             
             if (colIdx != -1) {
-              final excelVal = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
-              if (excelVal.isEmpty) {
-                // Populate from registry
-                dynamic regVal;
+              // PULL FROM DB: Get the canonical value for this variable (CI, SERIAL, etc)
+              String? canonicalVal;
+              final upperV = v.toUpperCase();
+              if (upperV == 'CI' || upperV == 'CI_CODE') canonicalVal = (data['CI'] ?? data['CI_CODE'])?.toString();
+              else if (upperV == 'SERIAL') canonicalVal = data['SERIAL']?.toString();
+              else {
+                // Fallback for other fields
                 data.forEach((rk, rv) {
-                  if (rk.toString().toUpperCase() == v.toUpperCase()) regVal = rv;
+                  if (rk.toString().toUpperCase() == upperV) canonicalVal = rv?.toString();
                 });
-                if (regVal != null) {
+              }
+
+              if (canonicalVal != null) {
+                final currentVal = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
+                if (canonicalVal != currentVal) {
                   sheet.updateCell(
                     excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: i),
-                    regVal.toString(),
+                    excel_pkg.TextCellValue(canonicalVal!),
                   );
                 }
               }
@@ -273,12 +315,14 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       }
     });
 
+    _saveAndUploadToServer(silent: true);
     _advanceToNextEmptyRow();
   }
 
   void _advanceToNextEmptyRow() {
     if (_excel == null || _selectedStandard == null) return;
-    final sheet = _excel!.tables.values.first;
+    final sheet = _firstSheet;
+    if (sheet == null) return;
     
     // Performance optimization: Fetch rows once to avoid O(N^2) complexity
     final rows = sheet.rows;
@@ -302,6 +346,33 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     
     // Search for the first incomplete row
     for (int i = 1; i < maxRows; i++) {
+      // 1. CI Range Filtering
+      if (_startCiFilter != null || _endCiFilter != null) {
+        // Find CI value for this row
+        int? rowCi;
+        for (final v in _allVariables) {
+          if (v.toUpperCase() == 'CI' || v.toUpperCase() == 'CI_CODE') {
+            final colIdx = colIndices[v] ?? -1;
+            if (colIdx != -1) {
+              final cell = _firstSheet!.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: i));
+              final val = cell.value?.toString() ?? '';
+              rowCi = int.tryParse(val.replaceAll(RegExp(r'[^0-9]'), ''));
+              break;
+            }
+          }
+        }
+        
+        if (rowCi != null) {
+          if (_startCiFilter != null && rowCi < _startCiFilter!) continue;
+          if (_endCiFilter != null && rowCi > _endCiFilter!) continue;
+        } else {
+          // If the row has no numeric CI but we have a filter active, we might want to skip it
+          // unless it's a completely empty row we might use later.
+          // For safety, if filtering is active and no CI found, skip.
+          continue; 
+        }
+      }
+
       // Handle sparse rows in excel package
       if (i >= rows.length) {
         setState(() {
@@ -318,28 +389,37 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       for (final variableName in _allVariables) {
         final colIndex = colIndices[variableName] ?? -1;
         
+        // Only check completion for variables that are actually mapped to a column.
+        // If a variable is not mapped, we ignore it for completion checks.
         if (colIndex != -1) {
-          final cellValue = row.length > colIndex ? row[colIndex]?.value?.toString()?.trim() ?? '' : '';
+          final cell = _firstSheet!.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIndex, rowIndex: i));
+          final cellValue = cell.value?.toString()?.trim() ?? '';
           
-          // Improved empty check: handle empty strings and common null-placeholders
           if (cellValue.isEmpty || cellValue.toLowerCase() == 'null' || cellValue.toLowerCase() == 'undefined') {
             allFilled = false;
             break;
           }
-        } else {
-          // If a variable is not mapped to an existing column, it's considered empty/incomplete
-          allFilled = false;
-          break;
         }
       }
       
       if (!allFilled) {
+        String? existingCi;
+        for (final v in _allVariables) {
+          if (v.toUpperCase() == 'CI' || v.toUpperCase() == 'CI_CODE') {
+             final cIdx = colIndices[v] ?? -1;
+             if (cIdx != -1) {
+               existingCi = row.length > cIdx ? row[cIdx]?.value?.toString()?.trim() ?? '' : '';
+             }
+          }
+        }
+
         setState(() {
           _currentRowIndex = i;
-          _currentCiCode = null;
+          _currentCiCode = (existingCi?.isNotEmpty == true && existingCi?.toLowerCase() != 'null') ? existingCi : null;
         });
         
-        if (_requiresCI) {
+        // Only fetch a new CI if the current row doesn't have one
+        if (_requiresCI && _currentCiCode == null) {
            _fetchNextCI();
         }
         return;
@@ -350,6 +430,130 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Todas las filas están completas')),
     );
+  }
+
+  void _jumpToNextGap() {
+    if (_excel == null || _firstSheet == null) return;
+    final sheet = _firstSheet!;
+    
+    // Find column indices for CI and SERIAL
+    int ciIdx = -1;
+    int serialIdx = -1;
+    
+    for (final v in _allVariables) {
+      final target = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
+      if (target.isEmpty) continue;
+      
+      for (int k = 0; k < _excelHeaders.length; k++) {
+        if (_excelHeaders[k].toUpperCase().trim() == target) {
+          if (v.toUpperCase() == 'CI' || v.toUpperCase() == 'CI_CODE') ciIdx = k;
+          if (v.toUpperCase() == 'SERIAL') serialIdx = k;
+        }
+      }
+    }
+    
+    if (ciIdx == -1 || serialIdx == -1) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falta mapear CI o SERIAL para buscar huecos'), backgroundColor: Colors.orange));
+      return;
+    }
+
+    for (int i = 1; i < sheet.maxRows; i++) {
+      // 1. Respect CI Range Filter
+      if (_startCiFilter != null || _endCiFilter != null) {
+        final ciCell = sheet.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: ciIdx, rowIndex: i));
+        final val = ciCell.value?.toString() ?? '';
+        final numeric = int.tryParse(val.replaceAll(RegExp(r'[^0-9]'), ''));
+        if (numeric != null) {
+          if (_startCiFilter != null && numeric < _startCiFilter!) continue;
+          if (_endCiFilter != null && numeric > _endCiFilter!) continue;
+        } else continue;
+      }
+
+      final ciVal = sheet.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: ciIdx, rowIndex: i)).value?.toString()?.trim() ?? '';
+      final serialVal = sheet.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: serialIdx, rowIndex: i)).value?.toString()?.trim() ?? '';
+      
+      // A "Gap" is where CI exists but Serial is empty/null/undefined
+      if (ciVal.isNotEmpty && ciVal.toLowerCase() != 'null' && 
+          (serialVal.isEmpty || serialVal.toLowerCase() == 'null' || serialVal.toLowerCase() == 'undefined')) {
+        setState(() => _currentRowIndex = i);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saltando al hueco en Fila ${i+1} (CI: $ciVal)'), backgroundColor: Colors.cyan));
+        return;
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se encontraron más huecos en el rango'), backgroundColor: Colors.green));
+  }
+
+  void _autoDetectCiRange(String colName) {
+    if (_excel == null || _firstSheet == null) return;
+    
+    final colIdx = _excelHeaders.indexOf(colName);
+    if (colIdx == -1) return;
+    
+    int? minCi;
+    int? maxCi;
+    
+    final sheet = _firstSheet!;
+    List<int> candidates = [];
+    
+    for (int i = 1; i < sheet.maxRows; i++) {
+      final cell = sheet.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: i));
+      final val = cell.value?.toString() ?? '';
+      
+      // Clean the string to keep only digits
+      final digitsOnly = val.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digitsOnly.isEmpty) continue;
+      
+      final numeric = int.tryParse(digitsOnly);
+      if (numeric != null) {
+        // SMART FILTER: Only accept numbers that look like CIs 
+        // (Typically 5 to 8 digits. Ignore 10+ digit serials and short codes)
+        if (digitsOnly.length >= 5 && digitsOnly.length <= 8) {
+          candidates.add(numeric);
+        }
+      }
+    }
+    
+    if (candidates.isNotEmpty) {
+      // MAJORITY FILTER: Group by first 2 digits and pick the most common prefix
+      final Map<String, List<int>> groups = {};
+      for (final c in candidates) {
+        final prefix = c.toString().substring(0, 2);
+        groups.putIfAbsent(prefix, () => []).add(c);
+      }
+      
+      // Find the winner group (the one with the most entries)
+      String? winnerPrefix;
+      int maxCount = 0;
+      groups.forEach((prefix, list) {
+        if (list.length > maxCount) {
+          maxCount = list.length;
+          winnerPrefix = prefix;
+        }
+      });
+      
+      if (winnerPrefix != null) {
+        final winnerList = groups[winnerPrefix]!..sort();
+        final minCi = winnerList.first;
+        final maxCi = winnerList.last;
+        
+        setState(() {
+          _startCiFilter = minCi;
+          _endCiFilter = maxCi;
+          _startCiController.text = minCi.toString();
+          _endCiController.text = maxCi.toString();
+        });
+        debugPrint('SerigrafiaPanel: Majority Auto-detected CI range (prefix $winnerPrefix): $minCi - $maxCi ($maxCount units)');
+      }
+    } else {
+      // If no standard CIs found, maybe they are different. Clear filters to avoid garbage.
+      setState(() {
+        _startCiController.clear();
+        _endCiController.clear();
+        _startCiFilter = null;
+        _endCiFilter = null;
+      });
+    }
   }
 
   Widget _buildScanField(String field) {
@@ -385,13 +589,27 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   }
 
   void _updateCell(String variable, String value) {
+    final sheet = _firstSheet;
+    if (sheet == null) return;
+    
+    final colName = _variableToColumnMapping[variable];
+    if (colName == null) return;
+    
+    final colIdx = _excelHeaders.indexOf(colName);
+    if (colIdx == -1) return;
+    
     setState(() {
-      final sheet = _excel!.tables.values.first;
-      final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[variable]!);
-      sheet.updateCell(
-        excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
-        value,
-      );
+      // Optimization: only update if value changed
+      final currentVal = sheet.rows[_currentRowIndex].length > colIdx 
+          ? sheet.rows[_currentRowIndex][colIdx]?.value?.toString()?.trim() ?? '' 
+          : '';
+          
+      if (currentVal != value) {
+        sheet.updateCell(
+          excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
+          excel_pkg.TextCellValue(value),
+        );
+      }
     });
     
     // Auto-submit if complete
@@ -400,7 +618,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
   void _checkCompletionAndSubmit() {
     if (_excel == null) return;
-    final sheet = _excel!.tables.values.first;
+    final sheet = _firstSheet;
+    if (sheet == null) return;
+    
     final row = sheet.rows[_currentRowIndex];
     
     final values = <String, String>{};
@@ -658,7 +878,8 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   void _applyRegistryToExcel(Map<String, dynamic> registry) {
     setState(() {
       final data = registry['data'] as Map;
-      final sheet = _excel!.tables.values.first;
+      final sheet = _firstSheet;
+      if (sheet == null) return;
       _isUsingExistingRegistry = true; // Mark to skip DB save on print
 
       for (final variable in _allVariables) {
@@ -674,10 +895,16 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         if (value != null) {
           final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[variable] ?? '');
           if (colIdx != -1) {
-            sheet.updateCell(
-              excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
-              value!,
-            );
+            final currentVal = sheet.rows[_currentRowIndex].length > colIdx 
+                ? sheet.rows[_currentRowIndex][colIdx]?.value?.toString()?.trim() ?? '' 
+                : '';
+            
+            if (currentVal != value) {
+              sheet.updateCell(
+                excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
+                excel_pkg.TextCellValue(value!),
+              );
+            }
           }
         }
       }
@@ -692,6 +919,30 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     
     setState(() => _printing = true);
     try {
+      final wasUsingRegistry = _isUsingExistingRegistry;
+      
+      // 1. REGISTER FIRST (Database is the priority)
+      if (!wasUsingRegistry) {
+        final currentUser = ApiService.instance?.currentUser?.username ?? 'unknown';
+        final saveRes = await _serigrafiaService.saveRegistry(
+          widget.order.idnbr,
+          _selectedStandard!.name,
+          values,
+          operator: currentUser,
+        );
+        
+        if (!saveRes.ok) {
+           if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+               SnackBar(content: Text('ERROR CRÍTICO: No se pudo guardar en base de datos. Impresión cancelada.\n${saveRes.error}'), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
+             );
+           }
+           setState(() => _printing = false);
+           return; // ABORT PRINTING
+        }
+      }
+
+      // 2. PRINT SECOND (Only if database is safe)
       final res = await _serigrafiaService
           .printLabel(_selectedStandard!, values)
           .timeout(
@@ -702,46 +953,38 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
               error: 'Timeout esperando respuesta de impresión (20s)',
             ),
           );
+
       if (res.ok && mounted) {
-          // Update Local Excel (ensure everything is synced)
-          final sheet = _excel!.tables.values.first;
+          // Update Local Excel
+          final sheet = _firstSheet;
+          if (sheet == null) return;
+          
           values.forEach((varName, value) {
-             final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[varName] ?? '');
+             final colName = _variableToColumnMapping[varName];
+             final colIdx = _excelHeaders.indexOf(colName ?? '');
              if (colIdx != -1) {
-                sheet.updateCell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex), value);
+                final currentVal = sheet.rows[_currentRowIndex].length > colIdx 
+                    ? sheet.rows[_currentRowIndex][colIdx]?.value?.toString()?.trim() ?? '' 
+                    : '';
+                if (currentVal != value) {
+                  sheet.updateCell(
+                    excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex), 
+                    excel_pkg.TextCellValue(value)
+                  );
+                }
              }
           });
           
-          final wasUsingRegistry = _isUsingExistingRegistry;
           _isUsingExistingRegistry = false; // Reset for next unit
           _advanceToNextEmptyRow();
            
-          // Persistence: Skip if we just reused an existing registry
-          if (!wasUsingRegistry) {
-            final currentUser = ApiService.instance?.currentUser?.username ?? 'unknown';
-            final saveRes = await _serigrafiaService.saveRegistry(
-              widget.order.idnbr,
-              _selectedStandard!.name,
-              values,
-              operator: currentUser,
-            );
-            if (!saveRes.ok) {
-               if (mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   SnackBar(content: Text('Error guardando en historial: ${saveRes.error}'), backgroundColor: Colors.orange),
-                 );
-               }
-            }
-          } else {
-             print('Skipping registry save as unit was pulled from existing registry');
-          }
-
-          // Auto-save Excel status to server
+          // Auto-save Excel status to server (Original and Corregido)
           _saveAndUpload(silent: true);
+          _saveAndUploadToServer(silent: true);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('Etiqueta enviada a impresión exitosamente'), backgroundColor: Colors.green),
+             const SnackBar(content: Text('Registro guardado e impresión enviada exitosamente'), backgroundColor: Colors.green),
             );
           }
       } else {
@@ -757,11 +1000,14 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error de impresión: $detail'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 6),
+              content: Text('Registro guardado, pero ERROR DE IMPRESIÓN: $detail\nPulsa REIMPRIMIR si es necesario.'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 8),
             ),
           );
+          // Even if print fails, we already saved, so move on or allow retry
+          _isUsingExistingRegistry = false; 
+          _advanceToNextEmptyRow();
         }
       }
     } catch (e, st) {
@@ -1062,8 +1308,58 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('PASO 3: MAPEO DE VARIABLES A COLUMNAS', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
+        const Text('PASO 3: MAPEO Y FILTRO DE RANGO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
         const SizedBox(height: 16),
+        
+        // CI Range Filter Section
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.cyan.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.cyan.withOpacity(0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.filter_alt_rounded, size: 16, color: Colors.cyan),
+                  SizedBox(width: 8),
+                  Text('FILTRAR POR RANGO DE CI (OPCIONAL)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.cyan, fontSize: 11)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _startCiController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'CI Inicial (ej: 816735)', border: OutlineInputBorder()),
+                      onChanged: (val) => setState(() => _startCiFilter = int.tryParse(val)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _endCiController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'CI Final (ej: 816800)', border: OutlineInputBorder()),
+                      onChanged: (val) => setState(() => _endCiFilter = int.tryParse(val)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text('Si se define un rango, la app solo mostrará las filas que tengan un CI dentro de estos números.', style: TextStyle(fontSize: 10, color: Colors.white38)),
+            ],
+          ),
+        ),
+        
+        const SizedBox(height: 32),
+        const Text('MAPEO DE VARIABLES A COLUMNAS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70, fontSize: 10)),
+        const SizedBox(height: 12),
         ..._allVariables.map((v) => _buildMappingRow(v)),
         const SizedBox(height: 32),
         Center(
@@ -1099,7 +1395,15 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
               decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12), border: OutlineInputBorder()),
               hint: const Text('Seleccionar Columna', style: TextStyle(fontSize: 12)),
               items: _excelHeaders.map((h) => DropdownMenuItem(value: h, child: Text(h, overflow: TextOverflow.ellipsis))).toList(),
-              onChanged: (val) => setState(() => _variableToColumnMapping[variableName] = val!),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _variableToColumnMapping[variableName] = val);
+                  // Auto-detect CI range if this is a CI field
+                  if (variableName.toUpperCase() == 'CI' || variableName.toUpperCase() == 'CI_CODE') {
+                    _autoDetectCiRange(val);
+                  }
+                }
+              },
             ),
           ),
         ],
@@ -1109,7 +1413,8 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
   Widget _buildPhase4() {
     if (_excel == null) return const SizedBox();
-    final sheet = _excel!.tables.values.first;
+    final sheet = _firstSheet;
+    if (sheet == null) return const Center(child: Text('No se pudo encontrar la hoja de cálculo'));
     final rowData = sheet.rows[_currentRowIndex];
     
     return Column(
@@ -1128,6 +1433,17 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                 ),
                 const SizedBox(width: 4),
                 TextButton.icon(
+                  onPressed: _syncExcelWithDatabase,
+                  icon: const Icon(Icons.sync_rounded, size: 16, color: Colors.orange),
+                  label: const Text('FORZAR SINCRONIZACIÓN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.orange.withOpacity(0.05),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
                   onPressed: _advanceToNextEmptyRow,
                   icon: const Icon(Icons.fast_forward_rounded, size: 16, color: Colors.cyan),
                   label: const Text('VOLVER AL ACTUAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
@@ -1138,8 +1454,26 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _jumpToNextGap,
+                  icon: const Icon(Icons.search_rounded, size: 16, color: Colors.cyan),
+                  label: const Text('BUSCAR HUECO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.cyan.withOpacity(0.05),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Container(width: 1, height: 20, color: Colors.white12),
                 const SizedBox(width: 8),
+                if (_startCiFilter != null || _endCiFilter != null)
+                   Container(
+                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                     margin: const EdgeInsets.only(right: 8),
+                     decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.orange.withOpacity(0.3))),
+                     child: const Text('FILTRADO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange)),
+                   ),
                 IconButton(
                   icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.cyan),
                   tooltip: 'Fila Anterior',
@@ -1167,6 +1501,64 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
+  Widget _buildRawDataPreview(List<excel_pkg.Data?> row) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('VISTA PREVIA DE DATOS RAW (EXCEL)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white38)),
+                  Text('HOJA: ${_excel?.sheets.keys.firstWhere((k) => _excel?.sheets[k] == _firstSheet, orElse: () => "Desconocida")}', 
+                    style: const TextStyle(fontSize: 10, color: Colors.cyan, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              Text('EXCEL ROW: ${_currentRowIndex + 1}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(row.length, (i) {
+                final header = _excelHeaders.length > i ? _excelHeaders[i] : '---';
+                final val = row[i]?.value?.toString() ?? '(vacio)';
+                final colLetter = String.fromCharCode(65 + (i % 26)); // A, B, C...
+                return Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: val.toLowerCase().contains('uk') ? Colors.cyan.withOpacity(0.1) : Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: val.toLowerCase().contains('uk') ? Colors.cyan.withOpacity(0.3) : Colors.transparent)
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('[$colLetter] $header', style: const TextStyle(fontSize: 9, color: Colors.cyan, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      Text(val, style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCurrentRowPreview(List<excel_pkg.Data?> row) {
     // Extract mapped variables only
     final mappedValues = <String, String>{};
@@ -1183,13 +1575,27 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       }
       
       if (colIdx != -1) {
-        final val = row.length > colIdx ? row[colIdx]?.value?.toString()?.trim() ?? '' : '';
+        // Use absolute coordinate access to prevent shifting
+        final cell = _firstSheet!.cell(excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex));
+        final val = cell.value?.toString()?.trim() ?? '';
+        
         mappedValues[v] = val;
         // Check if this variable is CI or CI_CODE for a prominent display
         if (v.toUpperCase() == 'CI' || v.toUpperCase() == 'CI_CODE') {
           if (val.isNotEmpty && val.toLowerCase() != 'null') ciValue = val;
         }
       }
+    }
+
+    // SMART UI SWAPPER: Fix visual swaps (UK code in CI box, Number in Serial box)
+    if (ciValue != null && ciValue!.toUpperCase().contains('UK')) {
+       final serialVal = mappedValues['SERIAL'];
+       // If Serial has a number but CI has the UK code, swap them for the UI
+       if (serialVal != null && RegExp(r'^\d+$').hasMatch(serialVal)) {
+          final temp = ciValue;
+          ciValue = serialVal;
+          mappedValues['SERIAL'] = temp!;
+       }
     }
 
     return Container(
@@ -1238,10 +1644,14 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: isMissing ? Colors.orange.withOpacity(0.3) : Colors.white.withOpacity(0.1)),
                 ),
-                child: Row(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${e.key}: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isMissing ? Colors.orange : Colors.white38)),
+                    Text(
+                      '${e.key}${!isMissing ? " (${_variableToColumnMapping[e.key]})" : ""}: ', 
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMissing ? Colors.orange : Colors.white38)
+                    ),
                     Text(
                       isMissing ? 'ESPERANDO...' : e.value,
                       style: TextStyle(
@@ -1263,7 +1673,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   }
 
   Widget _buildScanningUI() {
-    final sheet = _excel!.tables.values.first;
+    final sheet = _firstSheet;
+    if (sheet == null) return const SizedBox();
+    
     String? fieldToScan;
     for (final v in _allVariables) {
       final targetHeader = _variableToColumnMapping[v]?.toUpperCase().trim() ?? '';
@@ -1310,14 +1722,64 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     
     // special case for CI_CODE: if it's the current field and we haven't fetched it yet
     if (fieldToScan == 'CI_CODE' && _currentCiCode == null && !_fetchingCI) {
+        return Center(
+          child: Column(
+            children: [
+              const Icon(Icons.auto_fix_high_rounded, size: 48, color: Colors.cyan),
+              const SizedBox(height: 16),
+              const Text('Generando Código de Inventario...', style: TextStyle(color: Colors.cyan)),
+              const SizedBox(height: 24),
+              _fetchingCI ? const CircularProgressIndicator() : ElevatedButton(onPressed: _fetchNextCI, child: const Text('Generar Manualmente')),
+            ],
+          ),
+        );
+    }
+
+    // Emergency Controls for "Glitched" rows
+    final bool isGlitched = fieldToScan == null && _requiresCI;
+    
+    if (fieldToScan == null && !isGlitched) {
+       // ... existing printing logic ...
+    }
+
+    // If we have a value but it might be wrong (Glitched row)
+    if (fieldToScan == null && _requiresCI) {
        return Center(
          child: Column(
            children: [
-             const Icon(Icons.auto_fix_high_rounded, size: 48, color: Colors.cyan),
+             const Icon(Icons.warning_amber_rounded, size: 48, color: Colors.orange),
              const SizedBox(height: 16),
-             const Text('Generando Código de Inventario...', style: TextStyle(color: Colors.cyan)),
+             const Text('Fila Detectada como "Completada"', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
+             const Text('Si los datos son incorrectos (columnas movidas), usa estos controles:', style: TextStyle(fontSize: 10, color: Colors.white38)),
              const SizedBox(height: 24),
-             _fetchingCI ? const CircularProgressIndicator() : ElevatedButton(onPressed: _fetchNextCI, child: const Text('Generar Manualmente')),
+             Row(
+               mainAxisAlignment: MainAxisAlignment.center,
+               children: [
+                 ElevatedButton.icon(
+                   onPressed: () async {
+                     setState(() {
+                       _currentCiCode = null;
+                       _updateCell('CI', '');
+                       _updateCell('CI_CODE', '');
+                     });
+                     _fetchNextCI();
+                   }, 
+                   icon: const Icon(Icons.refresh), 
+                   label: const Text('REGENERAR CI (NUEVO)')
+                 ),
+                 const SizedBox(width: 16),
+                 ElevatedButton.icon(
+                   onPressed: () {
+                     // Force scan mode by resetting a field
+                     setState(() {
+                       _updateCell('SERIAL', '');
+                     });
+                   }, 
+                   icon: const Icon(Icons.qr_code_scanner), 
+                   label: const Text('RE-ESCANEAR SERIAL')
+                 ),
+               ],
+             )
            ],
          ),
        );
@@ -1352,7 +1814,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                 ElevatedButton.icon(
                   onPressed: () {
                     final values = <String, String>{};
-                    final sheet = _excel!.tables.values.first;
+                    final sheet = _firstSheet;
+                    if (sheet == null) return;
+                    
                     final row = sheet.rows[_currentRowIndex];
                     for (final v in _allVariables) {
                       final colName = _variableToColumnMapping[v];
@@ -1376,14 +1840,16 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                 OutlinedButton.icon(
                   onPressed: () {
                     setState(() {
-                       final sheet = _excel!.tables.values.first;
+                       final sheet = _firstSheet;
+                       if (sheet == null) return;
+                       
                        for (final v in _allVariables) {
                          final colName = _variableToColumnMapping[v];
                          final colIdx = _excelHeaders.indexOf(colName ?? '');
                          if (colIdx != -1) {
                             sheet.updateCell(
                               excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
-                              '',
+                              excel_pkg.TextCellValue(''),
                             );
                          }
                        }
@@ -1422,6 +1888,8 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           onSubmitted: (val) async {
             final scanValue = val.trim();
             if (scanValue.isEmpty) return;
+
+            // 0. Check for CI vs Serial confusion (Removed because CIs can be numeric)
             
             // 1. Check for duplicates
             bool isDuplicate = _checkForDuplicate(fieldToScan!, scanValue);
@@ -1444,12 +1912,25 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             }
 
             setState(() {
-               final sheet = _excel!.tables.values.first;
-               final colIdx = _excelHeaders.indexOf(_variableToColumnMapping[fieldToScan!]!);
-               sheet.updateCell(
-                 excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
-                 scanValue,
-               );
+               final sheet = _firstSheet;
+               if (sheet == null) return;
+               
+               final colName = _variableToColumnMapping[fieldToScan!];
+               if (colName == null) return;
+               
+               final colIdx = _excelHeaders.indexOf(colName);
+               
+               final currentVal = sheet.rows[_currentRowIndex].length > colIdx 
+                   ? sheet.rows[_currentRowIndex][colIdx]?.value?.toString()?.trim() ?? '' 
+                   : '';
+               
+               if (currentVal != scanValue) {
+                 sheet.updateCell(
+                   excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: _currentRowIndex),
+                   excel_pkg.TextCellValue(scanValue),
+                 );
+               }
+               
                if (fieldToScan == 'CI' || fieldToScan == 'CI_CODE') {
                  _currentCiCode = scanValue;
                }
@@ -1463,7 +1944,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
   bool _checkForDuplicate(String variable, String value) {
     if (_excel == null) return false;
-    final sheet = _excel!.tables.values.first;
+    final sheet = _firstSheet;
+    if (sheet == null) return false;
+    
     final targetHeader = _variableToColumnMapping[variable]?.toUpperCase().trim() ?? '';
     
     int colIdx = -1;
@@ -1510,7 +1993,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
   int? _getExpectedLength(String variable) {
     if (_excel == null) return null;
-    final sheet = _excel!.tables.values.first;
+    final sheet = _firstSheet;
+    if (sheet == null) return null;
+    
     final colName = _variableToColumnMapping[variable];
     final colIdx = _excelHeaders.indexOf(colName ?? '');
     if (colIdx == -1) return null;
@@ -1587,22 +2072,77 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
+  /// Create a clean copy of the Excel data to avoid shared string corruption
+  /// common in excel package 4.x when modifying files multiple times.
+  Uint8List? _safeEncode() {
+    if (_excel == null) return null;
+    
+    try {
+      final newExcel = excel_pkg.Excel.createExcel();
+      
+      // The new excel starts with 'Sheet1' by default
+      final defaultSheetName = newExcel.sheets.keys.first;
+      
+      for (final sheetName in _excel!.sheets.keys) {
+        final oldSheet = _excel!.sheets[sheetName]!;
+        
+        excel_pkg.Sheet newSheet;
+        if (sheetName == _excel!.sheets.keys.first) {
+          // Rename the default 'Sheet1' to the original first sheet name
+          newExcel.rename(defaultSheetName, sheetName);
+          newSheet = newExcel[sheetName];
+        } else {
+          newSheet = newExcel[sheetName];
+        }
+
+        // Copy data row by row
+        for (int r = 0; r < oldSheet.maxRows; r++) {
+          final row = oldSheet.rows[r];
+          final List<excel_pkg.CellValue?> newRow = [];
+          for (int c = 0; c < row.length; c++) {
+            newRow.add(row[c]?.value);
+          }
+          newSheet.appendRow(newRow);
+        }
+        
+        // Try to copy column widths
+        final oldWidths = oldSheet.getColumnWidths;
+        for (final colIdx in oldWidths.keys) {
+          newSheet.setColumnWidth(colIdx, oldWidths[colIdx]!);
+        }
+      }
+      
+      final encoded = newExcel.encode();
+      return encoded != null ? Uint8List.fromList(encoded) : null;
+    } catch (e) {
+      debugPrint('Safe Encode failed: $e. Falling back to regular encode.');
+      final encoded = _excel!.encode();
+      return encoded != null ? Uint8List.fromList(encoded) : null;
+    }
+  }
+
   Future<void> _saveAndUpload({bool silent = false}) async {
      if (_excel == null || _selectedAttachment == null) return;
      
      if (!silent) setState(() => _printing = true);
      try {
-        final bytes = _excel!.encode();
+        final bytes = _safeEncode();
         if (bytes != null) {
            final api = ApiService.instance;
            if (api != null) {
+              // Ensure filename has .xlsx extension if it was converted from .xls
+              String fileName = _selectedAttachment!.fileName;
+              if (fileName.toLowerCase().endsWith('.xls')) {
+                fileName = fileName.substring(0, fileName.length - 4) + '.xlsx';
+              }
+
               final res = await api.client.postMultipart(
                 '/orderops/agent-orders/${widget.order.idnbr}/photos',
                 fields: {'overwrite': 'true'},
                 files: [
                   MultipartAttachment(
                     fieldName: 'file',
-                    fileName: _selectedAttachment!.fileName,
+                    fileName: fileName,
                     bytes: bytes,
                   )
                 ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/analisis_models.dart';
 import '../../utils/formatters.dart';
+import 'package:intl/intl.dart';
 
 class AysFilteredDataDialog extends StatefulWidget {
   final List<Transaction> transactions;
@@ -95,6 +96,46 @@ class _AysFilteredDataDialogState extends State<AysFilteredDataDialog> {
         }
       });
     });
+  }
+
+  DateTime? _parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    String clean = s.trim().replaceAll(',', '');
+    clean = clean
+        .replaceAll('AM', ' AM')
+        .replaceAll('PM', ' PM')
+        .replaceAll('  ', ' ');
+    final iso = DateTime.tryParse(clean);
+    if (iso != null) return iso;
+    final formats = [
+      'MMM d yyyy h:mm a',
+      'MMMM d yyyy h:mm a',
+      'd/M/yyyy',
+      'dd/MM/yyyy',
+      'MMM d yyyy HH:mm',
+      'yyyy-MM-dd',
+      'yyyy-MM-dd HH:mm:ss',
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat(format, 'en_US').parse(clean);
+      } catch (_) {
+        try {
+          return DateFormat(format, 'es_ES').parse(clean);
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  String _formatDate(String? s) {
+    if (s == null || s.isEmpty || s == 'N/A' || s == '-') return '-';
+    final d = _parseDate(s);
+    if (d == null) return s!;
+    if (d.hour == 0 && d.minute == 0) {
+      return DateFormat('dd/MM/yyyy').format(d);
+    }
+    return DateFormat('dd/MM/yyyy HH:mm').format(d);
   }
 
   @override
@@ -218,7 +259,7 @@ class _AysFilteredDataDialogState extends State<AysFilteredDataDialog> {
                                     ),
                                   ),
                                   DataCell(Text(t.unit ?? '-')),
-                                  DataCell(Text(t.fechaf ?? '-')),
+                                  DataCell(Text(_formatDate(t.fechaf ?? t.fechai))),
                                   DataCell(
                                     Text(t.cost?.formatted ?? '0,00'),
                                   ),

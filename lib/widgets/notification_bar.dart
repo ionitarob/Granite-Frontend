@@ -50,6 +50,9 @@ class _NotificationBarState extends State<NotificationBar> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    // Deactivated atm
+    return const SizedBox.shrink();
+
     final provider = Provider.of<NotificationProvider>(context);
 
     // Skip showing the bar on Login and Splash screens (when no user is authenticated)

@@ -118,21 +118,31 @@ class _AysDashboardState extends State<AysDashboard> {
 
   Future<void> _loadFilterOptions() async {
     try {
-      final clients = await _analisisService.getClientes();
-      final manufacturers = await _analisisService.getFabricantes();
-      final services = await _analisisService.getServicios();
-      // IDs are loaded with funds or separately if needed, but we can extract unique IDs from history + open for now or fetch funds regardless
-      // Actually fetching funds gives us IDs. Even if user can't SEE funds, we might need IDs for filtering?
-      // Let's fetch funds purely for ID extraction if not already loaded, or just reuse funds list if available.
-      // But _loadFunds is restricted. Let's use getFunds just for IDs if needed, or extract from loaded transactions.
-      // Better: reuse _funds if loaded, otherwise maybe we don't show ID filter or fetch it silently?
-      // For now let's just use what we have in _funds if available.
+      final results = await Future.wait([
+        _analisisService.getClientes(),
+        _analisisService.getFabricantes(),
+        _analisisService.getServicios(),
+        _analisisService.getFunds(),
+      ]);
+
+      final clients = results[0] as List<String>;
+      final manufacturers = results[1] as List<String>;
+      final services = results[2] as List<String>;
+      final funds = results[3] as List<ProjectFund>;
+
+      final xiaomiIds = funds
+          .map((e) => e.idxiaomi ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      xiaomiIds.sort();
 
       if (mounted) {
         setState(() {
           _clients = clients;
           _manufacturers = manufacturers;
           _services = services;
+          _xiaomiIds = xiaomiIds;
         });
       }
     } catch (_) {}
@@ -219,7 +229,6 @@ class _AysDashboardState extends State<AysDashboard> {
     if (s == null || s.isEmpty) return null;
 
     // Clean up string
-    // Remove commas and ensure there's a space before AM/PM for easier parsing
     String clean = s.trim().replaceAll(',', '');
     clean = clean
         .replaceAll('AM', ' AM')
@@ -232,12 +241,13 @@ class _AysDashboardState extends State<AysDashboard> {
 
     // 2. Try common formats
     final formats = [
-      'MMM d yyyy h:mm a', // Feb 3 2026 9:42 AM
+      'MMM d yyyy h:mm a',
       'MMMM d yyyy h:mm a',
       'd/M/yyyy',
       'dd/MM/yyyy',
       'MMM d yyyy HH:mm',
       'yyyy-MM-dd',
+      'yyyy-MM-dd HH:mm:ss',
     ];
 
     for (final format in formats) {
@@ -250,6 +260,17 @@ class _AysDashboardState extends State<AysDashboard> {
       }
     }
     return null;
+  }
+
+  String _formatDate(String? s) {
+    if (s == null || s.isEmpty || s == 'N/A' || s == '-') return '';
+    final d = _parseDate(s);
+    if (d == null) return s!;
+    // If it has no time component, just show date
+    if (d.hour == 0 && d.minute == 0) {
+      return DateFormat('dd/MM/yyyy').format(d);
+    }
+    return DateFormat('dd/MM/yyyy HH:mm').format(d);
   }
 
   List<Transaction> get _filteredHistory {
@@ -520,7 +541,59 @@ class _AysDashboardState extends State<AysDashboard> {
             Divider(height: 1, color: theme.dividerColor.withOpacity(0.1)),
         itemBuilder: (ctx, i) {
           final t = _openTransactions[i];
-          final order = t.orden ?? t.csku;
+          final isXiaomiNull = t.idxiaomi == null ||
+              t.idxiaomi!.trim().isEmpty ||
+              t.idxiaomi!.trim().toUpperCase() == 'N/A';
+          final clienteLower = t.cliente?.trim().toLowerCase() ?? '';
+
+          Color bubbleColor = theme.colorScheme.primary;
+          if (clienteLower == 'vodafone') {
+            bubbleColor = Colors.redAccent.shade700;
+          } else if (clienteLower == 'orange') {
+            bubbleColor = Colors.orange.shade800;
+          }
+          if (isXiaomiNull) {
+            bubbleColor = Colors.green.shade700;
+          }
+
+          final hasPrevi = t.previ != null && t.previ!.trim().isNotEmpty;
+          final hasCsku = t.csku != null && t.csku!.trim().isNotEmpty;
+          String mainTitle = '';
+          if (hasPrevi && hasCsku) {
+            mainTitle = '${t.previ} - ${t.csku}';
+          } else if (hasPrevi) {
+            mainTitle = t.previ!;
+          } else if (hasCsku) {
+            mainTitle = t.csku!;
+          } else {
+            mainTitle = t.orden ?? t.descripcion ?? 'Sin ID';
+          }
+
+          final idxiaomiWidget = isXiaomiNull
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurface.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'No aplica',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                )
+              : Text(
+                  t.idxiaomi!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurface.withOpacity(0.8),
+                  ),
+                );
+
           final statusChip = Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
@@ -553,9 +626,9 @@ class _AysDashboardState extends State<AysDashboard> {
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             decoration: BoxDecoration(
-              color: theme.cardColor.withOpacity(0.5),
+              color: bubbleColor.withOpacity(0.25),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: theme.dividerColor.withOpacity(0.05)),
+              border: Border.all(color: bubbleColor.withOpacity(0.4), width: 1.5),
             ),
             child: ListTile(
               onTap: () async {
@@ -574,47 +647,69 @@ class _AysDashboardState extends State<AysDashboard> {
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
+                  color: bubbleColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: bubbleColor.withOpacity(0.3)),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.access_time_rounded,
-                  color: Colors.orange,
+                  color: bubbleColor,
                   size: 20,
                 ),
               ),
               title: Text(
-                '${order != null ? '$order - ' : ''}${t.idxiaomi ?? 'N/A'}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                mainTitle,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${num.tryParse(t.unit!)?.formattedInt ?? t.unit} uds' : ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (isMobile)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [statusChip, const SizedBox(width: 4), closeButton],
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    idxiaomiWidget,
+                    if (isMobile) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            t.unit != null
+                                ? '${num.tryParse(t.unit!)?.formattedInt ?? t.unit} uds'
+                                : '0 uds',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Row(
+                            children: [statusChip, const SizedBox(width: 4), closeButton],
+                          ),
+                        ],
                       ),
-                    ),
-                ],
+                    ],
+                  ],
+                ),
               ),
               trailing: isMobile
                   ? null
                   : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  statusChip,
-                  const SizedBox(width: 8),
-                  closeButton,
-                ],
-              ),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          t.unit != null
+                              ? '${num.tryParse(t.unit!)?.formattedInt ?? t.unit} uds'
+                              : '0 uds',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        statusChip,
+                        const SizedBox(width: 8),
+                        closeButton,
+                      ],
+                    ),
             ),
           );
         },
@@ -737,7 +832,59 @@ class _AysDashboardState extends State<AysDashboard> {
                       ),
                       itemBuilder: (ctx, i) {
                         final t = filtered[i];
-                        final order = t.orden ?? t.csku;
+                        final isXiaomiNull = t.idxiaomi == null ||
+                            t.idxiaomi!.trim().isEmpty ||
+                            t.idxiaomi!.trim().toUpperCase() == 'N/A';
+                        final clienteLower = t.cliente?.trim().toLowerCase() ?? '';
+
+                        Color bubbleColor = theme.colorScheme.primary;
+                        if (clienteLower == 'vodafone') {
+                          bubbleColor = Colors.redAccent.shade700;
+                        } else if (clienteLower == 'orange') {
+                          bubbleColor = Colors.orange.shade800;
+                        }
+                        if (isXiaomiNull) {
+                          bubbleColor = Colors.green.shade700;
+                        }
+
+                        final hasPrevi = t.previ != null && t.previ!.trim().isNotEmpty;
+                        final hasCsku = t.csku != null && t.csku!.trim().isNotEmpty;
+                        String mainTitle = '';
+                        if (hasPrevi && hasCsku) {
+                          mainTitle = '${t.previ} - ${t.csku}';
+                        } else if (hasPrevi) {
+                          mainTitle = t.previ!;
+                        } else if (hasCsku) {
+                          mainTitle = t.csku!;
+                        } else {
+                          mainTitle = t.orden ?? t.descripcion ?? 'Sin ID';
+                        }
+
+                        final idxiaomiWidget = isXiaomiNull
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.onSurface.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'No aplica',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                t.idxiaomi!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.8),
+                                ),
+                              );
+
                         final canTogglePaid =
                             user != null &&
                             (user.role == 'admin' || user.role == 'chief');
@@ -810,8 +957,9 @@ class _AysDashboardState extends State<AysDashboard> {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
-                            color: theme.cardColor.withOpacity(0.3),
+                            color: bubbleColor.withOpacity(0.25),
                             borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: bubbleColor.withOpacity(0.4), width: 1.5),
                           ),
                           child: ListTile(
                             onTap: () async {
@@ -831,58 +979,81 @@ class _AysDashboardState extends State<AysDashboard> {
                             leading: Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
+                                color: bubbleColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: bubbleColor.withOpacity(0.3)),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.check_circle_outline_rounded,
-                                color: Colors.green,
+                                color: bubbleColor,
                                 size: 20,
                               ),
                             ),
                             title: Text(
-                              '${order != null ? '$order - ' : ''}${t.idxiaomi ?? 'N/A'}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
+                              mainTitle,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                             ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${t.previ != null ? '${t.previ} - ' : ''}${t.descripcion ?? 'Sin descripción'}${t.unit != null ? ' - ${t.unit} uds' : ''}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (isMobile)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Wrap(
-                                      spacing: 8,
-                                      runSpacing: 4,
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  idxiaomiWidget,
+                                  if (isMobile) ...[
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        if (paidChip != null) paidChip,
                                         Text(
-                                          t.fechaf ?? t.fechai ?? '',
-                                          style: theme.textTheme.bodySmall,
+                                          t.unit != null
+                                              ? '${num.tryParse(t.unit!)?.formattedInt ?? t.unit} uds'
+                                              : '0 uds',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          children: [
+                                            if (paidChip != null) paidChip,
+                                            Text(
+                                              _formatDate(t.fechaf ?? t.fechai),
+                                              style: theme.textTheme.bodySmall,
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
-                                  ),
-                              ],
+                                  ],
+                                ],
+                              ),
                             ),
                             trailing: isMobile
                                 ? null
                                 : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (paidChip != null) paidChip,
-                                Text(
-                                  t.fechaf ?? t.fechai ?? '',
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        t.unit != null
+                                            ? '${num.tryParse(t.unit!)?.formattedInt ?? t.unit} uds'
+                                            : '0 uds',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      if (paidChip != null) paidChip,
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _formatDate(t.fechaf ?? t.fechai),
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
                           ),
                         );
                       },
@@ -1149,16 +1320,16 @@ class _AysDashboardState extends State<AysDashboard> {
 
       // Add Headers
       sheet.appendRow([
-        'ID XIAOMI',
-        'ORDEN',
-        'SKU',
-        'SERVICIO',
-        'FABRICANTE',
-        'CLIENTE',
-        'DESCRIPCIÓN',
-        'COSTO (€)',
-        'ESTADO PAGO',
-        'FECHA FINAL',
+        excel_pkg.TextCellValue('ID XIAOMI'),
+        excel_pkg.TextCellValue('ORDEN'),
+        excel_pkg.TextCellValue('SKU'),
+        excel_pkg.TextCellValue('SERVICIO'),
+        excel_pkg.TextCellValue('FABRICANTE'),
+        excel_pkg.TextCellValue('CLIENTE'),
+        excel_pkg.TextCellValue('DESCRIPCIÓN'),
+        excel_pkg.TextCellValue('COSTO (€)'),
+        excel_pkg.TextCellValue('ESTADO PAGO'),
+        excel_pkg.TextCellValue('FECHA FINAL'),
       ]);
 
       // Add Data
@@ -1166,22 +1337,33 @@ class _AysDashboardState extends State<AysDashboard> {
       for (final t in _filteredHistory) {
         total += (t.cost ?? 0.0);
         sheet.appendRow([
-          t.idxiaomi ?? '',
-          t.orden ?? '',
-          t.sku ?? '',
-          t.servicio ?? '',
-          t.fabricante ?? '',
-          t.cliente ?? '',
-          t.descripcion ?? '',
-          t.cost ?? 0.0,
-          t.paid == true ? 'PAGADO' : 'PENDIENTE',
-          t.fechaf ?? t.fechai ?? '',
+          excel_pkg.TextCellValue(t.idxiaomi ?? ''),
+          excel_pkg.TextCellValue(t.orden ?? ''),
+          excel_pkg.TextCellValue(t.sku ?? ''),
+          excel_pkg.TextCellValue(t.servicio ?? ''),
+          excel_pkg.TextCellValue(t.fabricante ?? ''),
+          excel_pkg.TextCellValue(t.cliente ?? ''),
+          excel_pkg.TextCellValue(t.descripcion ?? ''),
+          excel_pkg.DoubleCellValue(t.cost ?? 0.0),
+          excel_pkg.TextCellValue(t.paid == true ? 'PAGADO' : 'PENDIENTE'),
+          excel_pkg.TextCellValue(_formatDate(t.fechaf ?? t.fechai)),
         ]);
       }
 
       // Add Total Row
-      sheet.appendRow(['']); // Spacer
-      sheet.appendRow(['', '', '', '', '', '', 'TOTAL:', total, '', '']);
+      sheet.appendRow([excel_pkg.TextCellValue('')]); // Spacer
+      sheet.appendRow([
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue('TOTAL:'), 
+        excel_pkg.DoubleCellValue(total), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue('')
+      ]);
 
       // Save file
       final directory = await getApplicationDocumentsDirectory();

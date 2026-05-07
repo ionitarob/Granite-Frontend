@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:excel/excel.dart';
+import 'package:file_selector/file_selector.dart';
 import '../api_client.dart';
+import 'dart:typed_data';
 
 class SerigrafiaStandard {
   final int? id;
@@ -35,6 +38,34 @@ class SerigrafiaService {
   final ApiClient client;
 
   SerigrafiaService(this.client);
+  
+  /// Save a bytes list (Excel file) to the local machine using a "Save As" dialog
+  Future<void> saveLocalExcel(Uint8List bytes, String fileName) async {
+    const String mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    final FileSaveLocation? result = await getSaveLocation(suggestedName: fileName);
+    
+    if (result != null) {
+      final XFile xFile = XFile.fromData(bytes, mimeType: mimeType, name: fileName);
+      await xFile.saveTo(result.path);
+    }
+  }
+
+  /// Upload an Excel file (bytes) to the order's attachments
+  Future<ApiResult> uploadExcel(int idnbr, Uint8List bytes, String fileName) async {
+    return await client.postMultipart(
+      '/orderops/serigrafia/upload-excel',
+      files: [
+        MultipartAttachment(
+          fieldName: 'file',
+          bytes: bytes,
+          fileName: fileName,
+        ),
+      ],
+      fields: {
+        'idnbr': idnbr.toString(),
+      },
+    );
+  }
 
   /// Fetch standards from the backend
   Future<List<SerigrafiaStandard>> getStandards() async {
@@ -145,26 +176,66 @@ class SerigrafiaService {
       final cleanPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
       
       // The client already prepends kBackendBaseUrl, so we only provide the relative path
-      final res = await client.getBytes('/uploads/$cleanPath');
+      final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+      final res = await client.getBytes('/uploads/$cleanPath?t=$cacheBuster');
       
       if (!res.ok || res.body == null) {
         throw Exception('Download failed with status ${res.statusCode}');
       }
       
+      debugPrint('SerigrafiaService: File downloaded, size: ${(res.body as List).length} bytes');
       final bytes = (res.body as List).cast<int>();
-      return Excel.decodeBytes(bytes);
-    } catch (e) {
-      print('Excel Parsing error: $e');
+      
+      debugPrint('SerigrafiaService: Decoding Excel...');
+      final excel = Excel.decodeBytes(bytes);
+      debugPrint('SerigrafiaService: Excel decoded. Sheets: ${excel.sheets.keys.toList()}');
+      return excel;
+    } catch (e, stack) {
+      debugPrint('SerigrafiaService Error during downloadAndParse: $e');
+      debugPrint('Stack trace: $stack');
       rethrow;
     }
   }
 
   /// Fetch headers from the first sheet (Row 1)
   List<String> getExcelHeaders(Excel excel) {
-    final sheet = excel.tables.values.first;
-    if (sheet.maxRows == 0) return [];
-    final firstRow = sheet.rows.first;
-    return firstRow.map((cell) => cell?.value?.toString() ?? '').toList();
+    try {
+      // excel package 4.x uses 'sheets' as the primary map
+      final sheets = excel.sheets;
+      if (sheets.isEmpty) {
+        debugPrint('SerigrafiaService: No sheets found in Excel');
+        return [];
+      }
+      
+      final sheetName = sheets.keys.first;
+      final sheet = sheets[sheetName];
+      if (sheet == null) {
+        debugPrint('SerigrafiaService: Sheet "$sheetName" is null');
+        return [];
+      }
+      
+      if (sheet.maxRows == 0) {
+        debugPrint('SerigrafiaService: Sheet "$sheetName" is empty (maxRows=0)');
+        return [];
+      }
+      
+      final rows = sheet.rows;
+      if (rows.isEmpty) {
+        debugPrint('SerigrafiaService: Sheet "$sheetName" has no rows');
+        return [];
+      }
+      
+      final firstRow = rows.first;
+      return firstRow.map((cell) {
+        if (cell == null) return '';
+        final val = cell.value;
+        if (val == null) return '';
+        return val.toString().trim();
+      }).toList();
+    } catch (e) {
+      debugPrint('SerigrafiaService: Error getting headers: $e');
+      return [];
+    }
   }
 
   /// Print a row using the specified standard and variable mapping

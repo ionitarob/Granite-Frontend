@@ -96,10 +96,10 @@ class _AsinFlipFormState extends State<AsinFlipForm> {
           '${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}';
       final excel = Excel.createExcel();
       final sheet = excel['Sheet1'];
-      sheet.appendRow(['Quality Check - ASIN Flip - $formattedDate', '']);
-      sheet.appendRow(['Campo', 'Valor']);
+      sheet.appendRow([TextCellValue('Quality Check - ASIN Flip - $formattedDate'), TextCellValue('')]);
+      sheet.appendRow([TextCellValue('Campo'), TextCellValue('Valor')]);
       for (final entry in formData.entries) {
-        sheet.appendRow([entry.key, entry.value]);
+        sheet.appendRow([TextCellValue(entry.key), TextCellValue(entry.value)]);
       }
       final bytes = excel.encode()!;
       final filename = 'asin_flip_qc_$formattedDate.xlsx';

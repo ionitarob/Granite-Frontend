@@ -128,8 +128,8 @@ class _AuLaserFormState extends State<AuLaserForm> {
     final excel = Excel.createExcel();
     final sheet = excel['Sheet1'];
     // UI enhancements: set column widths
-    sheet.setColWidth(0, 40);
-    sheet.setColWidth(1, 60);
+    sheet.setColumnWidth(0, 40);
+    sheet.setColumnWidth(1, 60);
     // Define styles
     final titleStyle = CellStyle(
       bold: true,
@@ -138,11 +138,11 @@ class _AuLaserFormState extends State<AuLaserForm> {
     );
     final headerStyle = CellStyle(
       bold: true,
-      backgroundColorHex: "#EEEEEE",
+      backgroundColorHex: ExcelColor.fromHexString("#EEEEEE"),
       horizontalAlign: HorizontalAlign.Center,
     );
     // Add title row
-    sheet.appendRow(['Quality Check - AU-Laser - $formattedDate', '']);
+    sheet.appendRow([TextCellValue('Quality Check - AU-Laser - $formattedDate'), TextCellValue('')]);
     // Merge title cells and apply style
     sheet.merge(
       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
@@ -153,7 +153,7 @@ class _AuLaserFormState extends State<AuLaserForm> {
             .cellStyle =
         titleStyle;
     // Add headers
-    sheet.appendRow(['Campo', 'Valor']);
+    sheet.appendRow([TextCellValue('Campo'), TextCellValue('Valor')]);
     // Style header row
     sheet
             .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1))
@@ -165,7 +165,7 @@ class _AuLaserFormState extends State<AuLaserForm> {
         headerStyle;
     // Populate data rows
     for (final entry in data.entries) {
-      sheet.appendRow([entry.key, entry.value]);
+      sheet.appendRow([TextCellValue(entry.key), TextCellValue(entry.value)]);
     }
     // Upload to server
     final bytes = excel.encode()!;
@@ -432,8 +432,8 @@ class _AuLaserFormState extends State<AuLaserForm> {
                             maxLines: 2,
                             decoration: InputDecoration(
                               filled: true,
-                              fillColor: theme.colorScheme.surface.withOpacity(
-                                0.5,
+                              fillColor: theme.colorScheme.surface.withAlpha(
+                                (0.5 * 255).round(),
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),

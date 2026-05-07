@@ -51,6 +51,46 @@ class _ProjectTransactionsDialogState extends State<ProjectTransactionsDialog> {
     }
   }
 
+  DateTime? _parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    String clean = s.trim().replaceAll(',', '');
+    clean = clean
+        .replaceAll('AM', ' AM')
+        .replaceAll('PM', ' PM')
+        .replaceAll('  ', ' ');
+    final iso = DateTime.tryParse(clean);
+    if (iso != null) return iso;
+    final formats = [
+      'MMM d yyyy h:mm a',
+      'MMMM d yyyy h:mm a',
+      'd/M/yyyy',
+      'dd/MM/yyyy',
+      'MMM d yyyy HH:mm',
+      'yyyy-MM-dd',
+      'yyyy-MM-dd HH:mm:ss',
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat(format, 'en_US').parse(clean);
+      } catch (_) {
+        try {
+          return DateFormat(format, 'es_ES').parse(clean);
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  String _formatDate(String? s) {
+    if (s == null || s.isEmpty || s == 'N/A' || s == '-') return 'Fecha Desconocida';
+    final d = _parseDate(s);
+    if (d == null) return s!;
+    if (d.hour == 0 && d.minute == 0) {
+      return DateFormat('dd/MM/yyyy').format(d);
+    }
+    return DateFormat('dd/MM/yyyy HH:mm').format(d);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -257,11 +297,8 @@ class _ProjectTransactionsDialogState extends State<ProjectTransactionsDialog> {
   }
 
   Widget _buildTransactionCard(Transaction t) {
-    final dateFormat = DateFormat('d MMM, yyyy', 'es_ES');
     final currencyFormat = NumberFormat.currency(symbol: '€', locale: 'es_ES');
-    final dateStr = t.fechai != null
-        ? dateFormat.format(DateTime.tryParse(t.fechai!) ?? DateTime.now())
-        : 'Fecha Desconocida';
+    final dateStr = _formatDate(t.fechaf ?? t.fechai);
 
     return Container(
       padding: const EdgeInsets.all(16),

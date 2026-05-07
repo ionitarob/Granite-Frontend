@@ -136,22 +136,42 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
   DateTime? _parseDate(String? s) {
     if (s == null || s.isEmpty) return null;
-    try {
-      if (s.contains('/')) {
-        final parts = s.split(' ');
-        final dateParts = parts[0].split('/');
-        if (dateParts.length == 3) {
-          return DateTime(
-            int.parse(dateParts[2]),
-            int.parse(dateParts[1]),
-            int.parse(dateParts[0]),
-          );
-        }
+    String clean = s.trim().replaceAll(',', '');
+    clean = clean
+        .replaceAll('AM', ' AM')
+        .replaceAll('PM', ' PM')
+        .replaceAll('  ', ' ');
+    final iso = DateTime.tryParse(clean);
+    if (iso != null) return iso;
+    final formats = [
+      'MMM d yyyy h:mm a',
+      'MMMM d yyyy h:mm a',
+      'd/M/yyyy',
+      'dd/MM/yyyy',
+      'MMM d yyyy HH:mm',
+      'yyyy-MM-dd',
+      'yyyy-MM-dd HH:mm:ss',
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat(format, 'en_US').parse(clean);
+      } catch (_) {
+        try {
+          return DateFormat(format, 'es_ES').parse(clean);
+        } catch (_) {}
       }
-      return DateTime.tryParse(s);
-    } catch (_) {
-      return null;
     }
+    return null;
+  }
+
+  String _formatDate(String? s) {
+    if (s == null || s.isEmpty || s == 'N/A' || s == '-') return '';
+    final d = _parseDate(s);
+    if (d == null) return s!;
+    if (d.hour == 0 && d.minute == 0) {
+      return DateFormat('dd/MM/yyyy').format(d);
+    }
+    return DateFormat('dd/MM/yyyy HH:mm').format(d);
   }
 
   @override
@@ -790,7 +810,7 @@ class _DashboardKpis extends StatelessWidget {
         return false;
       }
       if (filterDateStart != null || filterDateEnd != null) {
-        final d = parseDate(t.fechai);
+        final d = parseDate(t.fechaf ?? t.fechai);
         if (d == null) return false;
         if (filterDateStart != null && d.isBefore(filterDateStart!)) {
           return false;

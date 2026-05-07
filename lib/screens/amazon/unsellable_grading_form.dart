@@ -93,18 +93,18 @@ class _UnsellableGradingFormState extends State<UnsellableGradingForm> {
 
     final excel = Excel.createExcel();
     final sheet = excel['Sheet1'];
-    sheet.setColWidth(0, 40);
-    sheet.setColWidth(1, 60);
+    sheet.setColumnWidth(0, 40);
+    sheet.setColumnWidth(1, 60);
 
     sheet.appendRow([
-      'Quality Check - Unsellable Grading - $formattedDate',
-      '',
+      TextCellValue('Quality Check - Unsellable Grading - $formattedDate'),
+      TextCellValue(''),
     ]);
     sheet.merge(
       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
       CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0),
     );
-    sheet.appendRow(['Pregunta', 'Respuesta']);
+    sheet.appendRow([TextCellValue('Pregunta'), TextCellValue('Respuesta')]);
     for (final entry in preguntas.entries) {
       final value = entry.value is bool
           ? (entry.value == true
@@ -113,7 +113,7 @@ class _UnsellableGradingFormState extends State<UnsellableGradingForm> {
                 ? 'No'
                 : '')
           : entry.value.toString();
-      sheet.appendRow([entry.key, value]);
+      sheet.appendRow([TextCellValue(entry.key), TextCellValue(value)]);
     }
 
     final bytes = excel.encode()!;
