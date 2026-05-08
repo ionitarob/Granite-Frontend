@@ -205,6 +205,25 @@ class AnalisisService {
     return list.map((e) => MasterService.fromJson(e)).toList();
   }
 
+  Future<List<String>> getDescriptions() async {
+    final res = await _client.get('/serveis/descriptions/');
+    if (!res.ok) return [];
+
+    final body = res.body;
+    List list = [];
+    if (body is Map && body.containsKey('results')) {
+      list = body['results'] as List;
+    } else if (body is List) {
+      list = body;
+    }
+
+    return list
+        .map((e) => e.toString().trim())
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
   Future<void> createMasterServicio(String name, double? pvd) async {
     final res = await _client.post(
       '/serveis/servicios/create/',

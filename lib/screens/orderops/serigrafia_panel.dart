@@ -60,6 +60,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   
   // Registry Picking mode (if variable 'CI' exists)
   bool _isUsingExistingRegistry = false;
+  final Map<String, Set<int>> _approvedLengthsByVariable = {};
 
   excel_pkg.Sheet? get _firstSheet {
     if (_excel == null) return null;
@@ -92,6 +93,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       _loadingExcel = true;
       _excel = null;
       _excelHeaders = [];
+      _approvedLengthsByVariable.clear();
     });
     
     try {
@@ -555,6 +557,107 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       });
     }
   }
+
+    Map<String, int>? _buildCiIntervalSummary() {
+      if (_excel == null || _firstSheet == null) return null;
+      if (_startCiFilter == null || _endCiFilter == null) return null;
+
+      final start = _startCiFilter!;
+      final end = _endCiFilter!;
+      if (end < start) return null;
+
+      String? ciVariable;
+      for (final candidate in ['CI', 'CI_CODE']) {
+        final mappedColumn = _variableToColumnMapping[candidate];
+        if (mappedColumn != null && mappedColumn.isNotEmpty) {
+          ciVariable = candidate;
+          break;
+        }
+      }
+
+      if (ciVariable == null) return null;
+
+      final colName = _variableToColumnMapping[ciVariable];
+      if (colName == null || colName.isEmpty) return null;
+
+      final colIdx = _excelHeaders.indexOf(colName);
+      if (colIdx == -1) return null;
+
+      final sheet = _firstSheet!;
+      final found = <int>{};
+
+      for (int i = 1; i < sheet.maxRows; i++) {
+        final cell = sheet.cell(
+          excel_pkg.CellIndex.indexByColumnRow(columnIndex: colIdx, rowIndex: i),
+        );
+        final raw = cell.value?.toString() ?? '';
+        final digitsOnly = raw.replaceAll(RegExp(r'[^0-9]'), '');
+        final numeric = int.tryParse(digitsOnly);
+        if (numeric == null) continue;
+        if (numeric < start || numeric > end) continue;
+        found.add(numeric);
+      }
+
+      final total = end - start + 1;
+      final foundCount = found.length;
+      final missing = total - foundCount;
+
+      return {
+        'total': total,
+        'found': foundCount,
+        'missing': missing < 0 ? 0 : missing,
+      };
+    }
+
+    Widget _buildCiIntervalSummaryCard() {
+      final summary = _buildCiIntervalSummary();
+      if (summary == null) return const SizedBox.shrink();
+
+      final total = summary['total'] ?? 0;
+      final found = summary['found'] ?? 0;
+      final missing = summary['missing'] ?? 0;
+
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.analytics_rounded, color: Colors.cyan, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Intervalo CI: $total valores esperados | Encontrados: $found | Faltan: $missing',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ),
+            if (missing == 0)
+              const Text(
+                'COMPLETO',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              )
+            else
+              Text(
+                'PENDIENTES: $missing',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
 
   Widget _buildScanField(String field) {
     final ctrl = TextEditingController();
@@ -1494,6 +1597,8 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           ],
         ),
         const SizedBox(height: 16),
+        _buildCiIntervalSummaryCard(),
+        const SizedBox(height: 16),
         _buildCurrentRowPreview(rowData),
         const SizedBox(height: 32),
         _buildScanningUI(),
@@ -1903,12 +2008,14 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
             // 2. Check for length anomaly
             int? expectedLength = _getExpectedLength(fieldToScan!);
-            if (expectedLength != null && scanValue.length != expectedLength) {
+            final scannedLength = scanValue.length;
+            if (expectedLength != null && scannedLength != expectedLength && !_isApprovedLength(fieldToScan!, scannedLength)) {
                bool proceed = await _showValidationWarning(
                  'ANOMALÍA DE LONGITUD',
-                 'La longitud de este escaneo (${scanValue.length}) es diferente a la del primer registro ($expectedLength).\n¿Deseas registrar esta anomalía?'
+                 'La longitud de este escaneo ($scannedLength) es diferente a la del primer registro ($expectedLength).\n¿Deseas permitir también esta longitud para el resto de la orden?'
                );
                if (!proceed) return;
+               _approveLength(fieldToScan!, scannedLength);
             }
 
             setState(() {
@@ -2010,6 +2117,16 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
        }
     }
     return null;
+  }
+
+  String _lengthKey(String variable) => variable.toUpperCase().trim();
+
+  bool _isApprovedLength(String variable, int length) {
+    return _approvedLengthsByVariable[_lengthKey(variable)]?.contains(length) ?? false;
+  }
+
+  void _approveLength(String variable, int length) {
+    _approvedLengthsByVariable.putIfAbsent(_lengthKey(variable), () => <int>{}).add(length);
   }
 
   Future<bool> _showValidationWarning(String title, String message) async {

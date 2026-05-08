@@ -39,6 +39,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
   List<String> _clientes = [];
   List<MasterService> _masterServicios = [];
   List<String> _internals = [];
+  final List<String> _descriptionOptions = [];
 
   bool _loadingData = true;
   bool _isLoading = false;
@@ -78,6 +79,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
         _analisisService.getFabricantes(),
         _analisisService.getMasterServicios(),
         _analisisService.getInternals(),
+        _analisisService.getDescriptions(),
       ]);
 
       if (mounted) {
@@ -87,6 +89,10 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
           _fabricantes = results[2] as List<String>;
           _masterServicios = results[3] as List<MasterService>;
           _internals = results[4] as List<String>;
+          _descriptionOptions
+            ..clear()
+            ..addAll(results[5] as List<String>);
+          _descriptionOptions.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
           // Ensure dropdown values are valid
           if (_fabricante != null && !_fabricantes.contains(_fabricante)) {
@@ -116,6 +122,52 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
         });
       }
     }
+  }
+
+  Future<void> _promptCustomDescription() async {
+    final controller = TextEditingController(text: _descController.text);
+    final description = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nueva descripción'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Descripción',
+            hintText: 'Escribe una nueva descripción',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) {
+                Navigator.pop(ctx, value);
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+
+    if (description == null || description.trim().isEmpty) return;
+
+    final clean = description.trim();
+    setState(() {
+      if (!_descriptionOptions.contains(clean)) {
+        _descriptionOptions.add(clean);
+        _descriptionOptions.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      }
+      _descController.text = clean;
+    });
   }
 
   @override
@@ -386,13 +438,7 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
                                   },
                                 ),
                                 const SizedBox(height: 16),
-                                _buildTextField(
-                                  'Descripción',
-                                  _descController,
-                                  'Ingrese descripción',
-                                  validator: (v) =>
-                                      v?.isEmpty == true ? 'Requerido' : null,
-                                ),
+                                _buildDescriptionDropdown(),
                               ],
                             ),
                           ),
@@ -601,7 +647,87 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
     );
   }
 
+  Widget _buildDescriptionDropdown() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final options = _descriptionOptions.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    if (_descController.text.isNotEmpty && !options.contains(_descController.text)) {
+      options.add(_descController.text);
+    }
+    options.add('Nueva descripción...');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Descripción:',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: options.contains(_descController.text) ? _descController.text : null,
+          items: options
+              .map(
+                (value) => DropdownMenuItem(
+                  value: value,
+                  child: Text(value, overflow: TextOverflow.ellipsis),
+                ),
+              )
+              .toList(),
+          onChanged: (selection) async {
+            if (selection == 'Nueva descripción...') {
+              await _promptCustomDescription();
+              return;
+            }
+            setState(() {
+              _descController.text = selection ?? '';
+            });
+          },
+          validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+          decoration: InputDecoration(
+            hintText: 'Selecciona o crea una descripción',
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.grey.shade50,
+            hintStyle: TextStyle(
+              color: theme.hintColor.withOpacity(0.5),
+              fontSize: 13,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildServiceAutocomplete() {
+    final services = _masterServicios
+        .map((m) => m.servicio)
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+    if (_serviceController.text.isNotEmpty &&
+        !services.contains(_serviceController.text)) {
+      services.add(_serviceController.text);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -610,64 +736,51 @@ class _EditServiceDialogState extends State<EditServiceDialog> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 8),
-        Autocomplete<String>(
-          optionsBuilder: (TextEditingValue textEditingValue) {
-            if (textEditingValue.text == '') {
-              return const Iterable<String>.empty();
-            }
-            return _masterServicios.map((m) => m.servicio).where((
-              String option,
-            ) {
-              return option.toLowerCase().contains(
-                textEditingValue.text.toLowerCase(),
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: services.contains(_serviceController.text)
+              ? _serviceController.text
+              : null,
+          items: services
+              .map(
+                (service) => DropdownMenuItem(
+                  value: service,
+                  child: Text(service, overflow: TextOverflow.ellipsis),
+                ),
+              )
+              .toList(),
+          onChanged: (selection) {
+            setState(() {
+              _serviceController.text = selection ?? '';
+              final master = _masterServicios.firstWhere(
+                (m) => m.servicio == selection,
+                orElse: () => MasterService(id: 0, servicio: '', pvd: null),
               );
+              if (master.pvd != null) {
+                _costController.text = master.pvd!.toStringAsFixed(2);
+              }
             });
           },
-          onSelected: (String selection) {
-            final master = _masterServicios.firstWhere(
-              (m) => m.servicio == selection,
-            );
-            _serviceController.text = selection;
-            if (master.pvd != null) {
-              _costController.text = master.pvd!.toStringAsFixed(2);
-            }
-          },
-          fieldViewBuilder:
-              (context, controller, focusNode, onEditingComplete) {
-                if (controller.text.isEmpty &&
-                    _serviceController.text.isNotEmpty) {
-                  controller.text = _serviceController.text;
-                }
-                controller.addListener(() {
-                  _serviceController.text = controller.text;
-                });
-
-                return TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onEditingComplete: onEditingComplete,
-                  decoration: InputDecoration(
-                    hintText: 'Selecciona o escribe un valor',
-                    hintStyle: TextStyle(color: Theme.of(context).hintColor),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(4),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).dividerColor.withOpacity(0.2),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(4),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).dividerColor.withOpacity(0.2),
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 14,
-                    ),
-                  ),
-                );
-              },
+          decoration: InputDecoration(
+            hintText: 'Selecciona un servicio',
+            hintStyle: TextStyle(color: Theme.of(context).hintColor),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(4),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withOpacity(0.2),
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
+          ),
         ),
       ],
     );
