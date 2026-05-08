@@ -2514,6 +2514,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       }
 
       if (isComplete) {
+        SoundPlayer.playFinishOrder();
         await _finalizeOrderAndUpload(orderNr);
         return true;
       }
@@ -2786,7 +2787,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
           SnackBar(content: Text('Caja ${box.boxNumber} registrada.')),
         );
         // After successful registration, persist individual serial mappings to backend via add_registry endpoint.
-        SoundPlayer.playCloseBox();
+        SoundPlayer.playBoxComplete();
 
         try {
           final client2 = _clientOrNull();

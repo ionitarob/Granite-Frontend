@@ -12,12 +12,16 @@ class SoundPlayer {
   static final AudioPlayer _successPlayer = AudioPlayer();
   static final AudioPlayer _errorPlayer = AudioPlayer();
   static final AudioPlayer _closeBoxPlayer = AudioPlayer();
+  static final AudioPlayer _boxCompletePlayer = AudioPlayer();
+  static final AudioPlayer _finishOrderPlayer = AudioPlayer();
   static bool _initialized = false;
 
   static const String _okLower = 'sounds/ok.mp3';
   static const String _okUpper = 'sounds/ok.MP3';
   static const String _err = 'sounds/error.mp3';
   static const String _closeBox = 'sounds/close_box.mp3';
+  static const String _boxComplete = 'sounds/box_complete.mp3';
+  static const String _finishOrder = 'sounds/finish_order.mp3';
 
   /// Ensure players are configured and attempt to preload assets once.
   static Future<void> _ensureInitialized() async {
@@ -45,6 +49,22 @@ class SoundPlayer {
       } catch (e) {
         developer.log(
           'SoundPlayer: failed to set close-box player volume: $e',
+          name: 'SoundPlayer',
+        );
+      }
+      try {
+        await _boxCompletePlayer.setVolume(1.0);
+      } catch (e) {
+        developer.log(
+          'SoundPlayer: failed to set box-complete player volume: $e',
+          name: 'SoundPlayer',
+        );
+      }
+      try {
+        await _finishOrderPlayer.setVolume(1.0);
+      } catch (e) {
+        developer.log(
+          'SoundPlayer: failed to set finish-order player volume: $e',
           name: 'SoundPlayer',
         );
       }
@@ -86,6 +106,30 @@ class SoundPlayer {
       } catch (e) {
         developer.log(
           'SoundPlayer: could not preload close box sound: $e',
+          name: 'SoundPlayer',
+        );
+      }
+      try {
+        await _boxCompletePlayer.setSource(AssetSource(_boxComplete));
+        developer.log(
+          'SoundPlayer: preloaded $_boxComplete',
+          name: 'SoundPlayer',
+        );
+      } catch (e) {
+        developer.log(
+          'SoundPlayer: could not preload box complete sound: $e',
+          name: 'SoundPlayer',
+        );
+      }
+      try {
+        await _finishOrderPlayer.setSource(AssetSource(_finishOrder));
+        developer.log(
+          'SoundPlayer: preloaded $_finishOrder',
+          name: 'SoundPlayer',
+        );
+      } catch (e) {
+        developer.log(
+          'SoundPlayer: could not preload finish order sound: $e',
           name: 'SoundPlayer',
         );
       }
@@ -152,20 +196,46 @@ class SoundPlayer {
 
   /// Play the close box sound (close_box.mp3 in assets/sounds/)
   static Future<void> playCloseBox() async {
+    await playBoxComplete();
+  }
+
+  /// Play the box complete sound (box_complete.mp3 in assets/sounds/)
+  static Future<void> playBoxComplete() async {
     try {
       await _ensureInitialized();
       try {
-        await _closeBoxPlayer.play(AssetSource(_closeBox));
+        await _boxCompletePlayer.play(AssetSource(_boxComplete));
         return;
       } catch (e) {
         developer.log(
-          'SoundPlayer: play close box failed: $e',
+          'SoundPlayer: play box complete failed: $e',
           name: 'SoundPlayer',
         );
       }
     } catch (e) {
       developer.log(
-        'SoundPlayer: unexpected error in playCloseBox: $e',
+        'SoundPlayer: unexpected error in playBoxComplete: $e',
+        name: 'SoundPlayer',
+      );
+    }
+  }
+
+  /// Play the finish order sound (finish_order.mp3 in assets/sounds/)
+  static Future<void> playFinishOrder() async {
+    try {
+      await _ensureInitialized();
+      try {
+        await _finishOrderPlayer.play(AssetSource(_finishOrder));
+        return;
+      } catch (e) {
+        developer.log(
+          'SoundPlayer: play finish order failed: $e',
+          name: 'SoundPlayer',
+        );
+      }
+    } catch (e) {
+      developer.log(
+        'SoundPlayer: unexpected error in playFinishOrder: $e',
         name: 'SoundPlayer',
       );
     }
@@ -194,6 +264,22 @@ class SoundPlayer {
     } catch (e) {
       developer.log(
         'SoundPlayer: dispose close box player error: $e',
+        name: 'SoundPlayer',
+      );
+    }
+    try {
+      await _boxCompletePlayer.dispose();
+    } catch (e) {
+      developer.log(
+        'SoundPlayer: dispose box complete player error: $e',
+        name: 'SoundPlayer',
+      );
+    }
+    try {
+      await _finishOrderPlayer.dispose();
+    } catch (e) {
+      developer.log(
+        'SoundPlayer: dispose finish order player error: $e',
         name: 'SoundPlayer',
       );
     }
