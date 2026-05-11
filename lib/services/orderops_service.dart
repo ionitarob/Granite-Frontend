@@ -96,6 +96,35 @@ class OrderOpsService {
     return list.map((e) => AgentOrder.fromJson(e)).toList();
   }
 
+  Future<List<AgentOrder>> getCompletedOrdersStats() async {
+    final result = await _client.get('/orderops/stats/completed-orders');
+    if (!result.ok) {
+      debugPrint('OrderOpsService.getCompletedOrdersStats error: ${result.error}');
+      return [];
+    }
+    final data = result.body;
+    List<dynamic> list = [];
+    if (data is Map && data.containsKey('results')) {
+      list = data['results'];
+    }
+    return list.map((e) => AgentOrder.fromJson(e)).toList();
+  }
+
+  Future<Uint8List> exportOrdersExcel({String? start, String? end}) async {
+    final queryParams = <String, String>{};
+    if (start != null) queryParams['start'] = start;
+    if (end != null) queryParams['end'] = end;
+
+    final queryString = Uri(queryParameters: queryParams).query;
+    final path = '/orderops/export/orders${queryString.isNotEmpty ? '?$queryString' : ''}';
+
+    final result = await _client.getBytes(path);
+    if (!result.ok) {
+      throw Exception('Failed to export orders: ${result.error}');
+    }
+    return result.body as Uint8List;
+  }
+
   /// Fetch detail for a specific order by ID
   Future<OrderOpsDetail> getAgentOrder(int idnbr) async {
     // URL for detail: /orderops/agent-orders/<int:idnbr>

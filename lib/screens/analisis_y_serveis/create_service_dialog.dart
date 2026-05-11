@@ -85,51 +85,6 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
     }
   }
 
-  Future<void> _promptCustomDescription() async {
-    final controller = TextEditingController();
-    final description = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nueva descripción'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Descripción',
-            hintText: 'Escribe una nueva descripción',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) {
-                Navigator.pop(ctx, value);
-              }
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-
-    controller.dispose();
-
-    if (description == null || description.trim().isEmpty) return;
-
-    final clean = description.trim();
-    setState(() {
-      if (!_descriptionOptions.contains(clean)) {
-        _descriptionOptions.add(clean);
-        _descriptionOptions.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-      }
-      _descController.text = clean;
-    });
-  }
 
   @override
   void dispose() {
@@ -192,17 +147,7 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
         }
       }
 
-      // Check if service exists in master list
-      final serviceName = _serviceController.text.trim();
-      final master = _masterServicios.where((m) => m.servicio == serviceName);
-      if (master.isEmpty) {
-        setState(() {
-          _error =
-              "El servicio '$serviceName' no existe en la lista maestra. Por favor, selecciona uno de la lista.";
-          _isLoading = false;
-        });
-        return;
-      }
+      // Removed restrictive master service validation to allow custom entries via copy-paste.
 
       await _analisisService.createAnalisis(payload);
 
@@ -632,11 +577,8 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
   Widget _buildDescriptionDropdown() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final options = _descriptionOptions.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    if (_descController.text.isNotEmpty && !options.contains(_descController.text)) {
-      options.add(_descController.text);
-    }
-    options.add('Nueva descripción...');
+    final options = _descriptionOptions.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,58 +588,79 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          isExpanded: true,
-          value: options.contains(_descController.text) ? _descController.text : null,
-          items: options
-              .map(
-                (value) => DropdownMenuItem(
-                  value: value,
-                  child: Text(value, overflow: TextOverflow.ellipsis),
-                ),
-              )
-              .toList(),
-          onChanged: (selection) async {
-            if (selection == 'Nueva descripción...') {
-              await _promptCustomDescription();
-              return;
+        Autocomplete<String>(
+          initialValue: TextEditingValue(text: _descController.text),
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            if (textEditingValue.text.isEmpty) {
+              return options;
             }
-            setState(() {
-              _descController.text = selection ?? '';
+            return options.where((String option) {
+              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
             });
           },
-          validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
-          decoration: InputDecoration(
-            hintText: 'Selecciona o crea una descripción',
-            filled: true,
-            fillColor: isDark
-                ? Colors.white.withOpacity(0.05)
-                : Colors.grey.shade50,
-            hintStyle: TextStyle(
-              color: theme.hintColor.withOpacity(0.5),
-              fontSize: 13,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: isDark ? Colors.white12 : Colors.grey.shade200,
+          onSelected: (String selection) {
+            setState(() {
+              _descController.text = selection;
+            });
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            // Sync internal controller with our controller
+            if (controller.text != _descController.text) {
+              controller.text = _descController.text;
+            }
+            controller.addListener(() {
+               if (_descController.text != controller.text) {
+                 _descController.text = controller.text;
+               }
+            });
+
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+                fontSize: 14,
               ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              decoration: InputDecoration(
+                hintText: 'Selecciona o escribe una descripción',
+                filled: true,
+                fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade50,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                ),
+                suffixIcon: const Icon(Icons.arrow_drop_down),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF2980B9), width: 1.5),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-          ),
+              validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+              onFieldSubmitted: (v) => onFieldSubmitted(),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4.0,
+                borderRadius: BorderRadius.circular(8),
+                color: isDark ? const Color(0xFF1B2631) : Colors.white,
+                child: SizedBox(
+                  width: 380, // Match column width approx
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final String option = options.elementAt(index);
+                      return ListTile(
+                        title: Text(option, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                        onTap: () => onSelected(option),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -720,22 +683,19 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          isExpanded: true,
-          value: services.contains(_serviceController.text)
-              ? _serviceController.text
-              : null,
-          items: services
-              .map(
-                (service) => DropdownMenuItem(
-                  value: service,
-                  child: Text(service, overflow: TextOverflow.ellipsis),
-                ),
-              )
-              .toList(),
-          onChanged: (selection) {
+        Autocomplete<String>(
+          initialValue: TextEditingValue(text: _serviceController.text),
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            if (textEditingValue.text.isEmpty) {
+              return services;
+            }
+            return services.where((String option) {
+              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+            });
+          },
+          onSelected: (String selection) {
             setState(() {
-              _serviceController.text = selection ?? '';
+              _serviceController.text = selection;
               final master = _masterServicios.firstWhere(
                 (m) => m.servicio == selection,
                 orElse: () => MasterService(id: 0, servicio: '', pvd: null),
@@ -745,40 +705,63 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
               }
             });
           },
-          decoration: InputDecoration(
-            hintText: 'Selecciona un servicio',
-            filled: true,
-            fillColor: isDark
-                ? Colors.white.withOpacity(0.05)
-                : Colors.grey.shade50,
-            hintStyle: TextStyle(
-              color: theme.hintColor.withOpacity(0.5),
-              fontSize: 13,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: isDark ? Colors.white12 : Colors.grey.shade200,
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            if (controller.text != _serviceController.text) {
+              controller.text = _serviceController.text;
+            }
+            controller.addListener(() {
+               if (_serviceController.text != controller.text) {
+                 _serviceController.text = controller.text;
+               }
+            });
+
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+                fontSize: 14,
               ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: isDark ? Colors.white12 : Colors.grey.shade200,
+              decoration: InputDecoration(
+                hintText: 'Selecciona o escribe un servicio',
+                filled: true,
+                fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade50,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                ),
+                suffixIcon: const Icon(Icons.arrow_drop_down),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF2980B9),
-                width: 1.5,
+              validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+              onFieldSubmitted: (v) => onFieldSubmitted(),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4.0,
+                borderRadius: BorderRadius.circular(8),
+                color: isDark ? const Color(0xFF1B2631) : Colors.white,
+                child: SizedBox(
+                  width: 380,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final String option = options.elementAt(index);
+                      return ListTile(
+                        title: Text(option, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                        onTap: () => onSelected(option),
+                      );
+                    },
+                  ),
+                ),
               ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-          ),
+            );
+          },
         ),
       ],
     );

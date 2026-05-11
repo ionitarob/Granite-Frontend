@@ -204,6 +204,26 @@ class XiaomiProvider extends ChangeNotifier {
     return false;
   }
 
+  Future<bool> pauseCesb(String cesb) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/pausar_cesb/', jsonBody: {'cesb': cesb});
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error pauseCesb: $e');
+    }
+    return false;
+  }
+
+  Future<bool> resumeCesb(String cesb) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/reanudar_cesb/', jsonBody: {'cesb': cesb});
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error resumeCesb: $e');
+    }
+    return false;
+  }
+
   Future<void> fetchSummary() async {
     _loading = true;
     notifyListeners();

@@ -50,6 +50,7 @@ class AgentOrder {
 
   final String? assignedTo;
   final String? assignedToName;
+  final int? durationMs; // Real duration from backend
 
   String get subfamiliesDisplay => subfamilies.join(', ');
 
@@ -93,6 +94,7 @@ class AgentOrder {
     this.completedFamilies = const [],
     this.assignedTo,
     this.assignedToName,
+    this.durationMs,
   });
 
   factory AgentOrder.fromJson(Map<String, dynamic> json) {
@@ -189,6 +191,7 @@ class AgentOrder {
               : const []),
       assignedTo: json['assigned_to'] as String?,
       assignedToName: json['assigned_to_name'] as String?,
+      durationMs: json['duration_ms'] as int?,
     );
   }
 }

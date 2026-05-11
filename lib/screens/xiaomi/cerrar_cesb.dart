@@ -117,7 +117,18 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
     if (active != null) {
       _activeCesb = active;
       _nextCesb = null;
-      _startTimer(DateTime.parse(active['fecha_hora_inicio']));
+      
+      final startTime = DateTime.parse(active['fecha_hora_inicio']);
+      final pauseTimeStr = active['fecha_hora_pausa'];
+      final pausedSeconds = (active['segundos_pausados'] as num?)?.toInt() ?? 0;
+      
+      _startTimer(
+        startTime, 
+        pauseTime: (pauseTimeStr != null && pauseTimeStr.toString().isNotEmpty) 
+          ? DateTime.parse(pauseTimeStr) 
+          : null,
+        pausedSeconds: pausedSeconds,
+      );
     } else {
       _activeCesb = null;
       _stopTimer();
@@ -131,15 +142,32 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
     }
   }
 
-  void _startTimer(DateTime startTime) {
+  void _startTimer(DateTime startTime, {DateTime? pauseTime, int pausedSeconds = 0}) {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (mounted) {
-        setState(() {
-          _elapsed = DateTime.now().difference(startTime);
-        });
+    
+    void updateElapsed() {
+      final now = DateTime.now();
+      if (pauseTime != null) {
+        // If paused, elapsed is fixed at the moment of pause
+        _elapsed = pauseTime.difference(startTime) - Duration(seconds: pausedSeconds);
+      } else {
+        _elapsed = now.difference(startTime) - Duration(seconds: pausedSeconds);
       }
-    });
+    }
+
+    updateElapsed();
+    
+    if (pauseTime == null) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (mounted) {
+          setState(() {
+            updateElapsed();
+          });
+        }
+      });
+    } else {
+      if (mounted) setState(() {});
+    }
   }
 
   void _stopTimer() {
@@ -207,6 +235,28 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CESB Finalizado.')));
         await _refreshData();
       }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _onPausar() async {
+    if (_activeCesb == null) return;
+    setState(() => _submitting = true);
+    try {
+      final success = await context.read<XiaomiProvider>().pauseCesb(_activeCesb!['cesb']);
+      if (success) await _refreshData();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _onReanudar() async {
+    if (_activeCesb == null) return;
+    setState(() => _submitting = true);
+    try {
+      final success = await context.read<XiaomiProvider>().resumeCesb(_activeCesb!['cesb']);
+      if (success) await _refreshData();
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -367,19 +417,24 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
   }
 
   Widget _buildActiveWorkView(ThemeData theme) {
+    final bool isPaused = _activeCesb?['fecha_hora_pausa'] != null;
+
     return Column(
       children: [
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
+            color: (isPaused ? Colors.orange : Colors.blue).withOpacity(0.1),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.blue.withOpacity(0.3), width: 2),
+            border: Border.all(color: (isPaused ? Colors.orange : Colors.blue).withOpacity(0.3), width: 2),
           ),
           child: Column(
             children: [
-              const Text('TRABAJO EN PROGRESO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.blue, letterSpacing: 2)),
+              Text(
+                isPaused ? 'TRABAJO PAUSADO' : 'TRABAJO EN PROGRESO', 
+                style: TextStyle(fontWeight: FontWeight.w900, color: isPaused ? Colors.orange : Colors.blue, letterSpacing: 2)
+              ),
               const SizedBox(height: 20),
               Text(_activeCesb!['cesb'] ?? '', style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
               Text('${_activeCesb!['sku']} - ${_activeCesb!['qty']} unidades', style: const TextStyle(fontSize: 18, color: Colors.grey)),
@@ -388,26 +443,59 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
               const SizedBox(height: 8),
               Text(
                 '${_elapsed.inHours.toString().padLeft(2, '0')}:${(_elapsed.inMinutes % 60).toString().padLeft(2, '0')}:${(_elapsed.inSeconds % 60).toString().padLeft(2, '0')}',
-                style: const TextStyle(fontSize: 42, fontFamily: 'Courier', fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 42, 
+                  fontFamily: 'Courier', 
+                  fontWeight: FontWeight.bold,
+                  color: isPaused ? Colors.orange : null,
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          height: 70,
-          child: ElevatedButton.icon(
-            onPressed: _submitting ? null : _onFinalizar,
-            icon: const Icon(Icons.check_circle_rounded, size: 28),
-            label: const Text('FINALIZAR Y CERRAR CESB', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 60,
+                child: ElevatedButton.icon(
+                  onPressed: _submitting ? null : (isPaused ? _onReanudar : _onPausar),
+                  icon: Icon(isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded),
+                  label: Text(isPaused ? 'REANUDAR' : 'PAUSAR'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isPaused ? Colors.green : Colors.orange,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: SizedBox(
+                height: 60,
+                child: ElevatedButton.icon(
+                  onPressed: _submitting ? null : _onFinalizar,
+                  icon: const Icon(Icons.check_circle_rounded),
+                  label: const Text('FINALIZAR'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
+        if (isPaused) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'El tiempo de pausa no se contabiliza en el total.',
+            style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
+          ),
+        ],
       ],
     );
   }

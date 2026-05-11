@@ -510,12 +510,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                       ),
                     ),
                   Expanded(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1200),
-                        child: _buildTable(theme),
-                      ),
-                    ),
+                    child: _buildTable(theme),
                   ),
                 ],
               ),
@@ -875,77 +870,85 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       color: theme.brightness == Brightness.dark
           ? theme.cardColor.withOpacity(0.9)
           : theme.colorScheme.surface.withOpacity(0.98),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: 1300,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // STICKY HEADER ROW
-              Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                    theme.brightness == Brightness.dark ? 0.3 : 0.65,
-                  ),
-                  border: Border(
-                    bottom: BorderSide(
-                      color: theme.dividerColor.withOpacity(
-                        theme.brightness == Brightness.dark ? 0.1 : 0.28,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final tableWidth = constraints.maxWidth < minWidth
+              ? minWidth
+              : constraints.maxWidth;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: tableWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // STICKY HEADER ROW
+                  Container(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(
+                        theme.brightness == Brightness.dark ? 0.3 : 0.65,
+                      ),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: theme.dividerColor.withOpacity(
+                            theme.brightness == Brightness.dark ? 0.1 : 0.28,
+                          ),
+                        ),
                       ),
                     ),
+                    height: 56,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _headerCell('Nº Pedido', 150),
+                        _headerCell('Fecha', 110),
+                        _headerCell('Cliente', 200),
+                        _headerCell('Descripción', 300),
+                        _headerCell('Familia', 150),
+                        _headerCell('Prioridad', 110),
+                        _headerCell('Asignado', 150),
+                        _headerCell('Estado/Manual', 130),
+                      ],
+                    ),
                   ),
-                ),
-                height: 56,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _headerCell('Nº Pedido', 150),
-                    _headerCell('Fecha', 110),
-                    _headerCell('Cliente', 200),
-                    _headerCell('Descripción', 300),
-                    _headerCell('Familia', 150),
-                    _headerCell('Prioridad', 110),
-                    _headerCell('Asignado', 150),
-                    _headerCell('Estado/Manual', 130),
-                  ],
-                ),
+                  // SCROLLABLE BODY
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: tableItems.length,
+                      padding: EdgeInsets.zero,
+                      separatorBuilder: (context, index) {
+                        if (tableItems[index] is String ||
+                            (index + 1 < tableItems.length &&
+                                tableItems[index + 1] is String)) {
+                          return const SizedBox.shrink();
+                        }
+                        return Divider(
+                          height: 1,
+                          color: theme.dividerColor.withOpacity(0.05),
+                          indent: 16,
+                          endIndent: 16,
+                        );
+                      },
+                      itemBuilder: (ctx, idx) {
+                        final item = tableItems[idx];
+                        if (item is String) {
+                          return _buildMonthRow(item, theme);
+                        } else {
+                          return _buildOrderRow(
+                            item as AgentOrder,
+                            theme,
+                            idx % 2 == 0,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
               ),
-              // SCROLLABLE BODY
-              Expanded(
-                child: ListView.separated(
-                  itemCount: tableItems.length,
-                  padding: EdgeInsets.zero,
-                  separatorBuilder: (context, index) {
-                    if (tableItems[index] is String ||
-                        (index + 1 < tableItems.length &&
-                            tableItems[index + 1] is String)) {
-                      return const SizedBox.shrink();
-                    }
-                    return Divider(
-                      height: 1,
-                      color: theme.dividerColor.withOpacity(0.05),
-                      indent: 16,
-                      endIndent: 16,
-                    );
-                  },
-                  itemBuilder: (ctx, idx) {
-                    final item = tableItems[idx];
-                    if (item is String) {
-                      return _buildMonthRow(item, theme);
-                    } else {
-                      return _buildOrderRow(
-                        item as AgentOrder,
-                        theme,
-                        idx % 2 == 0,
-                      );
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
