@@ -299,6 +299,7 @@ class SentinelPort {
   final bool imageEnabled;
   final String? imageEnabledAt;
   final String? selectedImage;
+  final int? orderId;
 
   SentinelPort({
     required this.portId,
@@ -312,6 +313,7 @@ class SentinelPort {
     this.imageEnabled = false,
     this.imageEnabledAt,
     this.selectedImage,
+    this.orderId,
   });
 
   factory SentinelPort.fromJson(Map<String, dynamic> json) {
@@ -340,6 +342,7 @@ class SentinelPort {
           json['selected_image']?.toString() ??
           json['image']?.toString() ??
           json['current_image']?.toString(),
+      orderId: json['order_id'] is num ? (json['order_id'] as num).toInt() : null,
     );
   }
 
@@ -355,6 +358,7 @@ class SentinelPort {
     bool? imageEnabled,
     String? imageEnabledAt,
     String? selectedImage,
+    int? Function()? orderId,
   }) {
     return SentinelPort(
       portId: portId ?? this.portId,
@@ -370,6 +374,7 @@ class SentinelPort {
       imageEnabled: imageEnabled ?? this.imageEnabled,
       imageEnabledAt: imageEnabledAt ?? this.imageEnabledAt,
       selectedImage: selectedImage ?? this.selectedImage,
+      orderId: orderId != null ? orderId() : this.orderId,
     );
   }
 
@@ -385,6 +390,7 @@ class SentinelPort {
           status == other.status &&
           imageEnabled == other.imageEnabled &&
           selectedImage == other.selectedImage &&
+          orderId == other.orderId &&
           // device identity
           connectedMac == other.connectedMac &&
           connectedDevice?.mac == other.connectedDevice?.mac &&
@@ -407,6 +413,7 @@ class SentinelPort {
     status,
     imageEnabled,
     selectedImage,
+    orderId,
     connectedMac,
     connectedDevice?.mac,
     connectedDevice?.imagingProgress,

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'dart:async';
 import 'dart:developer' as developer;
 
@@ -2093,11 +2092,8 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
   String _formatDuration(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    if (h > 0) {
-      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    }
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    if (h > 0) return '${h}h ${m}m';
+    return '${m}m';
   }
 
   void _markEntryInvalid(_BoxEntryField entry, String message) {
@@ -2319,7 +2315,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     _activeBox!.startTime = DateTime.now();
     _boxElapsed = Duration.zero;
     _boxTimer?.cancel();
-    _boxTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _boxTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       setState(() {
         final st = _activeBox?.startTime;
@@ -3902,6 +3898,10 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                                         _boxNumberFocus.requestFocus();
                                       }
                                     });
+
+                                    // PLAY BOX FINISHED SOUND
+                                    SoundPlayer.playBoxComplete();
+
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
@@ -4203,9 +4203,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                   constraints: const BoxConstraints(maxWidth: 1100),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(32),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                      child: Container(
+                    child: Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -4689,7 +4687,6 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

@@ -61,6 +61,18 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
   // Registry Picking mode (if variable 'CI' exists)
   bool _isUsingExistingRegistry = false;
   final Map<String, Set<int>> _approvedLengthsByVariable = {};
+  
+  final FocusNode _scanFocusNode = FocusNode();
+  final TextEditingController _scanController = TextEditingController();
+
+  @override
+  void dispose() {
+    _startCiController.dispose();
+    _endCiController.dispose();
+    _scanFocusNode.dispose();
+    _scanController.dispose();
+    super.dispose();
+  }
 
   excel_pkg.Sheet? get _firstSheet {
     if (_excel == null) return null;
@@ -660,17 +672,26 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     }
 
   Widget _buildScanField(String field) {
-    final ctrl = TextEditingController();
     return SizedBox(
       width: 300,
       child: TextField(
-        controller: ctrl,
+        key: ValueKey('scan_field_${_currentRowIndex}_$field'),
+        controller: _scanController,
+        focusNode: _scanFocusNode,
         autofocus: true,
         textAlign: TextAlign.center,
-        decoration: InputDecoration(labelText: 'ESCANEAR $field', border: const OutlineInputBorder()),
-        onSubmitted: (val) {
-          if (val.trim().isNotEmpty) {
-            _updateCell(field, val.trim());
+        decoration: InputDecoration(
+          labelText: 'ESCANEAR $field',
+          border: const OutlineInputBorder(),
+          hintText: 'Esperando escaneo...',
+        ),
+        onSubmitted: (val) async {
+          final scanValue = val.trim();
+          if (scanValue.isNotEmpty) {
+            _scanController.clear();
+            await _updateCell(field, scanValue);
+            // Request focus back for the next field if any
+            _scanFocusNode.requestFocus();
           }
         },
       ),
@@ -691,7 +712,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
-  void _updateCell(String variable, String value) {
+  Future<void> _updateCell(String variable, String value) async {
     final sheet = _firstSheet;
     if (sheet == null) return;
     
@@ -716,10 +737,10 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     });
     
     // Auto-submit if complete
-    _checkCompletionAndSubmit();
+    await _checkCompletionAndSubmit();
   }
 
-  void _checkCompletionAndSubmit() {
+  Future<void> _checkCompletionAndSubmit() async {
     if (_excel == null) return;
     final sheet = _firstSheet;
     if (sheet == null) return;
@@ -753,7 +774,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     }
     
     if (isComplete && !_printing) {
-      _printAndSubmit(values);
+      await _printAndSubmit(values);
     }
   }
 
@@ -1978,7 +1999,6 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
       );
     }
     
-    final ctrl = TextEditingController();
     return Column(
       children: [
         const Icon(Icons.qr_code_scanner_rounded, size: 48, color: Colors.cyan),
@@ -1986,14 +2006,22 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         Text('ESCANEANDO: $fieldToScan', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.cyan)),
         const SizedBox(height: 24),
         TextField(
-          controller: ctrl,
+          key: ValueKey('main_scan_${_currentRowIndex}_$fieldToScan'),
+          controller: _scanController,
+          focusNode: _scanFocusNode,
           autofocus: true,
           textAlign: TextAlign.center,
-          decoration: const InputDecoration(labelText: 'EN ESPERA DE ESCANEO...', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            labelText: 'EN ESPERA DE ESCANEO...', 
+            border: OutlineInputBorder(),
+            hintText: 'Escanea un código para continuar'
+          ),
           onSubmitted: (val) async {
             final scanValue = val.trim();
             if (scanValue.isEmpty) return;
-
+            
+            _scanController.clear();
+            
             // 0. Check for CI vs Serial confusion (Removed because CIs can be numeric)
             
             // 1. Check for duplicates
@@ -2003,7 +2031,10 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                  'VALOR DUPLICADO',
                  'El valor "$scanValue" ya ha sido registrado en otra fila. ¿Deseas registrarlo de todos modos?'
                );
-               if (!proceed) return;
+               if (!proceed) {
+                 _scanFocusNode.requestFocus();
+                 return;
+               }
             }
 
             // 2. Check for length anomaly
@@ -2014,7 +2045,10 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                  'ANOMALÍA DE LONGITUD',
                  'La longitud de este escaneo ($scannedLength) es diferente a la del primer registro ($expectedLength).\n¿Deseas permitir también esta longitud para el resto de la orden?'
                );
-               if (!proceed) return;
+               if (!proceed) {
+                 _scanFocusNode.requestFocus();
+                 return;
+               }
                _approveLength(fieldToScan!, scannedLength);
             }
 
@@ -2042,7 +2076,11 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                  _currentCiCode = scanValue;
                }
             });
-            _checkCompletionAndSubmit();
+            
+            await _checkCompletionAndSubmit();
+            
+            // Ensure focus is requested back for the next field or row
+            _scanFocusNode.requestFocus();
           },
         ),
       ],

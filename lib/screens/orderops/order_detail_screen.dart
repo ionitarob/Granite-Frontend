@@ -66,6 +66,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _loading = true;
   bool _isArchivoDropActive = false;
   bool _isExporting = false;
+  bool _showLogs = false;
   String? _error;
   String? _sessionActiveFamily;
 
@@ -599,35 +600,88 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         constraints: const BoxConstraints(maxWidth: 1700),
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (isEnEjecucion) ...[
-                _buildTopExecutionStrip(theme),
-                const SizedBox(height: 20),
-                _buildEmbeddedServicePanel(theme),
-                const SizedBox(height: 24),
-              ] else ...[
-                _buildHeaderCard(theme),
-                const SizedBox(height: 24),
-                _buildLinesCard(theme),
-                const SizedBox(height: 24),
-                _buildServicesCard(theme),
-                const SizedBox(height: 24),
-                _buildObservationsCard(theme),
-                const SizedBox(height: 24),
-              ],
-              _buildQualityQualityCard(theme),
-              const SizedBox(height: 24),
-              _buildArchivosCard(theme),
-              const SizedBox(height: 24),
-              _buildLogCard(theme),
-              const SizedBox(height: 32), // bottom padding
-            ],
-          ),
+          child: isEnEjecucion 
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTopExecutionStrip(theme),
+                    const SizedBox(height: 20),
+                    _buildEmbeddedServicePanel(theme),
+                    const SizedBox(height: 24),
+                  ],
+                )
+              : _buildResponsiveGrid(theme),
         ),
       ),
+    );
+  }
+
+  Widget _buildResponsiveGrid(ThemeData theme) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Breakpoint for Desktop vs Tablet/Mobile
+        final isDesktop = constraints.maxWidth >= 1024;
+
+        if (isDesktop) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Main Data Column (Left Side - ~70%)
+              Expanded(
+                flex: 7,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildHeaderCard(theme),
+                    const SizedBox(height: 24),
+                    _buildLinesCard(theme),
+                    const SizedBox(height: 24),
+                    _buildServicesCard(theme),
+                    const SizedBox(height: 24),
+                    _buildLogCard(theme),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 24),
+              // Action & Attachments Column (Right Side - ~30%)
+              Expanded(
+                flex: 3,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildObservationsCard(theme),
+                    const SizedBox(height: 24),
+                    _buildQualityQualityCard(theme),
+                    const SizedBox(height: 24),
+                    _buildArchivosCard(theme),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+
+        // Fallback for narrower screens
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeaderCard(theme),
+            const SizedBox(height: 24),
+            _buildLinesCard(theme),
+            const SizedBox(height: 24),
+            _buildServicesCard(theme),
+            const SizedBox(height: 24),
+            _buildObservationsCard(theme),
+            const SizedBox(height: 24),
+            _buildQualityQualityCard(theme),
+            const SizedBox(height: 24),
+            _buildArchivosCard(theme),
+            const SizedBox(height: 24),
+            _buildLogCard(theme),
+          ],
+        );
+      },
     );
   }
 
@@ -1593,6 +1647,28 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  Widget _buildEmptyState(ThemeData theme, String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      decoration: BoxDecoration(
+        color: theme.cardColor.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Center(
+        child: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 13,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+
   Color _panelItemFill(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
     return isDark
@@ -1764,7 +1840,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
       ],
       child: Wrap(
-        alignment: WrapAlignment.center,
+        alignment: WrapAlignment.start,
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: isTablet ? 20 : 16,
         runSpacing: isTablet ? 12 : 12,
@@ -2869,7 +2945,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         children: [
           SelectableText(
             label,
-            style: TextStyle(color: Colors.grey, fontSize: isTablet ? 11 : 12),
+            style: TextStyle(color: Colors.white60, fontSize: isTablet ? 11 : 12),
           ),
           const SizedBox(height: 2),
           SelectableText(
@@ -2951,14 +3027,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return _buildCard(
         theme: theme,
         title: 'Líneas de la orden',
-        child: const Text('Sin líneas.'),
+        child: _buildEmptyState(theme, 'Sin líneas.'),
       );
     }
 
     final lines = sourceOrder['lines'] as List<dynamic>;
 
     const double financialCellsWidth = 100 + 100 + 110 + 90 + 120;
-    const double baseCellsWidth = 100 + 250 + 60;
+    const double baseCellsWidth = 100 + 250 + 80;
     final lineCellsWidth = _canViewFinancialData
         ? baseCellsWidth + financialCellsWidth
         : baseCellsWidth;
@@ -2982,82 +3058,86 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return _buildCard(
       theme: theme,
       title: 'Líneas de la orden (${lines.length})',
-      height: 400,
       child: LayoutBuilder(
-        builder: (context, constraints) {
-          final viewportWidth = constraints.maxWidth;
-          final contentWidth = viewportWidth > lineOuterWidth
-              ? viewportWidth
-              : lineOuterWidth;
-
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: contentWidth,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: SizedBox(
-                  width: lineOuterWidth,
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: headerBg,
-                          border: Border(
-                            left: BorderSide(
-                              color: Colors.transparent,
-                              width: 4,
+        builder: (context, constraints) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: constraints.maxWidth > lineOuterWidth
+                    ? constraints.maxWidth
+                    : lineOuterWidth,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: lineOuterWidth,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: headerBg,
+                            border: const Border(
+                              left: BorderSide(
+                                color: Colors.transparent,
+                                width: 4,
+                              ),
                             ),
                           ),
+                          child: Row(
+                            children: [
+                              _headerCell('SKU', 100),
+                              _headerCell('Descripción', 250),
+                                _headerCell(
+                                  'Cant.',
+                                  80,
+                                  alignment: TextAlign.right,
+                                ),
+                              if (_canViewFinancialData)
+                                _headerCell(
+                                  'Coste',
+                                  100,
+                                  alignment: TextAlign.right,
+                                ),
+                              if (_canViewFinancialData)
+                                _headerCell(
+                                  'Precio',
+                                  100,
+                                  alignment: TextAlign.right,
+                                ),
+                              if (_canViewFinancialData)
+                                _headerCell(
+                                  'Beneficio',
+                                  110,
+                                  alignment: TextAlign.right,
+                                ),
+                              if (_canViewFinancialData)
+                                _headerCell(
+                                  'Margen %',
+                                  90,
+                                  alignment: TextAlign.right,
+                                ),
+                              if (_canViewFinancialData)
+                                _headerCell(
+                                  'Total',
+                                  120,
+                                  alignment: TextAlign.right,
+                                ),
+                            ],
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            _headerCell('SKU', 100),
-                            _headerCell('Descripción', 250),
-                            _headerCell(
-                              'Cant.',
-                              60,
-                              alignment: TextAlign.center,
-                            ),
-                            if (_canViewFinancialData)
-                              _headerCell(
-                                'Coste',
-                                100,
-                                alignment: TextAlign.right,
-                              ),
-                            if (_canViewFinancialData)
-                              _headerCell(
-                                'Precio',
-                                100,
-                                alignment: TextAlign.right,
-                              ),
-                            if (_canViewFinancialData)
-                              _headerCell(
-                                'Beneficio',
-                                110,
-                                alignment: TextAlign.right,
-                              ),
-                            if (_canViewFinancialData)
-                              _headerCell(
-                                'Margen %',
-                                90,
-                                alignment: TextAlign.right,
-                              ),
-                            if (_canViewFinancialData)
-                              _headerCell(
-                                'Total',
-                                120,
-                                alignment: TextAlign.right,
-                              ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: Column(
-                            children: lines.map<Widget>((line) {
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 500),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            scrollDirection: Axis.vertical,
+                            shrinkWrap: true,
+                            itemCount: lines.length,
+                            itemBuilder: (context, index) {
+                              final line = lines[index];
                               final price =
                                   double.tryParse(
                                     line['UNIT_PRICE']?.toString() ?? '0',
@@ -3073,9 +3153,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                     line['mapped_cost']?.toString() ?? '0',
                                   ) ??
                                   0;
-                              final effectiveCost = unitCost > 0
-                                  ? unitCost
-                                  : mappedCost;
+                              final effectiveCost =
+                                  unitCost > 0 ? unitCost : mappedCost;
                               final mappedPvd =
                                   double.tryParse(
                                     line['mapped_pvd']?.toString() ?? '0',
@@ -3118,8 +3197,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                               ) ??
                                               0)
                                           .formattedInt,
-                                      60,
-                                      alignment: TextAlign.center,
+                                      80,
+                                      alignment: TextAlign.right,
                                     ),
                                     if (_canViewFinancialData)
                                       _dataCell(
@@ -3174,17 +3253,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            },
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -3239,16 +3318,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildServicesCard(ThemeData theme) {
     if (_services.isEmpty) {
-      return _buildCard(
-        theme: theme,
-        title: 'Servicios Asignados',
-        child: const Center(
-          child: Text(
-            'No se han encontrado servicios (cotizaciones) para estos SKUs.',
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
+      return _buildEmptyState(theme, 'Sin servicios asignados');
     }
 
     return _buildCard(
@@ -3452,36 +3522,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 300, // Reasonable min width for text field
-                child: TextField(
-                  controller: _obsController,
-                  decoration: const InputDecoration(
-                    hintText: 'Añadir nueva observación...',
-                    border: OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Colors.black26,
-                  ),
-                  maxLines: 2,
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _addObservation,
-                icon: const Icon(Icons.add),
-                label: const Text('Añadir'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 20,
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _obsController,
+                    decoration: const InputDecoration(
+                      hintText: 'Añadir nueva observación...',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(16),
+                    ),
+                    maxLines: 2,
                   ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ElevatedButton.icon(
+                    onPressed: _addObservation,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Añadir'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           if (_observations.isNotEmpty) ...[
@@ -3536,12 +3608,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ],
       height: null,
       child: imageFiles.isEmpty
-          ? const Center(
-              child: Text(
-                'No hay fotos registradas.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
+          ? _buildEmptyState(theme, 'No hay fotos registradas.')
           : LayoutBuilder(
               builder: (context, constraints) {
                 final cardWidth = constraints.maxWidth >= 1200
@@ -3695,12 +3762,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: 12),
           if (archivoFiles.isEmpty)
-            const Center(
-              child: Text(
-                'No hay archivos adjuntos.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
+            _buildEmptyState(theme, 'No hay archivos adjuntos.')
           else
             LayoutBuilder(
               builder: (context, constraints) {
@@ -4768,9 +4830,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return _buildCard(
       theme: theme,
       title: 'LOG de Sistema',
-      height: 300,
-      child: combined.isEmpty
-          ? const Center(child: Text('Sin registros de LOG.'))
+      actions: [
+        TextButton.icon(
+          onPressed: () => setState(() => _showLogs = !_showLogs),
+          icon: Icon(_showLogs ? Icons.expand_less : Icons.expand_more),
+          label: Text(_showLogs ? 'Ocultar' : 'Ver Logs'),
+        ),
+      ],
+      child: !_showLogs 
+          ? const SizedBox.shrink()
+          : combined.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: Center(child: Text('Sin registros de LOG.')),
+                )
           : LayoutBuilder(
               builder: (context, constraints) {
                 final viewportWidth = constraints.maxWidth;

@@ -1,288 +1,109 @@
 import 'dart:developer' as developer;
 import 'package:audioplayers/audioplayers.dart';
 
-/// Improved helper to play short asset sounds for success/error feedback.
-///
-/// This class uses low-latency players for short UI sounds, performs a
-/// lazy initialization and attempts to preload the asset variants
-/// (e.g. `ok.mp3` and `ok.MP3`) to reduce runtime latency. It also logs
-/// errors to help debugging when playback silently fails.
+/// Optimized SoundPlayer for rapid scanning feedback.
+/// Uses a small pool of preloaded players to eliminate 'retard' (latency) 
+/// and ensure sounds trigger even during high-speed scanning.
 class SoundPlayer {
-  // Use default constructor to remain compatible across platforms/versions.
-  static final AudioPlayer _successPlayer = AudioPlayer();
+  // Success player pool (to handle rapid scans)
+  static final List<AudioPlayer> _successPool = [AudioPlayer(), AudioPlayer()];
+  static int _successIndex = 0;
+
   static final AudioPlayer _errorPlayer = AudioPlayer();
-  static final AudioPlayer _closeBoxPlayer = AudioPlayer();
   static final AudioPlayer _boxCompletePlayer = AudioPlayer();
   static final AudioPlayer _finishOrderPlayer = AudioPlayer();
   static bool _initialized = false;
 
-  static const String _okLower = 'sounds/ok.mp3';
-  static const String _okUpper = 'sounds/ok.MP3';
-  static const String _err = 'sounds/error.mp3';
-  static const String _closeBox = 'sounds/close_box.mp3';
-  static const String _boxComplete = 'sounds/box_complete.mp3';
-  static const String _finishOrder = 'sounds/finish_order.mp3';
+  static const String _okPath = 'sounds/ok.mp3';
+  static const String _errPath = 'sounds/error.mp3';
+  static const String _boxPath = 'sounds/box_complete.mp3';
+  static const String _finishPath = 'sounds/finish_order.mp3';
 
-  /// Ensure players are configured and attempt to preload assets once.
+  /// Preload all players to eliminate runtime loading latency
   static Future<void> _ensureInitialized() async {
     if (_initialized) return;
     try {
-      // Attempt to set sensible defaults
-      try {
-        await _successPlayer.setVolume(1.0);
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: failed to set success player volume: $e',
-          name: 'SoundPlayer',
-        );
+      for (final p in _successPool) {
+        await p.setPlayerMode(PlayerMode.lowLatency);
+        await p.setSource(AssetSource(_okPath));
       }
-      try {
-        await _errorPlayer.setVolume(1.0);
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: failed to set error player volume: $e',
-          name: 'SoundPlayer',
-        );
-      }
-      try {
-        await _closeBoxPlayer.setVolume(1.0);
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: failed to set close-box player volume: $e',
-          name: 'SoundPlayer',
-        );
-      }
-      try {
-        await _boxCompletePlayer.setVolume(1.0);
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: failed to set box-complete player volume: $e',
-          name: 'SoundPlayer',
-        );
-      }
-      try {
-        await _finishOrderPlayer.setVolume(1.0);
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: failed to set finish-order player volume: $e',
-          name: 'SoundPlayer',
-        );
-      }
-
-      // Try preloading the success sound (prefer lowercase, fallback to provided uppercase file)
-      try {
-        await _successPlayer.setSource(AssetSource(_okLower));
-        developer.log('SoundPlayer: preloaded $_okLower', name: 'SoundPlayer');
-      } catch (_) {
-        try {
-          await _successPlayer.setSource(AssetSource(_okUpper));
-          developer.log(
-            'SoundPlayer: preloaded $_okUpper',
-            name: 'SoundPlayer',
-          );
-        } catch (e) {
-          developer.log(
-            'SoundPlayer: could not preload success sound: $e',
-            name: 'SoundPlayer',
-          );
-        }
-      }
-
-      // Preload error sound
-      try {
-        await _errorPlayer.setSource(AssetSource(_err));
-        developer.log('SoundPlayer: preloaded $_err', name: 'SoundPlayer');
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: could not preload error sound: $e',
-          name: 'SoundPlayer',
-        );
-      }
-
-      // Preload close box sound
-      try {
-        await _closeBoxPlayer.setSource(AssetSource(_closeBox));
-        developer.log('SoundPlayer: preloaded $_closeBox', name: 'SoundPlayer');
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: could not preload close box sound: $e',
-          name: 'SoundPlayer',
-        );
-      }
-      try {
-        await _boxCompletePlayer.setSource(AssetSource(_boxComplete));
-        developer.log(
-          'SoundPlayer: preloaded $_boxComplete',
-          name: 'SoundPlayer',
-        );
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: could not preload box complete sound: $e',
-          name: 'SoundPlayer',
-        );
-      }
-      try {
-        await _finishOrderPlayer.setSource(AssetSource(_finishOrder));
-        developer.log(
-          'SoundPlayer: preloaded $_finishOrder',
-          name: 'SoundPlayer',
-        );
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: could not preload finish order sound: $e',
-          name: 'SoundPlayer',
-        );
-      }
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: initialization failed: $e',
-        name: 'SoundPlayer',
-      );
-    } finally {
+      await _errorPlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _errorPlayer.setSource(AssetSource(_errPath));
+      
+      await _boxCompletePlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _boxCompletePlayer.setSource(AssetSource(_boxPath));
+      
+      await _finishOrderPlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _finishOrderPlayer.setSource(AssetSource(_finishPath));
+      
       _initialized = true;
+      developer.log('SoundPlayer: Preloaded all sounds successfully.', name: 'SoundPlayer');
+    } catch (e) {
+      developer.log('SoundPlayer: Preload failed: $e. Falling back to dynamic loading.', name: 'SoundPlayer');
+      // On failure, we'll try dynamic loading in the play methods
     }
   }
 
-  /// Play the success sound (ok.mp3/ok.MP3 in assets/sounds/)
+  /// Plays the success sound instantly using a cycling pool of players.
   static Future<void> playSuccess() async {
     try {
       await _ensureInitialized();
-      try {
-        await _successPlayer.play(AssetSource(_okLower));
-        return;
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: play lower-case success failed: $e',
-          name: 'SoundPlayer',
-        );
-      }
-      try {
-        await _successPlayer.play(AssetSource(_okUpper));
-        return;
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: play upper-case success failed: $e',
-          name: 'SoundPlayer',
-        );
-      }
+      final player = _successPool[_successIndex];
+      // Move index for next call
+      _successIndex = (_successIndex + 1) % _successPool.length;
+      
+      // Stop and Seek to start (crucial for rapid re-triggering)
+      await player.stop();
+      await player.resume(); 
     } catch (e) {
-      developer.log(
-        'SoundPlayer: unexpected error in playSuccess: $e',
-        name: 'SoundPlayer',
-      );
+      // Last resort fallback
+      try { await AudioPlayer().play(AssetSource(_okPath), mode: PlayerMode.lowLatency); } catch (_) {}
     }
   }
 
-  /// Play the error sound (error.mp3 in assets/sounds/)
   static Future<void> playError() async {
     try {
       await _ensureInitialized();
-      try {
-        await _errorPlayer.play(AssetSource(_err));
-        return;
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: play error failed: $e',
-          name: 'SoundPlayer',
-        );
-      }
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: unexpected error in playError: $e',
-        name: 'SoundPlayer',
-      );
+      await _errorPlayer.stop();
+      await _errorPlayer.resume();
+    } catch (_) {
+      try { await AudioPlayer().play(AssetSource(_errPath), mode: PlayerMode.lowLatency); } catch (_) {}
     }
   }
 
-  /// Play the close box sound (close_box.mp3 in assets/sounds/)
   static Future<void> playCloseBox() async {
     await playBoxComplete();
   }
 
-  /// Play the box complete sound (box_complete.mp3 in assets/sounds/)
   static Future<void> playBoxComplete() async {
     try {
       await _ensureInitialized();
-      try {
-        await _boxCompletePlayer.play(AssetSource(_boxComplete));
-        return;
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: play box complete failed: $e',
-          name: 'SoundPlayer',
-        );
-      }
+      await _boxCompletePlayer.stop();
+      await _boxCompletePlayer.resume();
     } catch (e) {
-      developer.log(
-        'SoundPlayer: unexpected error in playBoxComplete: $e',
-        name: 'SoundPlayer',
-      );
+      try { 
+        await AudioPlayer().play(AssetSource(_boxPath), mode: PlayerMode.lowLatency); 
+      } catch (_) {
+        await playSuccess();
+      }
     }
   }
 
-  /// Play the finish order sound (finish_order.mp3 in assets/sounds/)
   static Future<void> playFinishOrder() async {
     try {
       await _ensureInitialized();
-      try {
-        await _finishOrderPlayer.play(AssetSource(_finishOrder));
-        return;
-      } catch (e) {
-        developer.log(
-          'SoundPlayer: play finish order failed: $e',
-          name: 'SoundPlayer',
-        );
-      }
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: unexpected error in playFinishOrder: $e',
-        name: 'SoundPlayer',
-      );
+      await _finishOrderPlayer.stop();
+      await _finishOrderPlayer.resume();
+    } catch (_) {
+      try { await AudioPlayer().play(AssetSource(_finishPath), mode: PlayerMode.lowLatency); } catch (_) {}
     }
   }
 
-  /// Dispose players if the app needs to clean up.
   static Future<void> dispose() async {
-    try {
-      await _successPlayer.dispose();
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: dispose success player error: $e',
-        name: 'SoundPlayer',
-      );
-    }
-    try {
-      await _errorPlayer.dispose();
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: dispose error player error: $e',
-        name: 'SoundPlayer',
-      );
-    }
-    try {
-      await _closeBoxPlayer.dispose();
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: dispose close box player error: $e',
-        name: 'SoundPlayer',
-      );
-    }
-    try {
-      await _boxCompletePlayer.dispose();
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: dispose box complete player error: $e',
-        name: 'SoundPlayer',
-      );
-    }
-    try {
-      await _finishOrderPlayer.dispose();
-    } catch (e) {
-      developer.log(
-        'SoundPlayer: dispose finish order player error: $e',
-        name: 'SoundPlayer',
-      );
-    }
+    for (final p in _successPool) await p.dispose();
+    await _errorPlayer.dispose();
+    await _boxCompletePlayer.dispose();
+    await _finishOrderPlayer.dispose();
     _initialized = false;
   }
 }

@@ -39,6 +39,11 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   String? _selectedEstado;
   bool _filterByMe = false;
 
+  // Performance Cache: Avoid redundant computations in build()
+  List<AgentOrder> _filteredOrdersList = [];
+  Map<String, List<AgentOrder>> _groupedOrders = {};
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +57,9 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         const Duration(seconds: 30),
         (_) => _loadOrders(silent: true),
       );
+
+      // PERFORMANCE: Debounce search to prevent rebuilds on every keystroke
+      _searchController.addListener(_onSearchChanged);
 
       // Insert overlay for sidebar only on desktop widths.
       final logicalWidth =
@@ -94,10 +102,73 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _searchDebounce?.cancel();
     _edgeOverlay?.remove();
     _edgeOverlay = null;
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _applyFilters();
+    });
+  }
+
+  /// PERFORMANCE: Centralized filtering and grouping logic.
+  /// This is called only when data or filters change, not on every build cycle.
+  void _applyFilters() {
+    var list = _orders;
+
+    // 1. Filter by Status
+    if (_selectedEstado != null) {
+      list = list.where((o) => o.estado == _selectedEstado).toList();
+    }
+
+    // 2. Filter by "My Orders"
+    if (_filterByMe) {
+      final currentUser = Provider.of<ApiService>(context, listen: false).currentUser;
+      if (currentUser != null) {
+        list = list
+            .where(
+              (o) =>
+                  o.assignedTo == currentUser.username ||
+                  o.assignedTo == currentUser.id.toString(),
+            )
+            .toList();
+      }
+    }
+
+    // 3. Filter by Search Query (Using pre-calculated searchable fields)
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      final cleanQuery = query.replaceAll('-', '');
+      list = list.where((o) {
+        final nbrMatch = o.searchableOrderNbr.contains(cleanQuery);
+        final customerMatch = o.searchableCustomer.contains(query);
+        final descMatch = o.searchableDesc.contains(query);
+        return nbrMatch || customerMatch || descMatch;
+      }).toList();
+    }
+
+    // 4. Group by Month
+    final Map<String, List<AgentOrder>> grouped = {};
+    for (final order in list) {
+      final date = order.orderDate ?? order.createdAt ?? DateTime.now();
+      final monthStr = DateFormat('MMMM yyyy', 'es').format(date);
+      final capitalizedMonth = monthStr[0].toUpperCase() + monthStr.substring(1).toLowerCase();
+      if (!grouped.containsKey(capitalizedMonth)) {
+        grouped[capitalizedMonth] = [];
+      }
+      grouped[capitalizedMonth]!.add(order);
+    }
+
+    setState(() {
+      _filteredOrdersList = list;
+      _groupedOrders = grouped;
+    });
   }
 
   String _normalizedRole() {
@@ -123,18 +194,34 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     if (!silent) setState(() => _loading = true);
 
     try {
-      final allOrders = await _orderOpsService!.getAgentOrders(limit: 100000);
+      // PERFORMANCE: Reduced polling limit from 100k to 2000 as recommended.
+      final allOrders = await _orderOpsService!.getAgentOrders(limit: 2000);
       final orders = allOrders.toList();
 
-      setState(() {
-        _orders = orders;
-        _error = null;
-        _loading = false;
-      });
+      // PERFORMANCE: Change detection. If no functional changes, skip heavy UI updates.
+      if (silent && _orders.length == orders.length) {
+        bool identical = true;
+        for (int i = 0; i < orders.length; i++) {
+          if (_orders[i].idnbr != orders[i].idnbr ||
+              _orders[i].estado != orders[i].estado ||
+              _orders[i].assignedTo != orders[i].assignedTo) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) return;
+      }
 
-      // Run family auto-assignment in background from queue context, so
-      // users do not need to open detail screen to trigger it.
-      unawaited(_autoAssignFamiliesFromQueue(orders));
+      if (mounted) {
+        _orders = orders;
+        _applyFilters(); // Computes _filteredOrdersList and _groupedOrders
+        setState(() {
+          _error = null;
+          _loading = false;
+        });
+
+        unawaited(_autoAssignFamiliesFromQueue(orders));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -442,7 +529,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          const AnimatedBackgroundWidget(intensity: 0.8),
+          // PERFORMANCE: Reduced intensity to 0.4 to prevent GPU stuttering during scrolling.
+          const AnimatedBackgroundWidget(intensity: 0.4),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
@@ -706,7 +794,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                       );
                     }),
                   ],
-                  onChanged: (val) => setState(() => _selectedEstado = val),
+                  onChanged: (val) {
+                    _selectedEstado = val;
+                    _applyFilters();
+                  },
                 ),
               ),
             ),
@@ -714,7 +805,10 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
             FilterChip(
               label: const Text('Mis órdenes'),
               selected: _filterByMe,
-              onSelected: (val) => setState(() => _filterByMe = val),
+              onSelected: (val) {
+                _filterByMe = val;
+                _applyFilters();
+              },
               selectedColor: theme.colorScheme.primaryContainer,
               checkmarkColor: theme.colorScheme.primary,
             ),
@@ -790,18 +884,12 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     if (query.isNotEmpty) {
       final cleanQuery = query.replaceAll('-', '');
       list = list.where((o) {
-        final cleanOrderNbr = o.orderNbr.toLowerCase().replaceAll('-', '');
+        // PERFORMANCE: Using pre-calculated searchable strings to avoid per-item allocations.
+        final nbrMatch = o.searchableOrderNbr.contains(cleanQuery);
+        final customerMatch = o.searchableCustomer.contains(query);
+        final descMatch = o.searchableDesc.contains(query);
 
-        // Match exact clean nbr, or if query is 5 digits, check if it's contained in the middle
-        bool nbrMatch = cleanOrderNbr.contains(cleanQuery);
-        if (cleanQuery.length == 5 && cleanOrderNbr.length >= 7) {
-          // Specifically check the middle 5 digits if it's a standard format
-          // but .contains(cleanQuery) already covers this and more.
-        }
-
-        return nbrMatch ||
-            o.customer.toLowerCase().contains(query) ||
-            (o.sourcePrimaryDesc ?? '').toLowerCase().contains(query);
+        return nbrMatch || customerMatch || descMatch;
       }).toList();
     }
     return list;
@@ -820,7 +908,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       );
     }
 
-    final filtered = _filteredOrders;
+    final filtered = _filteredOrdersList;
 
     if (filtered.isEmpty) {
       return Center(
@@ -831,7 +919,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       );
     }
 
-    final grouped = _groupOrdersByMonth(filtered);
+    final grouped = _groupedOrders;
 
     // Build flattened list of items: String (Month name) or AgentOrder
     final List<dynamic> tableItems = [];
@@ -857,7 +945,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       );
     }
 
-    const double minWidth = 1150;
+    const double minWidth = 1300;
 
     return Card(
       elevation: 8,

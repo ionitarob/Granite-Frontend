@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:intl/intl.dart';
+import 'login_screen.dart';
 
 import 'widgets/main_sidebar.dart';
 import 'widgets/animated_background.dart';
@@ -18,6 +19,7 @@ import 'services/orderops_service.dart';
 import 'dart:convert';
 import 'models/user_model.dart';
 import 'models/agent_models.dart';
+import 'tabs/performance_tab.dart';
 import 'screens/orderops/order_detail_screen.dart';
 import 'widgets/kit_digital_stats_table.dart';
 import 'widgets/amz_bucket_distribution_widget.dart';
@@ -49,6 +51,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<AgentOrder> _completedOrdersStats = const [];
   List<Map<String, String>> _ingramUsers = const [];
   final TextEditingController _ordersSearchController = TextEditingController();
+  final ValueNotifier<String> _ordersSearchNotifier = ValueNotifier<String>('');
   String? _ordersSelectedEstado;
   bool _ordersFilterByMe = false;
 
@@ -226,836 +229,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     return DateTime.now().difference(start);
   }
 
-  Map<String, int> _agingBucketsHours(List<AgentOrder> orders) {
-    final buckets = {
-      '0-24h': 0,
-      '1-3d': 0,
-      '4-7d': 0,
-      '>7d': 0,
-    };
-    for (final order in orders) {
-      final age = _orderAge(order);
-      if (age == null) continue;
-      final hours = age.inHours;
-      if (hours < 24) {
-        buckets['0-24h'] = (buckets['0-24h'] ?? 0) + 1;
-      } else if (hours < 72) {
-        buckets['1-3d'] = (buckets['1-3d'] ?? 0) + 1;
-      } else if (hours < 168) {
-        buckets['4-7d'] = (buckets['4-7d'] ?? 0) + 1;
-      } else {
-        buckets['>7d'] = (buckets['>7d'] ?? 0) + 1;
-      }
-    }
-    return buckets;
-  }
-
-  Map<String, List<AgentOrder>> _agingBucketsLists(List<AgentOrder> orders) {
-    final buckets = {
-      '0-24h': <AgentOrder>[],
-      '1-3d': <AgentOrder>[],
-      '4-7d': <AgentOrder>[],
-      '>7d': <AgentOrder>[],
-    };
-    for (final order in orders) {
-      final age = _orderAge(order);
-      if (age == null) continue;
-      final hours = age.inHours;
-      if (hours < 24) {
-        buckets['0-24h']!.add(order);
-      } else if (hours < 72) {
-        buckets['1-3d']!.add(order);
-      } else if (hours < 168) {
-        buckets['4-7d']!.add(order);
-      } else {
-        buckets['>7d']!.add(order);
-      }
-    }
-    return buckets;
-  }
-
-  String _agingBucketsDetail(Map<String, int> buckets, int total) {
-    String fmt(String key, String label) {
-      final count = buckets[key] ?? 0;
-      final pct = total > 0 ? (count / total) * 100 : 0.0;
-      return '$label: $count (${pct.toStringAsFixed(1)}%)';
-    }
-
-    return '${fmt('0-24h', '0-24h')} · ${fmt('1-3d', '1-3d')}\n'
-        '${fmt('4-7d', '4-7d')} · ${fmt('>7d', '>7d')}';
-  }
-
-  String _formatOrderList(List<AgentOrder> orders, {int limit = 8}) {
-    if (orders.isEmpty) return 'Sin órdenes';
-    final ids = orders
-        .take(limit)
-        .map((o) => _formatOrderNbr(o.orderNbr))
-        .toList();
-    final remaining = orders.length - ids.length;
-    if (remaining > 0) {
-      ids.add('+$remaining más');
-    }
-    return ids.join(' · ');
-  }
-
-  Widget _buildOrderChip(AgentOrder order) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => OrderDetailScreen(orderId: order.idnbr),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.white.withOpacity(0.12),
-          border: Border.all(color: Colors.white.withOpacity(0.18)),
-        ),
-        child: Text(
-          _formatOrderNbr(order.orderNbr),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAgingColumn(
-    ThemeData theme,
-    String label,
-    List<AgentOrder> orders,
-    Color accentColor,
-  ) {
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: accentColor.withOpacity(isDark ? 0.18 : 0.14),
-        border: Border.all(color: accentColor.withOpacity(0.55)),
-      ),
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: accentColor.withOpacity(0.25),
-              border: Border.all(color: accentColor.withOpacity(0.65)),
-            ),
-            child: Text(
-              '$label (${orders.length})',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 180,
-            child: orders.isEmpty
-                ? Center(
-                    child: Text(
-                      '—',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    child: Column(
-                      children: orders.map(_buildOrderChip).toList(),
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _slaBreachRateLabel(List<AgentOrder> orders, {int hours = 48}) {
-    if (orders.isEmpty) return '0%';
-    var breached = 0;
-    for (final order in orders) {
-      final age = _orderAge(order);
-      if (age != null && age.inHours > hours) breached += 1;
-    }
-    final pct = (breached / orders.length) * 100;
-    return '${pct.toStringAsFixed(1)}%';
-  }
-
-  Future<void> _showAgingBucketsPopup(List<AgentOrder> orders) async {
-    final buckets = _agingBucketsLists(orders);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 700),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: Colors.white.withOpacity(isDark ? 0.12 : 0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 30,
-                    offset: const Offset(0, 15),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF26A69A).withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.stacked_bar_chart_rounded,
-                            color: Color(0xFF26A69A),
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            'Antigüedad de órdenes pendientes',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.of(dctx).pop(),
-                          icon: const Icon(Icons.close_rounded),
-                          splashRadius: 20,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Flexible(
-                    child: ListView(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      children: [
-                        _agingSection('0-24h', buckets['0-24h'] ?? []),
-                        const SizedBox(height: 8),
-                        _agingSection('1-3d', buckets['1-3d'] ?? []),
-                        const SizedBox(height: 8),
-                        _agingSection('4-7d', buckets['4-7d'] ?? []),
-                        const SizedBox(height: 8),
-                        _agingSection('>7d', buckets['>7d'] ?? []),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: TextButton(
-                      onPressed: () => Navigator.of(dctx).pop(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleAtMost(20),
-                      ),
-                      child: const Text(
-                        'Cerrar',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _agingSection(String label, List<AgentOrder> orders) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
-        ),
-      ),
-      child: ExpansionTile(
-        title: Text(
-          '$label (${orders.length})',
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-        ),
-        leading: Icon(
-          Icons.calendar_today_rounded, 
-          size: 18, 
-          color: theme.colorScheme.primary.withOpacity(0.7),
-        ),
-        shape: const RoundedRectangleBorder(side: BorderSide.none),
-        collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
-        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        children: orders.isEmpty
-            ? [
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(child: Text('Sin órdenes')),
-                ),
-              ]
-            : orders.map((o) => Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: _buildModernOrderCard(o),
-              )).toList(),
-      ),
-    );
-  }
-
-  String _formatDurationCompact(Duration duration) {
-    if (duration.isNegative) return '--';
-    final days = duration.inDays;
-    final hours = duration.inHours % 24;
-    final minutes = duration.inMinutes % 60;
-    if (days > 0) return '${days}d ${hours}h';
-    if (hours > 0) return '${hours}h ${minutes}m';
-    return '${minutes}m';
-  }
-
-  List<AgentOrder> _getRecentCompletedOrders() {
-    return _completedOrdersStats;
-  }
-
-  String _avgTimeToEstado4Label() {
-    final recent = _getRecentCompletedOrders();
-    if (recent.isEmpty) return '--';
-
-    // The backend already calculates duration_ms for us based on real DB data
-    final totalMillis = recent.fold<int>(0, (sum, o) {
-      // Use duration_ms from backend if available, fallback to manual diff
-      if (o.durationMs != null) return sum + o.durationMs!;
-      
-      final start = _orderStartDate(o);
-      final end = o.completedAt ?? DateTime.now();
-      if (start == null) return sum;
-      return sum + end.difference(start).inMilliseconds;
-    });
-
-    final avgMillis = (totalMillis / recent.length).round();
-    return _formatDurationCompact(Duration(milliseconds: avgMillis));
-  }
-
-  List<AgentOrder> _getSlaBreachOrders(List<AgentOrder> orders, {int hours = 48}) {
-    return orders.where((o) {
-      final age = _orderAge(o);
-      return age != null && age.inHours > hours;
-    }).toList();
-  }
-
-  Future<void> _showOrdersPopup(
-    String title,
-    List<AgentOrder> orders,
-  ) async {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 600),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: Colors.white.withOpacity(isDark ? 0.12 : 0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 30,
-                    offset: const Offset(0, 15),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.assignment_rounded,
-                            color: theme.colorScheme.primary,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.of(dctx).pop(),
-                          icon: const Icon(Icons.close_rounded),
-                          splashRadius: 20,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  // Content
-                  Flexible(
-                    child: orders.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(40.0),
-                            child: Center(
-                              child: Text('No hay órdenes disponibles.'),
-                            ),
-                          )
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            itemCount: orders.length,
-                            itemBuilder: (ctx, i) {
-                              final o = orders[i];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8.0),
-                                child: _buildModernOrderCard(o),
-                              );
-                            },
-                          ),
-                  ),
-                  const Divider(height: 1),
-                  // Footer
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: TextButton(
-                      onPressed: () => Navigator.of(dctx).pop(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleAtMost(20),
-                      ),
-                      child: const Text(
-                        'Cerrar',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildModernOrderCard(AgentOrder o) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final statusColor = _estadoColor(o.estado);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => OrderDetailScreen(orderId: o.idnbr),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _formatOrderNbr(o.orderNbr),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${o.customer} · ${_fmtDate(o.orderDate ?? o.createdAt)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: statusColor.withOpacity(0.3)),
-                ),
-                child: Text(
-                  _estadoLabel(o.estado),
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.4),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // RoundedRectangleAtMost helper for consistent UI
   RoundedRectangleBorder RoundedRectangleAtMost(double radius) => 
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius));
-
-  Widget _buildPerformanceTile({
-    required ThemeData theme,
-    required String title,
-    required Color accent,
-    IconData? icon,
-    String? value,
-    String? subtitle,
-    Widget? body,
-    double? width,
-    VoidCallback? onTap,
-  }) {
-    final isDark = theme.brightness == Brightness.dark;
-    final tile = ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          width: width,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: accent.withOpacity(isDark ? 0.22 : 0.18),
-            border: Border.all(
-              color: accent.withOpacity(isDark ? 0.5 : 0.4),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withOpacity(0.25),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 22, color: accent),
-                const SizedBox(height: 8),
-              ],
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (body != null) ...[
-                const SizedBox(height: 10),
-                body,
-              ] else if (value != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  value,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    subtitle,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 26),
-                ],
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (onTap == null) return tile;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: tile,
-    );
-  }
-
-  Widget _buildPerformanceSection(User u, ThemeData theme) {
-    final estado1 = _dashboardOrders.where((o) => o.estado.trim() == '1');
-    final estado2 = _dashboardOrders.where((o) => o.estado.trim() == '2');
-    final estado3 = _dashboardOrders.where((o) => o.estado.trim() == '3');
-    final estado4 = _dashboardOrders.where((o) => o.estado.trim() == '4');
-
-    final e1 = estado1.toList();
-    final e2 = estado2.toList();
-    final e3 = estado3.toList();
-    final e4 = estado4.toList();
-    final activeOrders = _dashboardOrders
-        .where((o) => ['1', '2', '3', '4'].contains(o.estado.trim()))
-        .toList();
-    final aging = _agingBucketsHours(activeOrders);
-    final agingLists = _agingBucketsLists(activeOrders);
-    final slaRate = _slaBreachRateLabel(activeOrders, hours: 48);
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth;
-        final cols = maxWidth >= 1100
-            ? 4
-            : (maxWidth >= 860 ? 3 : (maxWidth >= 600 ? 2 : 1));
-        final spacing = 12.0;
-        final tileWidth =
-            (maxWidth - (cols - 1) * spacing) / cols;
-        final wideWidth = cols > 1 ? (tileWidth * 2 + spacing) : tileWidth;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.speed_rounded, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Performance',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: [
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Pendientes de recibir',
-                  value: '${e1.length}',
-                  subtitle: 'Estado 1 · Validada',
-                  accent: const Color(0xFF4F7BFF),
-                  icon: Icons.inbox_rounded,
-                  width: tileWidth,
-                  onTap: () => _showOrdersPopup(
-                    'Órdenes pendientes de recibir',
-                    e1,
-                  ),
-                ),
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Recibidas pendientes de ejecutar',
-                  value: '${e2.length}',
-                  subtitle: 'Estado 2 · Pendiente',
-                  accent: const Color(0xFFFFB74D),
-                  icon: Icons.pending_actions_rounded,
-                  width: tileWidth,
-                  onTap: () => _showOrdersPopup(
-                    'Órdenes recibidas pendientes de ejecutar',
-                    e2,
-                  ),
-                ),
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Órdenes en ejecución',
-                  value: '${e3.length}',
-                  subtitle: 'Estado 3 · En ejecución',
-                  accent: const Color(0xFF26C6DA),
-                  icon: Icons.play_circle_rounded,
-                  width: tileWidth,
-                  onTap: () => _showOrdersPopup(
-                    'Órdenes en ejecución',
-                    e3,
-                  ),
-                ),
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Órdenes paradas',
-                  value: '${e4.length}',
-                  subtitle: 'Estado 4 · Parada',
-                  accent: const Color(0xFFE57373),
-                  icon: Icons.pause_circle_filled_rounded,
-                  width: tileWidth,
-                  onTap: () => _showOrdersPopup('Órdenes paradas', e4),
-                ),
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Tiempo promedio a finalización (últimas 20 Ordenes)',
-                  value: _avgTimeToEstado4Label(),
-                  subtitle: 'Desde creación a finalización',
-                  accent: const Color(0xFF7E57C2),
-                  icon: Icons.timer_rounded,
-                  width: tileWidth,
-                  onTap: () {
-                    final recent = _getRecentCompletedOrders();
-                    _showOrdersPopup('Últimas 20 órdenes finalizadas', recent);
-                  },
-                ),
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Antiguedad de ordenes pendientes',
-                  accent: const Color(0xFF26A69A),
-                  icon: Icons.stacked_bar_chart_rounded,
-                  width: wideWidth,
-                  body: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _buildAgingColumn(
-                              theme,
-                              '0-24h',
-                              agingLists['0-24h']!,
-                              const Color(0xFF4CAF50),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildAgingColumn(
-                              theme,
-                              '1-3d',
-                              agingLists['1-3d']!,
-                              const Color(0xFFFFD54F),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildAgingColumn(
-                              theme,
-                              '4-7d',
-                              agingLists['4-7d']!,
-                              const Color(0xFFFFA726),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildAgingColumn(
-                              theme,
-                              '>7d',
-                              agingLists['>7d']!,
-                              const Color(0xFFEF5350),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
-                ),
-                _buildPerformanceTile(
-                  theme: theme,
-                  title: 'Órdenes con antigüedad >48h',
-                  value: slaRate,
-                  accent: const Color(0xFFF06292),
-                  icon: Icons.warning_amber_rounded,
-                  width: tileWidth,
-                  onTap: () {
-                    final breached = _getSlaBreachOrders(activeOrders, hours: 48);
-                    _showOrdersPopup('Órdenes con antigüedad >48h', breached);
-                  },
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   List<AgentOrder> get _filteredDashboardOrders {
     var list = _dashboardOrders;
@@ -1080,15 +256,16 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
     }
 
-    final query = _ordersSearchController.text.trim().toLowerCase();
+    final query = _ordersSearchNotifier.value.trim().toLowerCase();
     if (query.isNotEmpty) {
       final cleanQuery = query.replaceAll('-', '');
       list = list.where((o) {
-        final cleanOrderNbr = o.orderNbr.toLowerCase().replaceAll('-', '');
-        final nbrMatch = cleanOrderNbr.contains(cleanQuery);
-        return nbrMatch ||
-            o.customer.toLowerCase().contains(query) ||
-            (o.sourcePrimaryDesc ?? '').toLowerCase().contains(query);
+        // PERFORMANCE: Using pre-calculated searchable strings
+        final nbrMatch = o.searchableOrderNbr.contains(cleanQuery);
+        final customerMatch = o.searchableCustomer.contains(query);
+        final descMatch = o.searchableDesc.contains(query);
+
+        return nbrMatch || customerMatch || descMatch;
       }).toList();
     }
 
@@ -1159,7 +336,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
-                onChanged: (_) => setState(() {}),
+                onChanged: (val) => _ordersSearchNotifier.value = val,
               ),
             ),
             if (isMobile)
@@ -1189,7 +366,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       value: null,
                       child: Text('Todos los estados'),
                     ),
-                    ...estados.map((e) {
+                    ...estados.map<DropdownMenuItem<String>>((e) {
                       String label = e;
                       if (e.contains('1'))
                         label = 'Validada';
@@ -1203,7 +380,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         label = 'Finalizada';
                       else if (e.contains('6'))
                         label = 'Facturada';
-                      return DropdownMenuItem(
+                      return DropdownMenuItem<String>(
                         value: e,
                         child: Text(label.isEmpty ? 'Sin Estado' : label),
                       );
@@ -1283,25 +460,25 @@ class _DashboardScreenState extends State<DashboardScreen>
             );
           }
 
-          final filteredOrders = _filteredDashboardOrders;
-
           return Column(
             children: [
               _buildOrdersSearchBar(theme),
               const SizedBox(height: 16),
-              if (filteredOrders.isEmpty)
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      'No se encontraron órdenes.',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ),
-                )
-              else
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: filteredOrders.length,
+              Expanded(
+                child: ValueListenableBuilder<String>(
+                  valueListenable: _ordersSearchNotifier,
+                  builder: (context, query, _) {
+                    final filteredOrders = _filteredDashboardOrders;
+                    if (filteredOrders.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No se encontraron órdenes.',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: filteredOrders.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (ctx, i) {
                       final o = filteredOrders[i];
@@ -1407,8 +584,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                       );
                     },
-                  ),
+                  );
+                },
                 ),
+              ),
             ],
           );
         },
@@ -1729,9 +908,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isVeryNarrowLayout = constraints.maxWidth < 420;
-            return Wrap(
-              direction: Axis.horizontal,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            return Flex(
+              direction: isVeryNarrowLayout ? Axis.vertical : Axis.horizontal,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1752,13 +931,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                     size: 28,
                   ),
                 ),
-                SizedBox(width: isVeryNarrowLayout ? 12 : 20),
                 SizedBox(
-                  width: isVeryNarrowLayout
-                      ? (constraints.maxWidth - 60)
-                      : (constraints.maxWidth - 300) / 2,
+                  width: isVeryNarrowLayout ? 0 : 20,
+                  height: isVeryNarrowLayout ? 12 : 0,
+                ),
+                Expanded(
+                  flex: isVeryNarrowLayout ? 0 : 1,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: isVeryNarrowLayout
+                        ? CrossAxisAlignment.center
+                        : CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Asignación Actual',
@@ -1777,21 +959,22 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                 ),
-                if (isVeryNarrowLayout)
-                  const SizedBox(height: 12, width: double.infinity),
-                if (!isVeryNarrowLayout)
+                if (!isVeryNarrowLayout) ...[
+                  const SizedBox(width: 20),
                   Container(
                     height: 50,
                     width: 1,
                     color: theme.dividerColor.withOpacity(0.1),
                   ),
-                if (!isVeryNarrowLayout) const SizedBox(width: 20),
-                SizedBox(
-                  width: isVeryNarrowLayout
-                      ? (constraints.maxWidth - 20)
-                      : (constraints.maxWidth - 300) / 2,
+                  const SizedBox(width: 20),
+                ],
+                if (isVeryNarrowLayout) const SizedBox(height: 16),
+                Expanded(
+                  flex: isVeryNarrowLayout ? 0 : 1,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: isVeryNarrowLayout
+                        ? CrossAxisAlignment.center
+                        : CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Rendimiento',
@@ -1802,6 +985,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                       const SizedBox(height: 4),
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             '$perf%',
@@ -1810,21 +994,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                               color: perf >= 90
                                   ? Colors.greenAccent
                                   : (perf >= 70
-                                        ? Colors.orangeAccent
-                                        : Colors.redAccent),
+                                      ? Colors.orangeAccent
+                                      : Colors.redAccent),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Icon(
                             perf >= 0
                                 ? Icons.trending_up_rounded
-                                : Icons
-                                      .trending_down_rounded, // Placeholder logic
+                                : Icons.trending_down_rounded,
                             color: perf >= 90
                                 ? Colors.greenAccent
                                 : (perf >= 70
-                                      ? Colors.orangeAccent
-                                      : Colors.redAccent),
+                                    ? Colors.orangeAccent
+                                    : Colors.redAccent),
                             size: 20,
                           ),
                         ],
@@ -1931,31 +1114,53 @@ class _DashboardScreenState extends State<DashboardScreen>
       children: [
         Row(
           children: [
-            Text(
-              '${_greeting()}, ',
-              style:
-                  (isOperario
-                          ? theme.textTheme.headlineSmall
-                          : (isVeryNarrow
-                                ? theme.textTheme.titleMedium
-                                : theme.textTheme.headlineSmall))
-                      ?.copyWith(
-                        fontWeight: FontWeight.w400,
-                        color: theme.textTheme.bodyMedium?.color?.withOpacity(
-                          0.8,
-                        ),
-                      ),
+            Expanded(
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${_greeting()}, ',
+                    style:
+                        (isOperario
+                                ? theme.textTheme.headlineSmall
+                                : (isVeryNarrow
+                                      ? theme.textTheme.titleMedium
+                                      : theme.textTheme.headlineSmall))
+                            ?.copyWith(
+                              fontWeight: FontWeight.w400,
+                              color: theme.textTheme.bodyMedium?.color?.withOpacity(
+                                0.8,
+                              ),
+                            ),
+                  ),
+                  Text(
+                    _displayName(u),
+                    style:
+                        (isOperario
+                                ? theme.textTheme.headlineSmall
+                                : (isVeryNarrow
+                                      ? theme.textTheme.titleMedium
+                                      : theme.textTheme.headlineSmall))
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
             ),
-            Text(
-              _displayName(u),
-              style:
-                  (isOperario
-                          ? theme.textTheme.headlineSmall
-                          : (isVeryNarrow
-                                ? theme.textTheme.titleMedium
-                                : theme.textTheme.headlineSmall))
-                      ?.copyWith(fontWeight: FontWeight.w900),
-            ),
+            if (MediaQuery.of(context).size.width < 900)
+              IconButton(
+                onPressed: () => _handleLogout(context),
+                icon: const Icon(Icons.logout_rounded, size: 22),
+                tooltip: 'Cerrar sesión',
+                style: IconButton.styleFrom(
+                  backgroundColor: isDark
+                      ? Colors.white.withOpacity(0.08)
+                      : Colors.black.withOpacity(0.05),
+                  foregroundColor: isDark ? Colors.white70 : Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 20),
@@ -2096,7 +1301,14 @@ class _DashboardScreenState extends State<DashboardScreen>
         return _buildAmazonPage(theme, colorScheme);
 
       case DashboardTab.performance:
-        return _buildPerformancePage(theme, u);
+        return PerformanceTab(
+          orders: _dashboardOrders,
+          isLoading: _ordersLoading,
+          error: _ordersError,
+          currentUser: u,
+          onRefresh: () => _loadDashboardOrders(),
+          onExport: (start, end) => _exportData(start, end),
+        );
 
       case DashboardTab.kitDigital:
         return DashboardSurface(
@@ -2113,292 +1325,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Widget _buildPerformancePage(ThemeData theme, User u) {
-    return DashboardSurface(
-      title: 'Performance',
-      subtitle: 'Métricas operativas y tiempos de ejecución',
-      headerRight: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.tonalIcon(
-            onPressed: () => _showExportDialog(theme),
-            icon: const Icon(Icons.download_rounded, size: 20),
-            label: const Text(
-              'Exportar Ordenes',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Actualizar',
-            onPressed: () => _loadDashboardOrders(),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      child: Builder(
-        builder: (ctx) {
-          if (_ordersLoading && _dashboardOrders.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (_ordersError != null && _dashboardOrders.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline_rounded, size: 34),
-                  const SizedBox(height: 10),
-                  Text(
-                    'No se pudieron cargar las órdenes',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _ordersError!,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: () => _loadDashboardOrders(),
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Reintentar'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (_dashboardOrders.isEmpty) {
-            return const Center(
-              child: Text('No hay órdenes en estados 1, 2, 3 o 4'),
-            );
-          }
-
-          if (!_isAdminOrChief(u)) {
-            return const Center(child: Text('Sin permisos para Performance'));
-          }
-
-          return SingleChildScrollView(
-            child: _buildPerformanceSection(u, theme),
-          );
-        },
-      ),
-    );
-  }
 
   void _navigateToRoute(String route) {
     Navigator.of(context, rootNavigator: true).pushNamed(route);
   }
 
-  Future<void> _showExportDialog(ThemeData theme) async {
-    DateTimeRange? selectedRange;
-    DateTime? selectedMonth = DateTime.now();
-    bool isMonthMode = true;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final isDark = theme.brightness == Brightness.dark;
-          return BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: AlertDialog(
-              backgroundColor: theme.colorScheme.surface.withOpacity(0.85),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-                side: BorderSide(
-                  color: theme.colorScheme.primary.withOpacity(0.2),
-                ),
-              ),
-              title: Row(
-                children: [
-                  Icon(Icons.download_rounded, color: theme.colorScheme.primary),
-                  const SizedBox(width: 12),
-                  const Text('Exportar Datos'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(
-                        value: true,
-                        label: Text('Por Mes'),
-                        icon: Icon(Icons.calendar_month_rounded),
-                      ),
-                      ButtonSegment(
-                        value: false,
-                        label: Text('Rango Personalizado'),
-                        icon: Icon(Icons.date_range_rounded),
-                      ),
-                    ],
-                    selected: {isMonthMode},
-                    onSelectionChanged: (val) {
-                      setDialogState(() => isMonthMode = val.first);
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  if (isMonthMode)
-                    ListTile(
-                      title: const Text('Mes seleccionado'),
-                      subtitle: Text(
-                        DateFormat('MMMM yyyy', 'es_ES').format(selectedMonth!),
-                      ),
-                      trailing: const Icon(Icons.edit_calendar_rounded),
-                      onTap: () async {
-                        final now = DateTime.now();
-                        // Show a simplified month picker instead of a full calendar
-                        final month = await showDialog<DateTime>(
-                          context: context,
-                          builder: (ctx) => BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                            child: AlertDialog(
-                              title: const Text('Seleccionar Mes'),
-                              content: SizedBox(
-                                width: 300,
-                                height: 400,
-                                child: ListView.builder(
-                                  itemCount: 36, // Last 3 years
-                                  itemBuilder: (context, index) {
-                                    final d = DateTime(now.year, now.month - index, 1);
-                                    final isSelected = selectedMonth?.month == d.month && selectedMonth?.year == d.year;
-                                    return ListTile(
-                                      title: Text(
-                                        DateFormat('MMMM yyyy', 'es_ES').format(d),
-                                        style: TextStyle(
-                                          fontWeight: isSelected ? FontWeight.bold : null,
-                                          color: isSelected ? theme.colorScheme.primary : null,
-                                        ),
-                                      ),
-                                      selected: isSelected,
-                                      onTap: () => Navigator.pop(ctx, d),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                        if (month != null) {
-                          setDialogState(() => selectedMonth = month);
-                        }
-                      },
-                    )
-                  else
-                    ListTile(
-                      title: const Text('Rango de fechas'),
-                      subtitle: Text(
-                        selectedRange == null
-                            ? 'No seleccionado'
-                            : '${DateFormat('dd/MM/yyyy').format(selectedRange!.start)} - ${DateFormat('dd/MM/yyyy').format(selectedRange!.end)}',
-                      ),
-                      trailing: const Icon(Icons.date_range_rounded),
-                      onTap: () async {
-                        // Custom dialog to pick two dates without full-screen takeover
-                        await showDialog(
-                          context: context,
-                          builder: (ctx) => BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                            child: StatefulBuilder(
-                              builder: (context, setInternalState) {
-                                return AlertDialog(
-                                  title: const Text('Seleccionar Rango'),
-                                  content: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ListTile(
-                                        title: const Text('Desde'),
-                                        subtitle: Text(selectedRange?.start == null ? 'Seleccionar' : DateFormat('dd/MM/yyyy').format(selectedRange!.start)),
-                                        leading: const Icon(Icons.calendar_today_rounded),
-                                        onTap: () async {
-                                          final d = await showDatePicker(
-                                            context: context,
-                                            initialDate: selectedRange?.start ?? DateTime.now(),
-                                            firstDate: DateTime(2020),
-                                            lastDate: DateTime.now(),
-                                          );
-                                          if (d != null) {
-                                            setInternalState(() {
-                                              selectedRange = DateTimeRange(start: d, end: selectedRange?.end ?? d.add(const Duration(days: 1)));
-                                              setDialogState(() {});
-                                            });
-                                          }
-                                        },
-                                      ),
-                                      ListTile(
-                                        title: const Text('Hasta'),
-                                        subtitle: Text(selectedRange?.end == null ? 'Seleccionar' : DateFormat('dd/MM/yyyy').format(selectedRange!.end)),
-                                        leading: const Icon(Icons.event_available_rounded),
-                                        onTap: () async {
-                                          final d = await showDatePicker(
-                                            context: context,
-                                            initialDate: selectedRange?.end ?? DateTime.now(),
-                                            firstDate: selectedRange?.start ?? DateTime(2020),
-                                            lastDate: DateTime.now(),
-                                          );
-                                          if (d != null) {
-                                            setInternalState(() {
-                                              selectedRange = DateTimeRange(start: selectedRange?.start ?? d.subtract(const Duration(days: 1)), end: d);
-                                              setDialogState(() {});
-                                            });
-                                          }
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                  actions: [
-                                    FilledButton(
-                                      onPressed: () => Navigator.pop(ctx),
-                                      child: const Text('Aceptar'),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    if (isMonthMode) {
-                      final start = DateTime(selectedMonth!.year, selectedMonth!.month, 1);
-                      final end = DateTime(selectedMonth!.year, selectedMonth!.month + 1, 0, 23, 59, 59);
-                      _exportData(start, end);
-                    } else if (selectedRange != null) {
-                      _exportData(selectedRange!.start, selectedRange!.end);
-                    }
-                  },
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('Exportar Excel'),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   Future<void> _exportData(DateTime start, DateTime end) async {
     setState(() => _ordersLoading = true);
@@ -2828,6 +1759,38 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Future<void> _handleLogout(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final res = await api.logout();
+      navigator.pop(); // Close loading dialog
+      if (res.ok) {
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Logout failed: ${res.error ?? res.statusCode}'),
+          ),
+        );
+      }
+    } catch (e) {
+      navigator.pop(); // Close loading dialog
+      messenger.showSnackBar(SnackBar(content: Text('Logout error: $e')));
+    }
+  }
+
   @override
   void dispose() {
     _ctrl.dispose();
@@ -2935,71 +1898,65 @@ class DashboardSurface extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.black.withOpacity(0.22)
-                : Colors.white.withOpacity(0.16),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.black.withOpacity(0.35)
+            : Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (title != null || headerRight != null) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    if (title != null)
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title!,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            if (subtitle != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                subtitle!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.65),
-                                ),
-                              ),
-                            ],
-                          ],
+        ],
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null || headerRight != null) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (title != null)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title!,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      )
-                    else
-                      const Spacer(),
-                    if (headerRight != null) headerRight!,
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Divider(color: Colors.white.withOpacity(0.08), height: 1),
-                const SizedBox(height: 14),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface
+                                  .withOpacity(0.65),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                else
+                  const Spacer(),
+                if (headerRight != null) headerRight!,
               ],
-              Expanded(child: child),
-            ],
-          ),
-        ),
+            ),
+            const SizedBox(height: 14),
+            Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            const SizedBox(height: 14),
+          ],
+          Expanded(child: child),
+        ],
       ),
     );
   }

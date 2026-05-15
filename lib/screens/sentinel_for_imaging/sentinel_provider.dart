@@ -668,7 +668,11 @@ class SentinelProvider extends ChangeNotifier {
         if (s.switchId == scopeId) {
           // Update ALL ports for this switch
           final newPorts = s.ports.map((p) {
-            return p.copyWith(imageEnabled: enabled, selectedImage: image);
+            return p.copyWith(
+              imageEnabled: enabled,
+              selectedImage: image,
+              orderId: () => enabled ? orderId : null,
+            );
           }).toList();
 
           final newSwitch = SentinelSwitch(
@@ -698,6 +702,7 @@ class SentinelProvider extends ChangeNotifier {
           final newPort = oldPort.copyWith(
             imageEnabled: enabled,
             selectedImage: image,
+            orderId: () => enabled ? orderId : null,
           );
 
           List<SentinelPort> newPorts = List.from(s.ports);

@@ -1354,6 +1354,19 @@ class _SeatState extends State<_Seat> {
                   ),
                 ),
               ),
+              if (port.orderId != null)
+                Positioned(
+                  bottom: 2,
+                  left: 2,
+                  child: Text(
+                    '#${port.orderId}',
+                    style: TextStyle(
+                      fontSize: 8,
+                      color: textColor.withOpacity(0.8),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               if (liveDevice != null)
                 Positioned(
                   top: 2,
@@ -1850,6 +1863,8 @@ class _PortContextPopupState extends State<_PortContextPopup> {
             // Detailed Info
             _buildInfoRow('Etiqueta', widget.port.label),
             _buildInfoRow('Rol', widget.port.role.toUpperCase()),
+            if (widget.port.orderId != null)
+              _buildInfoRow('Orden ID', widget.port.orderId.toString()),
             if (widget.port.connectedDevice != null) ...[
               _buildInfoRow(
                 'Dispositivo',

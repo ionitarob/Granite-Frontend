@@ -52,6 +52,11 @@ class AgentOrder {
   final String? assignedToName;
   final int? durationMs; // Real duration from backend
 
+  // Performance Optimization: Pre-calculated searchable fields
+  final String searchableOrderNbr;
+  final String searchableCustomer;
+  final String searchableDesc;
+
   String get subfamiliesDisplay => subfamilies.join(', ');
 
   AgentOrder({
@@ -95,6 +100,9 @@ class AgentOrder {
     this.assignedTo,
     this.assignedToName,
     this.durationMs,
+    required this.searchableOrderNbr,
+    required this.searchableCustomer,
+    required this.searchableDesc,
   });
 
   factory AgentOrder.fromJson(Map<String, dynamic> json) {
@@ -128,10 +136,14 @@ class AgentOrder {
       proyectoId = int.tryParse(explicitProyectoId) ?? proyectoId;
     }
 
+    final oNbr = json['order_nbr'] as String? ?? 'UNKNOWN';
+    final cust = json['customer'] as String? ?? 'Unknown Customer';
+    final desc = json['source_primary_desc'] as String? ?? '';
+
     return AgentOrder(
       idnbr: json['idnbr'] as int? ?? 0,
-      orderNbr: json['order_nbr'] as String? ?? 'UNKNOWN',
-      customer: json['customer'] as String? ?? 'Unknown Customer',
+      orderNbr: oNbr,
+      customer: cust,
       orderDate: json['order_date'] != null
           ? DateTime.tryParse(json['order_date'])
           : null,
@@ -161,8 +173,7 @@ class AgentOrder {
       estimatedMarginPct: asDouble(json['estimated_margin_pct']),
       sourceCommentsExcerpt: json['source_comments_excerpt'],
       sourcePrimarySku: json['source_primary_sku'],
-      sourcePrimaryDesc: json['source_primary_desc'],
-
+      sourcePrimaryDesc: desc,
       planTotal: json['plan_total'] as int? ?? 0,
       planDone: json['plan_done'] as int? ?? 0,
       planOpen: json['plan_open'] as int? ?? 0,
@@ -192,6 +203,9 @@ class AgentOrder {
       assignedTo: json['assigned_to'] as String?,
       assignedToName: json['assigned_to_name'] as String?,
       durationMs: json['duration_ms'] as int?,
+      searchableOrderNbr: oNbr.toLowerCase().replaceAll('-', ''),
+      searchableCustomer: cust.toLowerCase(),
+      searchableDesc: desc.toLowerCase(),
     );
   }
 }
