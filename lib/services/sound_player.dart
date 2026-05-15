@@ -13,6 +13,7 @@ class SoundPlayer {
   static final AudioPlayer _boxCompletePlayer = AudioPlayer();
   static final AudioPlayer _finishOrderPlayer = AudioPlayer();
   static bool _initialized = false;
+  static bool _initializing = false;
 
   static const String _okPath = 'sounds/ok.mp3';
   static const String _errPath = 'sounds/error.mp3';
@@ -21,26 +22,32 @@ class SoundPlayer {
 
   /// Preload all players to eliminate runtime loading latency
   static Future<void> _ensureInitialized() async {
-    if (_initialized) return;
+    if (_initialized || _initializing) return;
+    _initializing = true;
     try {
       for (final p in _successPool) {
         await p.setPlayerMode(PlayerMode.lowLatency);
+        await p.setVolume(1.0);
         await p.setSource(AssetSource(_okPath));
       }
       await _errorPlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _errorPlayer.setVolume(1.0);
       await _errorPlayer.setSource(AssetSource(_errPath));
       
       await _boxCompletePlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _boxCompletePlayer.setVolume(1.0);
       await _boxCompletePlayer.setSource(AssetSource(_boxPath));
       
       await _finishOrderPlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _finishOrderPlayer.setVolume(1.0);
       await _finishOrderPlayer.setSource(AssetSource(_finishPath));
       
       _initialized = true;
-      developer.log('SoundPlayer: Preloaded all sounds successfully.', name: 'SoundPlayer');
+      developer.log('SoundPlayer: Preloaded all sounds and set volume successfully.', name: 'SoundPlayer');
     } catch (e) {
       developer.log('SoundPlayer: Preload failed: $e. Falling back to dynamic loading.', name: 'SoundPlayer');
-      // On failure, we'll try dynamic loading in the play methods
+    } finally {
+      _initializing = false;
     }
   }
 
@@ -52,9 +59,8 @@ class SoundPlayer {
       // Move index for next call
       _successIndex = (_successIndex + 1) % _successPool.length;
       
-      // Stop and Seek to start (crucial for rapid re-triggering)
-      await player.stop();
-      await player.resume(); 
+      // Use play() instead of resume() to ensure it starts correctly every time
+      await player.play(AssetSource(_okPath), mode: PlayerMode.lowLatency);
     } catch (e) {
       // Last resort fallback
       try { await AudioPlayer().play(AssetSource(_okPath), mode: PlayerMode.lowLatency); } catch (_) {}
@@ -64,8 +70,7 @@ class SoundPlayer {
   static Future<void> playError() async {
     try {
       await _ensureInitialized();
-      await _errorPlayer.stop();
-      await _errorPlayer.resume();
+      await _errorPlayer.play(AssetSource(_errPath), mode: PlayerMode.lowLatency);
     } catch (_) {
       try { await AudioPlayer().play(AssetSource(_errPath), mode: PlayerMode.lowLatency); } catch (_) {}
     }
@@ -78,8 +83,7 @@ class SoundPlayer {
   static Future<void> playBoxComplete() async {
     try {
       await _ensureInitialized();
-      await _boxCompletePlayer.stop();
-      await _boxCompletePlayer.resume();
+      await _boxCompletePlayer.play(AssetSource(_boxPath), mode: PlayerMode.lowLatency);
     } catch (e) {
       try { 
         await AudioPlayer().play(AssetSource(_boxPath), mode: PlayerMode.lowLatency); 
@@ -92,8 +96,7 @@ class SoundPlayer {
   static Future<void> playFinishOrder() async {
     try {
       await _ensureInitialized();
-      await _finishOrderPlayer.stop();
-      await _finishOrderPlayer.resume();
+      await _finishOrderPlayer.play(AssetSource(_finishPath), mode: PlayerMode.lowLatency);
     } catch (_) {
       try { await AudioPlayer().play(AssetSource(_finishPath), mode: PlayerMode.lowLatency); } catch (_) {}
     }

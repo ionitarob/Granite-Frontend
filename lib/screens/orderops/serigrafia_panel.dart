@@ -691,7 +691,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             _scanController.clear();
             await _updateCell(field, scanValue);
             // Request focus back for the next field if any
-            _scanFocusNode.requestFocus();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _scanFocusNode.requestFocus();
+            });
           }
         },
       ),
@@ -2080,7 +2082,9 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             await _checkCompletionAndSubmit();
             
             // Ensure focus is requested back for the next field or row
-            _scanFocusNode.requestFocus();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _scanFocusNode.requestFocus();
+            });
           },
         ),
       ],

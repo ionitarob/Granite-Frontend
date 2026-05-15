@@ -72,6 +72,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   final TextEditingController _obsController = TextEditingController();
   final FocusNode _obsFocusNode = FocusNode();
+  
+  final ScrollController _logHorizontalController = ScrollController();
+  final ScrollController _logVerticalController = ScrollController();
+
+  @override
+  void dispose() {
+    _obsController.dispose();
+    _obsFocusNode.dispose();
+    _logHorizontalController.dispose();
+    _logVerticalController.dispose();
+    super.dispose();
+  }
 
   String _normalizedRole() {
     final raw = (ApiService.instance?.currentUser?.role ?? '')
@@ -111,12 +123,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _obsController.dispose();
-    _obsFocusNode.dispose();
-    super.dispose();
-  }
 
   Future<void> _exportActa(String orderNbr) async {
     setState(() => _isExporting = true);
@@ -638,7 +644,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     const SizedBox(height: 24),
                     _buildServicesCard(theme),
                     const SizedBox(height: 24),
-                    _buildLogCard(theme),
+                    _buildArchivosCard(theme),
                   ],
                 ),
               ),
@@ -653,7 +659,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     const SizedBox(height: 24),
                     _buildQualityQualityCard(theme),
                     const SizedBox(height: 24),
-                    _buildArchivosCard(theme),
+                    _buildLogCard(theme),
                   ],
                 ),
               ),
@@ -3609,27 +3615,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       height: null,
       child: imageFiles.isEmpty
           ? _buildEmptyState(theme, 'No hay fotos registradas.')
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final cardWidth = constraints.maxWidth >= 1200
-                    ? 220.0
-                    : constraints.maxWidth >= 700
-                    ? 200.0
-                    : constraints.maxWidth;
+          : Container(
+              constraints: const BoxConstraints(maxHeight: 440),
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cardWidth =
+                          constraints.maxWidth >= 1200
+                              ? 220.0
+                              : constraints.maxWidth >= 700
+                              ? 200.0
+                              : constraints.maxWidth;
 
-                return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: imageFiles
-                      .map(
-                        (file) => SizedBox(
-                          width: cardWidth,
-                          child: _buildArchivoThumbCard(file),
-                        ),
-                      )
-                      .toList(),
-                );
-              },
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children:
+                            imageFiles
+                                .map(
+                                  (file) => SizedBox(
+                                    width: cardWidth,
+                                    child: _buildArchivoThumbCard(file),
+                                  ),
+                                )
+                                .toList(),
+                      );
+                    },
+                  ),
+                ),
+              ),
             ),
     );
   }
@@ -3764,27 +3781,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           if (archivoFiles.isEmpty)
             _buildEmptyState(theme, 'No hay archivos adjuntos.')
           else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final cardWidth = constraints.maxWidth >= 1200
-                    ? 220.0
-                    : constraints.maxWidth >= 700
-                    ? 200.0
-                    : constraints.maxWidth;
+            Container(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cardWidth =
+                          constraints.maxWidth >= 1200
+                              ? 220.0
+                              : constraints.maxWidth >= 700
+                              ? 200.0
+                              : constraints.maxWidth;
 
-                return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: archivoFiles
-                      .map(
-                        (file) => SizedBox(
-                          width: cardWidth,
-                          child: _buildArchivoThumbCard(file),
-                        ),
-                      )
-                      .toList(),
-                );
-              },
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children:
+                            archivoFiles
+                                .map(
+                                  (file) => SizedBox(
+                                    width: cardWidth,
+                                    child: _buildArchivoThumbCard(file),
+                                  ),
+                                )
+                                .toList(),
+                      );
+                    },
+                  ),
+                ),
+              ),
             ),
         ],
       ),
@@ -4844,61 +4872,47 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   padding: EdgeInsets.all(32.0),
                   child: Center(child: Text('Sin registros de LOG.')),
                 )
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final viewportWidth = constraints.maxWidth;
-                final contentWidth = viewportWidth > _tableOuterWidth
-                    ? viewportWidth
-                    : _tableOuterWidth;
+          : Container(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final viewportWidth = constraints.maxWidth;
+                  final contentWidth = viewportWidth > _tableOuterWidth
+                      ? viewportWidth
+                      : _tableOuterWidth;
 
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: contentWidth,
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: SizedBox(
-                        width: _tableOuterWidth,
-                        child: Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: const BoxDecoration(
-                                color: Colors.black38,
-                                border: Border(
-                                  left: BorderSide(
-                                    color: Colors.transparent,
-                                    width: 4,
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  _headerCell('Fecha', _logDateColumnWidth),
-                                  _headerCell('Usuario', _logActorColumnWidth),
-                                  _headerCell('Acción', _logActionColumnWidth),
-                                  _headerCell(
-                                    'Mensaje',
-                                    _logMessageColumnWidth,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: SingleChildScrollView(
+                  // Horizontal Scrollbar (Outer)
+                  return Scrollbar(
+                    controller: _logHorizontalController,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _logHorizontalController,
+                      primary: false,
+                      scrollDirection: Axis.horizontal,
+                      child: Scrollbar(
+                        // Vertical Scrollbar (Inner)
+                        controller: _logVerticalController,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _logVerticalController,
+                          primary: false,
+                          scrollDirection: Axis.vertical,
+                          child: SizedBox(
+                            width: contentWidth,
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: SizedBox(
+                                width: _tableOuterWidth,
                                 child: Column(
-                                  children: combined.map((entry) {
-                                    final dateStr = entry.date != null
-                                        ? DateFormat(
-                                            'yyyy-MM-dd HH:mm',
-                                          ).format(entry.date!)
-                                        : '';
-                                    return Container(
-                                      decoration: BoxDecoration(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black38,
                                         border: Border(
-                                          bottom: const BorderSide(
-                                            color: Colors.white10,
-                                          ),
                                           left: BorderSide(
                                             color: Colors.transparent,
                                             width: 4,
@@ -4907,38 +4921,81 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       ),
                                       child: Row(
                                         children: [
-                                          _dataCell(
-                                            dateStr,
+                                          _headerCell(
+                                            'Fecha',
                                             _logDateColumnWidth,
                                           ),
-                                          _dataCell(
-                                            entry.actor,
+                                          _headerCell(
+                                            'Usuario',
                                             _logActorColumnWidth,
                                           ),
-                                          _dataCell(
-                                            entry.action,
+                                          _headerCell(
+                                            'Acción',
                                             _logActionColumnWidth,
-                                            isBold: true,
-                                            color: entry.color,
                                           ),
-                                          _dataCell(
-                                            entry.message,
+                                          _headerCell(
+                                            'Mensaje',
                                             _logMessageColumnWidth,
                                           ),
                                         ],
                                       ),
-                                    );
-                                  }).toList(),
+                                    ),
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: combined.map((entry) {
+                                        final dateStr = entry.date != null
+                                            ? DateFormat(
+                                                'yyyy-MM-dd HH:mm',
+                                              ).format(entry.date!)
+                                            : '';
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: const BorderSide(
+                                                color: Colors.white10,
+                                              ),
+                                              left: BorderSide(
+                                                color: Colors.transparent,
+                                                width: 4,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              _dataCell(
+                                                dateStr,
+                                                _logDateColumnWidth,
+                                              ),
+                                              _dataCell(
+                                                entry.actor,
+                                                _logActorColumnWidth,
+                                              ),
+                                              _dataCell(
+                                                entry.action,
+                                                _logActionColumnWidth,
+                                                isBold: true,
+                                                color: entry.color,
+                                              ),
+                                              _dataCell(
+                                                entry.message,
+                                                _logMessageColumnWidth,
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
     );
   }
