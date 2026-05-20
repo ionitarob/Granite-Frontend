@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
@@ -111,109 +112,46 @@ class _ResumenStockState extends State<ResumenStock>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.stockReal == null ||
-        widget.idimActivoVals == null ||
-        widget.oystaActivoVals == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        // ancho real disponible
         final availW = constraints.maxWidth;
-        // definimos ancho mínimo para la tabla (6 cols x 80px)
-        const minTableW = 6 * 80.0;
-        // girar si no cabe
-        final rotate = availW < minTableW;
-
-        // construimos la tabla con scroll horizontal y ancho mínimo
+        
+        // build the table as a horizontal scrollable list
         Widget table = SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minWidth: rotate ? minTableW : availW * 0.95,
+              minWidth: math.max(600.0, availW * 0.95),
             ),
             child: Table(
-              border: TableBorder.all(color: Colors.white30),
+              border: TableBorder.all(color: Colors.white10),
               columnWidths: const {
-                0: FlexColumnWidth(2),
-                1: FlexColumnWidth(),
-                2: FlexColumnWidth(),
-                3: FlexColumnWidth(),
-                4: FlexColumnWidth(),
-                5: FlexColumnWidth(),
+                0: FlexColumnWidth(1.8),
+                1: FlexColumnWidth(1),
+                2: FlexColumnWidth(1),
+                3: FlexColumnWidth(1),
+                4: FlexColumnWidth(1),
+                5: FlexColumnWidth(1),
               },
               children: [
                 TableRow(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.secondary,
-                      ],
-                    ),
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
                   ),
                   children: [
-                    Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        '',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
+                    for (var header in ['', 'SMA', 'SMV', 'Pulseras', 'Botones', 'P.Banks'])
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                        child: Text(
+                          header,
+                          textAlign: header.isEmpty ? TextAlign.start : TextAlign.center,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        'SMA',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        'SMV',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        'Pulseras',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        'Botones',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        'PowerBanks',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 _buildRow("Stock Real", widget.stockReal!, Colors.green),
@@ -224,90 +162,70 @@ class _ResumenStockState extends State<ResumenStock>
           ),
         );
 
-        // si rota, envuelve la tabla entera en RotatedBox
-        if (rotate) {
-          table = RotatedBox(quarterTurns: 1, child: table);
-        }
-
-        // ahora montamos el resto del widget
-        return Stack(
-          children: [
-            // neón por el perímetro
-            AnimatedBuilder(
-              animation: _controller,
-              builder: (_, __) => Align(
-                alignment: _borderAlignment(_controller.value),
-                child: _neonCar(Theme.of(context).colorScheme.secondary),
-              ),
-            ),
-            AnimatedBuilder(
-              animation: _controller,
-              builder: (_, __) => Align(
-                alignment: _borderAlignment(_controller.value + 0.5),
-                child: _neonCar(Theme.of(context).colorScheme.tertiary),
-              ),
-            ),
-
-            // scroll vertical si hace falta
-            SingleChildScrollView(
-              child: Center(
-                child: ClipRRect(
+        return Center(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                width: availW * 0.98,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                    child: Container(
-                      width: rotate ? minTableW + 32 : availW * 0.95,
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surface.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
+                  border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          "Resumen de Stock",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Resumen de Stock",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          table,
-                          const SizedBox(height: 12),
-                          Text(
-                            'IDIM activo: ${widget.idimCodigo}',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.7),
-                            ),
-                          ),
-                          Text(
-                            'OYSTA activo: ${widget.oystaCodigo}',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.7),
-                            ),
-                          ),
-                        ],
-                      ),
+                        const Spacer(),
+                        if (widget.idimCodigo != null)
+                          _buildCodeBadge('IDIM: ${widget.idimCodigo}', Colors.blue),
+                        if (widget.oystaCodigo != null)
+                          const SizedBox(width: 8),
+                        if (widget.oystaCodigo != null)
+                          _buildCodeBadge('OYSTA: ${widget.oystaCodigo}', Colors.red),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    table,
+                  ],
                 ),
               ),
             ),
-          ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildCodeBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
     );
   }
 }

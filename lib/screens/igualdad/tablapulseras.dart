@@ -147,25 +147,60 @@ class _TablaPulserasState extends State<TablaPulseras> {
                     final imei = p['imei'] ?? '';
                     final created = p['created_at'] ?? p['fecha'] ?? '';
                     final id = _parseId(idRaw);
-                    return Card(
-                      child: ListTile(
-                        title: Text('IMEI: $imei'),
-                        subtitle: Text('ID: $idRaw  •  $created'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (widget.onEditar != null)
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: () => widget.onEditar!(id, p),
-                              ),
-                            if (widget.onEliminar != null)
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => widget.onEliminar!(id),
-                              ),
-                          ],
-                        ),
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.03),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'IMEI: $imei',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'ID: $idRaw  •  $created',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.onEditar != null)
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => widget.onEditar!(id, p),
+                                ),
+                              const SizedBox(width: 12),
+                              if (widget.onEliminar != null)
+                                IconButton(
+                                  icon: const Icon(Icons.delete, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => widget.onEliminar!(id),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     );
                   },

@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'sentinel_provider.dart';
 import 'sentinel_models.dart';
+import '../../services/orderops_service.dart';
+import '../../models/agent_models.dart';
 
 import '../../services/api_service.dart';
 import '../../widgets/main_sidebar.dart';
@@ -1414,6 +1416,276 @@ class _SwitchImageDialog extends StatefulWidget {
   State<_SwitchImageDialog> createState() => _SwitchImageDialogState();
 }
 
+Future<void> showSentinelPreview(BuildContext context, SentinelProvider provider, String imageName) async {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => const Center(child: CircularProgressIndicator()),
+  );
+
+  try {
+    final details = await provider.fetchImageDetails(imageName);
+    if (context.mounted) Navigator.pop(context); // pop loading
+
+    if (details == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No details found for image.')));
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (ctx) {
+          final manifest = details['manifest'] as Map<String, dynamic>? ?? {};
+          final partitions = manifest['partitions'] as List<dynamic>? ?? [];
+          final num diskSizeBytes = manifest['disk_size_bytes'] as num? ?? 0;
+          final diskSizeGb = (diskSizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2);
+          final createdAt = manifest['created_at']?.toString() ?? 'Unknown';
+          
+          bool hasWindows = false;
+          bool hasLinux = false;
+          for (var p in partitions) {
+            final pMap = p as Map<String, dynamic>? ?? {};
+            final fs = pMap['fs']?.toString().toLowerCase() ?? '';
+            final role = pMap['role']?.toString().toLowerCase() ?? '';
+            final name = pMap['name']?.toString().toLowerCase() ?? '';
+            final typeGuid = pMap['type_guid']?.toString().toUpperCase() ?? '';
+            
+            // Windows GUIDs & Fallbacks
+            if (typeGuid.contains('EBD0A0A2-B9E5-4433-87C0-68B6B72699C7') ||
+                typeGuid.contains('E3C9E316-0B5C-4DB8-817D-F92DF00215AE') ||
+                typeGuid.contains('DE94BBA4-06D1-4D40-A16A-BFD50179D6AC')) {
+              hasWindows = true;
+            }
+            if (fs == 'ntfs' || role.contains('msft') || role == 'msr' || role.contains('windows') || name.contains('windows') || name.contains('winpe') || name.contains('basic data partition') || name.contains('microsoft reserved')) {
+              hasWindows = true;
+            }
+            
+            // Linux GUIDs & Fallbacks
+            if (typeGuid.contains('4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709') || // root
+                typeGuid.contains('0657FD6D-A4AB-43C4-84E5-0933C84B4F4F') || // swap
+                typeGuid.contains('933AC7E1-2EB4-4F13-B844-0E14E2AEF915') || // home
+                typeGuid.contains('0FC63DAF-8483-4772-8E79-3D69D8477DE4')) { // generic
+              hasLinux = true;
+            }
+            final isLinuxFsOrRole = (fs == 'ext4' || fs == 'ext3' || fs == 'btrfs' || fs == 'swap' || role.contains('linux') || name.contains('linux') || role == 'swap');
+            final isRawPartitionName = (name.startsWith('nvme') || name.startsWith('sda') || name.startsWith('sdb') || name.startsWith('sdc') || name.startsWith('sdd'));
+            
+            final num sizeLba = pMap['size_lba'] as num? ?? 0;
+            final double sizeBytes = sizeLba * 512.0;
+            final isLargeEnough = sizeBytes >= 5.0 * 1024 * 1024 * 1024; // 5 GB
+
+            if (isLinuxFsOrRole || (isRawPartitionName && isLargeEnough)) {
+              hasLinux = true;
+            }
+          }
+
+          String osBadgeText = 'UNKNOWN OS';
+          Color osBadgeColor = Colors.grey;
+          IconData osBadgeIcon = Icons.device_unknown;
+
+          if (hasWindows && hasLinux) {
+            osBadgeText = 'DUAL-BOOT';
+            osBadgeColor = Colors.purpleAccent;
+            osBadgeIcon = Icons.call_split;
+          } else if (hasWindows) {
+            osBadgeText = 'WINDOWS';
+            osBadgeColor = Colors.blueAccent;
+            osBadgeIcon = Icons.desktop_windows;
+          } else if (hasLinux) {
+            osBadgeText = 'LINUX';
+            osBadgeColor = Colors.orangeAccent;
+            osBadgeIcon = Icons.terminal;
+          }
+          
+          return AlertDialog(
+            backgroundColor: SentinelTheme.bgPanel,
+            title: Row(
+              children: [
+                Icon(Icons.info_outline, color: SentinelTheme.primary),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Sentinel Image: $imageName', style: SentinelTheme.header, overflow: TextOverflow.ellipsis)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: osBadgeColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: osBadgeColor, width: 1.5),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(osBadgeIcon, size: 14, color: osBadgeColor),
+                      const SizedBox(width: 6),
+                      Text(osBadgeText, style: TextStyle(color: osBadgeColor, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    ]
+                  )
+                ),
+              ]
+            ),
+            content: SizedBox(
+              width: 800,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Created At: $createdAt', style: SentinelTheme.body),
+                  const SizedBox(height: 16),
+                  Text('Disk Layout:', style: SentinelTheme.subHeader),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 110,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      color: const Color(0xFF1E1E1E), // Darker bg for disk row
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Disk Info Block (Left side)
+                        Container(
+                          width: 120,
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            border: Border(right: BorderSide(color: Colors.white24)),
+                            color: Color(0xFF252525),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.dns, size: 16, color: Colors.white70),
+                                  const SizedBox(width: 6),
+                                  Text('Disk 0', style: SentinelTheme.body.copyWith(fontWeight: FontWeight.bold)),
+                                ]
+                              ),
+                              const SizedBox(height: 4),
+                              const Text('Básico', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                              Text('$diskSizeGb GB', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                              const Text('En línea', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                            ],
+                          ),
+                        ),
+                        // Partitions
+                        Expanded(
+                          child: Builder(
+                            builder: (context) {
+                              num totalDiskLba = 0;
+                              for (var p in partitions) {
+                                final pMap = p as Map<String, dynamic>? ?? {};
+                                totalDiskLba += pMap['size_lba'] as num? ?? 0;
+                              }
+                              if (totalDiskLba <= 0) totalDiskLba = 1;
+
+                              return Row(
+                                children: partitions.map<Widget>((p) {
+                                  final pMap = p as Map<String, dynamic>? ?? {};
+                                  final num sizeLba = pMap['size_lba'] as num? ?? 0;
+                                  final double sizeBytes = sizeLba * 512;
+                                  
+                                  String sizeStr = '';
+                                  if (sizeBytes > 1024 * 1024 * 1024) {
+                                    sizeStr = '${(sizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+                                  } else {
+                                    sizeStr = '${(sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB';
+                                  }
+
+                                  // Calculate flex based on ratio, with a minimum to ensure readability
+                                  final double ratio = (sizeLba / totalDiskLba).clamp(0.0, 1.0);
+                                  final int flex = (15 + (ratio * 85)).round();
+                                  
+                                  final String tooltipMessage = '''Name: ${pMap['name']} ${pMap['dev_path'] != null ? '(${pMap['dev_path']})' : ''}
+Size: $sizeStr
+FS: ${pMap['fs'] ?? 'Unknown'}
+Role: ${pMap['role']}''';
+
+                                  return Expanded(
+                                    flex: flex,
+                                    child: Tooltip(
+                                      message: tooltipMessage,
+                                      waitDuration: const Duration(milliseconds: 300),
+                                      child: Container(
+                                        margin: const EdgeInsets.fromLTRB(4, 4, 0, 4),
+                                        decoration: BoxDecoration(
+                                          color: SentinelTheme.bgPanel,
+                                          border: Border.all(color: Colors.white24),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                          children: [
+                                            Container(
+                                              height: 12,
+                                              color: Colors.blue[800], // Primary partition color
+                                            ),
+                                            Expanded(
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(6.0),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      '${pMap['name']} ${pMap['dev_path'] != null ? '(${pMap['dev_path']})' : ''}',
+                                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.white),
+                                                      overflow: TextOverflow.ellipsis,
+                                                      maxLines: 1,
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      '$sizeStr ${pMap['fs'] ?? ''}',
+                                                      style: const TextStyle(fontSize: 10, color: Colors.white70),
+                                                      overflow: TextOverflow.ellipsis,
+                                                      maxLines: 1,
+                                                    ),
+                                                  const SizedBox(height: 2),
+                                                  Expanded(
+                                                    child: Text(
+                                                      'Correcto (${pMap['role']})',
+                                                      style: const TextStyle(fontSize: 9, color: Colors.white54),
+                                                      overflow: TextOverflow.fade,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    ),
+                                  );
+                                }).toList(),
+                              );
+                            }
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('CERRAR', style: SentinelTheme.body),
+              )
+            ],
+          );
+        }
+      );
+    }
+  } catch (e) {
+    if (context.mounted) Navigator.pop(context); // pop loading
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+}
+
+
 class _SwitchImageDialogState extends State<_SwitchImageDialog> {
   String? _selectedImage;
   bool _enabled = false;
@@ -1518,18 +1790,21 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
             ),
           Opacity(
             opacity: _enabled ? 1.0 : 0.55,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: SentinelTheme.glassDecoration(
-                borderRadius: 8,
-                opacity: 0.05,
-                border: true,
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: SentinelTheme.glassDecoration(
+                      borderRadius: 8,
+                      opacity: 0.05,
+                      border: true,
+                    ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton2<String>(
                   value: _selectedImage,
                   hint: Text(
-                    'Selecc. Imagen (WIM/ESD/Dual-Boot)',
+                    'Selecc. Imagen (WIM/ESD/Dual-Boot/Sentinel)',
                     style: SentinelTheme.body.copyWith(
                       color: SentinelTheme.textDisabled,
                     ),
@@ -1562,6 +1837,8 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                       images.map((img) {
                         final name = img['name']?.toString() ?? '';
                         final isDualBoot = img['type']?.toString() == 'dualboot';
+                        final isSentinel = img['type']?.toString() == 'sentinel' ||
+                            name.toLowerCase().endsWith('.sentinel');
                         return DropdownMenuItem<String>(
                           value: name,
                           child: Row(
@@ -1573,7 +1850,9 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                                   style: SentinelTheme.body.copyWith(
                                     color: isDualBoot
                                         ? Colors.purple[200]
-                                        : Colors.white,
+                                        : (isSentinel
+                                            ? Colors.amber[200]
+                                            : Colors.white),
                                   ),
                                 ),
                               ),
@@ -1586,17 +1865,21 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                                 decoration: BoxDecoration(
                                   color: isDualBoot
                                       ? Colors.purple.withOpacity(0.25)
-                                      : Colors.cyan.withOpacity(0.15),
+                                      : (isSentinel
+                                          ? Colors.amber.withOpacity(0.25)
+                                          : Colors.cyan.withOpacity(0.15)),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
                                     color: isDualBoot
                                         ? Colors.purple
-                                        : Colors.cyan,
+                                        : (isSentinel ? Colors.amber : Colors.cyan),
                                     width: 0.8,
                                   ),
                                 ),
                                 child: Text(
-                                  isDualBoot ? 'DUAL-BOOT' : 'WIM',
+                                  isDualBoot
+                                      ? 'DUAL-BOOT'
+                                      : (isSentinel ? 'SENTINEL' : 'WIM'),
                                   style: const TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.bold,
@@ -1633,6 +1916,18 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                 ),
               ),
             ),
+            ),
+            if (_selectedImage != null && (_selectedImage!.toLowerCase().endsWith('.sentinel') || images.any((i) => i['name'] == _selectedImage && i['type'] == 'sentinel')))
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: IconButton(
+                  icon: Icon(Icons.preview, color: SentinelTheme.secondary),
+                  tooltip: 'Preview .sentinel Image',
+                  onPressed: _enabled ? () => showSentinelPreview(context, provider, _selectedImage!) : null,
+                ),
+              ),
+            ],
+          ),
           ),
           if (!_enabled)
             Padding(
@@ -1727,21 +2022,60 @@ class _PortContextPopup extends StatefulWidget {
 
 class _PortContextPopupState extends State<_PortContextPopup> {
   late bool _enabled;
+  bool _isCaptureMode = false;
   String? _selectedImage;
   bool _isLoading = false;
+  final TextEditingController _captureNameController = TextEditingController();
+  List<AgentOrder> _availableOrders = [];
+  int? _selectedOrderId;
+  bool _loadingOrders = false;
 
   @override
   void initState() {
     super.initState();
     _enabled = widget.port.imageEnabled;
-    _selectedImage = widget.port.selectedImage;
+    final img = widget.port.selectedImage;
+    if (img != null && img.startsWith('CAPTURE:')) {
+      _isCaptureMode = true;
+      _captureNameController.text = img.substring(8);
+    } else {
+      _selectedImage = img;
+    }
+    _selectedOrderId = widget.orderId ?? widget.port.orderId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<SentinelProvider>(
         context,
         listen: false,
       ).loadAvailableImages();
       _fetchCurrentSelection();
+      _loadAvailableOrders();
     });
+  }
+
+  Future<void> _loadAvailableOrders() async {
+    setState(() => _loadingOrders = true);
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final service = OrderOpsService(apiService.client);
+      final orders = await service.getAgentOrders(limit: 200);
+      if (mounted) {
+        setState(() {
+          _availableOrders = orders;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading orders in port context popup: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _loadingOrders = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _captureNameController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchCurrentSelection() async {
@@ -1755,22 +2089,47 @@ class _PortContextPopupState extends State<_PortContextPopup> {
       setState(() {
         _enabled = selection['enabled'] == true;
         final img = selection['image']?.toString();
-        _selectedImage = (img != null && img.isNotEmpty) ? img : null;
+        if (img != null && img.startsWith('CAPTURE:')) {
+          _isCaptureMode = true;
+          _selectedImage = null;
+          _captureNameController.text = img.substring(8);
+        } else {
+          _isCaptureMode = false;
+          _selectedImage = (img != null && img.isNotEmpty) ? img : null;
+        }
+        if (selection.containsKey('order_id')) {
+          _selectedOrderId = selection['order_id'];
+        }
       });
     }
   }
 
   Future<void> _save() async {
-    if (_selectedImage == null && _enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Debe seleccionar una imagen para habilitar el maquetado',
-          ),
-          backgroundColor: SentinelTheme.error,
-        ),
-      );
-      return;
+    String finalImageToSave = '';
+    if (_enabled) {
+      if (_isCaptureMode) {
+        if (_captureNameController.text.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Debe ingresar un nombre para la imagen a capturar'),
+              backgroundColor: SentinelTheme.error,
+            ),
+          );
+          return;
+        }
+        finalImageToSave = 'CAPTURE:${_captureNameController.text.trim()}';
+      } else {
+        if (_selectedImage == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Debe seleccionar una imagen para habilitar el maquetado'),
+              backgroundColor: SentinelTheme.error,
+            ),
+          );
+          return;
+        }
+        finalImageToSave = _selectedImage!;
+      }
     }
 
     setState(() => _isLoading = true);
@@ -1779,9 +2138,9 @@ class _PortContextPopupState extends State<_PortContextPopup> {
       await provider.setImageSelection(
         scope: 'port',
         scopeId: widget.port.portId,
-        image: _enabled ? (_selectedImage ?? '') : '',
+        image: finalImageToSave,
         enabled: _enabled,
-        orderId: widget.orderId,
+        orderId: _selectedOrderId,
       );
       if (mounted) widget.onClose();
     } catch (e) {
@@ -1884,7 +2243,7 @@ class _PortContextPopupState extends State<_PortContextPopup> {
               children: [
                 Expanded(
                   child: Text(
-                    'Habilitar Maquetado',
+                    'Habilitar Tarea (Maquetado/Captura)',
                     style: SentinelTheme.subHeader.copyWith(
                       color: SentinelTheme.secondary,
                     ),
@@ -1900,18 +2259,161 @@ class _PortContextPopupState extends State<_PortContextPopup> {
 
             if (_enabled) ...[
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: SentinelTheme.glassDecoration(
-                  borderRadius: 8,
-                  opacity: 0.05,
-                  border: true,
+              Text(
+                'Asociar Orden',
+                style: SentinelTheme.subHeader.copyWith(
+                  color: SentinelTheme.primary,
                 ),
-                child: DropdownButtonHideUnderline(
+              ),
+              const SizedBox(height: 4),
+              _loadingOrders
+                  ? const SizedBox(
+                      height: 40,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: SentinelTheme.glassDecoration(
+                        borderRadius: 8,
+                        opacity: 0.05,
+                        border: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton2<int>(
+                          value: _selectedOrderId,
+                          hint: Text(
+                            'Seleccionar Orden...',
+                            style: SentinelTheme.label.copyWith(
+                              color: SentinelTheme.textDisabled,
+                            ),
+                          ),
+                          dropdownStyleData: DropdownStyleData(
+                            decoration: BoxDecoration(
+                              color: SentinelTheme.bgPanel,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: SentinelTheme.primary.withOpacity(0.3),
+                              ),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black54, blurRadius: 10),
+                              ],
+                            ),
+                            elevation: 24,
+                            offset: const Offset(0, -4),
+                            maxHeight: 300,
+                          ),
+                          menuItemStyleData: const MenuItemStyleData(height: 40),
+                          isExpanded: true,
+                          buttonStyleData: ButtonStyleData(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          iconStyleData: const IconStyleData(
+                            icon: Icon(
+                              Icons.arrow_drop_down,
+                              color: SentinelTheme.primary,
+                            ),
+                          ),
+                          items: _availableOrders.map((ord) {
+                            return DropdownMenuItem<int>(
+                              value: ord.idnbr,
+                              child: Text(
+                                '${ord.orderNbr} - ${ord.customer} (${ord.proyecto ?? 'Sin Proy.'})',
+                                overflow: TextOverflow.ellipsis,
+                                style: SentinelTheme.body,
+                              ),
+                            );
+                          }).toList()..addAll(
+                            (_selectedOrderId != null &&
+                                    !_availableOrders.any((ord) => ord.idnbr == _selectedOrderId))
+                                ? [
+                                    DropdownMenuItem<int>(
+                                      value: _selectedOrderId!,
+                                      child: Text(
+                                        'Orden #$_selectedOrderId',
+                                        style: SentinelTheme.body.copyWith(
+                                          fontStyle: FontStyle.italic,
+                                          color: SentinelTheme.warning,
+                                        ),
+                                      ),
+                                    ),
+                                  ]
+                                : [],
+                          ),
+                          onChanged: (val) => setState(() => _selectedOrderId = val),
+                        ),
+                      ),
+                    ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Modo Captura de Imagen',
+                      style: SentinelTheme.subHeader.copyWith(
+                        color: SentinelTheme.warning,
+                      ),
+                    ),
+                  ),
+                  Switch(
+                    value: _isCaptureMode,
+                    onChanged: (val) => setState(() => _isCaptureMode = val),
+                    activeColor: SentinelTheme.warning,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              if (_isCaptureMode) ...[
+                // Capture input field
+                TextFormField(
+                  controller: _captureNameController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: 'Nombre de imagen deseado (ej. PC_NUEVA)',
+                    labelStyle: TextStyle(color: SentinelTheme.warning.withOpacity(0.8), fontSize: 12),
+                    hintText: 'ej. 1H84332Y5L',
+                    hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: SentinelTheme.warning.withOpacity(0.5)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: SentinelTheme.warning.withOpacity(0.5)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: SentinelTheme.warning),
+                    ),
+                    prefixIcon: const Icon(Icons.download, color: SentinelTheme.warning, size: 18),
+                  ),
+                ),
+              ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: SentinelTheme.glassDecoration(
+                        borderRadius: 8,
+                        opacity: 0.05,
+                        border: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
                   child: DropdownButton2<String>(
                     value: _selectedImage,
                     hint: Text(
-                      'Selecc. Imagen (WIM/ESD/Dual-Boot)',
+                      'Selecc. Imagen (WIM/ESD/Dual-Boot/Sentinel)',
                       style: SentinelTheme.label.copyWith(
                         color: SentinelTheme.textDisabled,
                       ),
@@ -1949,6 +2451,8 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                           final name = img['name']?.toString() ?? '';
                           final isDualBoot =
                               img['type']?.toString() == 'dualboot';
+                          final isSentinel = img['type']?.toString() == 'sentinel' ||
+                              name.toLowerCase().endsWith('.sentinel');
                           return DropdownMenuItem<String>(
                             value: name,
                             child: Row(
@@ -1960,7 +2464,9 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                                     style: SentinelTheme.body.copyWith(
                                       color: isDualBoot
                                           ? Colors.purple[200]
-                                          : Colors.white,
+                                          : (isSentinel
+                                              ? Colors.amber[200]
+                                              : Colors.white),
                                     ),
                                   ),
                                 ),
@@ -1973,17 +2479,21 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                                   decoration: BoxDecoration(
                                     color: isDualBoot
                                         ? Colors.purple.withOpacity(0.25)
-                                        : Colors.cyan.withOpacity(0.15),
+                                        : (isSentinel
+                                            ? Colors.amber.withOpacity(0.25)
+                                            : Colors.cyan.withOpacity(0.15)),
                                     borderRadius: BorderRadius.circular(4),
                                     border: Border.all(
                                       color: isDualBoot
                                           ? Colors.purple
-                                          : Colors.cyan,
+                                          : (isSentinel ? Colors.amber : Colors.cyan),
                                       width: 0.8,
                                     ),
                                   ),
                                   child: Text(
-                                    isDualBoot ? 'DUAL-BOOT' : 'WIM',
+                                    isDualBoot
+                                        ? 'DUAL-BOOT'
+                                        : (isSentinel ? 'SENTINEL' : 'WIM'),
                                     style: const TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
@@ -2017,6 +2527,19 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                   ),
                 ),
               ),
+              ),
+              if (_selectedImage != null && (_selectedImage!.toLowerCase().endsWith('.sentinel') || images.any((i) => i['name'] == _selectedImage && i['type'] == 'sentinel')))
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: IconButton(
+                    icon: Icon(Icons.preview, color: SentinelTheme.secondary),
+                    tooltip: 'Preview .sentinel Image',
+                    onPressed: _enabled ? () => showSentinelPreview(context, provider, _selectedImage!) : null,
+                  ),
+                ),
+              ],
+            ),
+              ],
             ],
 
             const SizedBox(height: 16),

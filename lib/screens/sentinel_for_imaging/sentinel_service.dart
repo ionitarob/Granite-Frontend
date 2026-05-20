@@ -539,6 +539,24 @@ class SentinelService {
     }).toList();
   }
 
+  Future<Map<String, dynamic>?> fetchImageDetails(String imageName) async {
+    final api = ApiService.instance;
+    if (api == null) throw Exception('ApiService not initialized');
+
+    final encodedName = Uri.encodeComponent(imageName);
+    final res = await api.client.get('/sentinel/api/images/details/?image=$encodedName');
+    
+    if (res.statusCode == 404) return null;
+    if (!res.ok) {
+      throw Exception('Failed to load image details: ${res.error}');
+    }
+
+    if (res.body is Map) {
+      return Map<String, dynamic>.from(res.body);
+    }
+    return null;
+  }
+
   Future<void> updateImageSelection({
     required String scope, // 'port' or 'switch'
     required int scopeId,

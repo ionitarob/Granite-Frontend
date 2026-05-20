@@ -1152,7 +1152,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
               child: DropdownButton<String>(
                 value: _selectedImage,
                 hint: Text(
-                  'Selecc. Imagen (WIM/ESD/Dual-Boot)',
+                  'Selecc. Imagen (WIM/ESD/Dual-Boot/Sentinel)',
                   style: SentinelTheme.body.copyWith(
                     color: SentinelTheme.textDisabled,
                   ),
@@ -1168,6 +1168,8 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                   ...images.map((img) {
                     final name = img['name']?.toString() ?? '';
                     final isDualBoot = img['type']?.toString() == 'dualboot';
+                    final isSentinel = img['type']?.toString() == 'sentinel' ||
+                        name.toLowerCase().endsWith('.sentinel');
                     return DropdownMenuItem<String>(
                       value: name,
                       child: Row(
@@ -1177,7 +1179,11 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                               name,
                               overflow: TextOverflow.ellipsis,
                               style: SentinelTheme.body.copyWith(
-                                color: isDualBoot ? Colors.purple[200] : Colors.white,
+                                color: isDualBoot
+                                    ? Colors.purple[200]
+                                    : (isSentinel
+                                        ? Colors.amber[200]
+                                        : Colors.white),
                               ),
                             ),
                           ),
@@ -1187,19 +1193,27 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                             decoration: BoxDecoration(
                               color: isDualBoot
                                   ? Colors.purple.withOpacity(0.25)
-                                  : Colors.cyan.withOpacity(0.15),
+                                  : (isSentinel
+                                      ? Colors.amber.withOpacity(0.25)
+                                      : Colors.cyan.withOpacity(0.15)),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
-                                color: isDualBoot ? Colors.purple : Colors.cyan,
+                                color: isDualBoot
+                                    ? Colors.purple
+                                    : (isSentinel ? Colors.amber : Colors.cyan),
                                 width: 0.8,
                               ),
                             ),
                             child: Text(
-                              isDualBoot ? 'DUAL-BOOT' : 'WIM',
+                              isDualBoot
+                                  ? 'DUAL-BOOT'
+                                  : (isSentinel ? 'SENTINEL' : 'WIM'),
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.bold,
-                                color: isDualBoot ? Colors.purple[100] : Colors.cyan[200],
+                                color: isDualBoot
+                                    ? Colors.purple[100]
+                                    : (isSentinel ? Colors.amber[100] : Colors.cyan[200]),
                                 letterSpacing: 0.5,
                               ),
                             ),
@@ -1404,7 +1418,7 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                 child: DropdownButton<String>(
                   value: _selectedImage,
                   hint: Text(
-                    'Seleccionar Imagen',
+                    'Seleccionar Imagen (WIM/ESD/Dual-Boot/Sentinel)',
                     style: SentinelTheme.body.copyWith(
                       color: SentinelTheme.textDisabled,
                     ),
@@ -1420,6 +1434,8 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                     ...images.map((img) {
                       final name = img['name']?.toString() ?? '';
                       final isDualBoot = img['type']?.toString() == 'dualboot';
+                      final isSentinel = img['type']?.toString() == 'sentinel' ||
+                          name.toLowerCase().endsWith('.sentinel');
                       return DropdownMenuItem<String>(
                         value: name,
                         child: Row(
@@ -1429,7 +1445,11 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                                 name,
                                 overflow: TextOverflow.ellipsis,
                                 style: SentinelTheme.body.copyWith(
-                                  color: isDualBoot ? Colors.purple[200] : Colors.white,
+                                  color: isDualBoot
+                                      ? Colors.purple[200]
+                                      : (isSentinel
+                                          ? Colors.amber[200]
+                                          : Colors.white),
                                 ),
                               ),
                             ),
@@ -1439,19 +1459,27 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                               decoration: BoxDecoration(
                                 color: isDualBoot
                                     ? Colors.purple.withOpacity(0.25)
-                                    : Colors.cyan.withOpacity(0.15),
+                                    : (isSentinel
+                                        ? Colors.amber.withOpacity(0.25)
+                                        : Colors.cyan.withOpacity(0.15)),
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
-                                  color: isDualBoot ? Colors.purple : Colors.cyan,
+                                  color: isDualBoot
+                                      ? Colors.purple
+                                      : (isSentinel ? Colors.amber : Colors.cyan),
                                   width: 0.8,
                                 ),
                               ),
                               child: Text(
-                                isDualBoot ? 'DUAL-BOOT' : 'WIM',
+                                isDualBoot
+                                    ? 'DUAL-BOOT'
+                                    : (isSentinel ? 'SENTINEL' : 'WIM'),
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
-                                  color: isDualBoot ? Colors.purple[100] : Colors.cyan[200],
+                                  color: isDualBoot
+                                      ? Colors.purple[100]
+                                      : (isSentinel ? Colors.amber[100] : Colors.cyan[200]),
                                   letterSpacing: 0.5,
                                 ),
                               ),

@@ -640,6 +640,10 @@ class SentinelProvider extends ChangeNotifier {
     return await _service.fetchImageSelection(scope: scope, scopeId: scopeId);
   }
 
+  Future<Map<String, dynamic>?> fetchImageDetails(String imageName) async {
+    return await _service.fetchImageDetails(imageName);
+  }
+
   Future<void> setImageSelection({
     required String scope,
     required int scopeId,

@@ -144,25 +144,60 @@ class _TablaRegistrosState extends State<TablaRegistros> {
                     final imei = r['imei'] ?? '';
                     final tipo = r['tipo'] ?? '';
                     final id = _parseId(idRaw);
-                    return Card(
-                      child: ListTile(
-                        title: Text('IMEI: $imei'),
-                        subtitle: Text('ID: $idRaw  •  Tipo: $tipo'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (widget.onEditar != null)
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: () => widget.onEditar!(id, r),
-                              ),
-                            if (widget.onEliminar != null)
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => widget.onEliminar!(id),
-                              ),
-                          ],
-                        ),
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.03),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'IMEI: $imei',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'ID: $idRaw  •  Tipo: $tipo',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.onEditar != null)
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => widget.onEditar!(id, r),
+                                ),
+                              const SizedBox(width: 12),
+                              if (widget.onEliminar != null)
+                                IconButton(
+                                  icon: const Icon(Icons.delete, size: 18),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => widget.onEliminar!(id),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     );
                   },
