@@ -571,6 +571,11 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.history_rounded,
           route: '/igualdad/historial',
         ),
+        (
+          label: 'Igualdad · Cerrar Expedición',
+          icon: Icons.lock_outline_rounded,
+          route: '/igualdad/cerrar',
+        ),
 
         // Serials
         (
@@ -743,6 +748,7 @@ class _MainSidebarState extends State<MainSidebar> {
       '/igualdad/registro/powerbank',
       '/igualdad/registro/boton',
       '/igualdad/historial',
+      '/igualdad/cerrar',
     ];
     const igualdadRegRoutes = [
       '/igualdad/registro/smartphone',
@@ -1161,6 +1167,19 @@ class _MainSidebarState extends State<MainSidebar> {
               onTap: () => _navigate(
                 context,
                 '/igualdad/historial',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Cerrar Expedición',
+              icon: Icons.lock_outline_rounded,
+              selected: isRoute('/igualdad/cerrar'),
+              onTap: () => _navigate(
+                context,
+                '/igualdad/cerrar',
                 closeOverlay: !permanent,
               ),
               highlight: highlight,
@@ -2910,6 +2929,13 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               title: 'Historial',
               icon: Icons.history_rounded,
               route: '/igualdad/historial',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Cerrar Expedición',
+              icon: Icons.lock_outline_rounded,
+              route: '/igualdad/cerrar',
               currentRoute: currentRoute,
             ),
           ],

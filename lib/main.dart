@@ -39,6 +39,7 @@ import 'screens/igualdad/registro_pulsera.dart';
 import 'screens/igualdad/registro_powerbank.dart';
 import 'screens/igualdad/registro_boton.dart';
 import 'screens/igualdad/historial_expediciones.dart';
+import 'screens/igualdad/cerrar_idim_oysta.dart';
 import 'screens/serials/serial_link.dart';
 import 'screens/serials/serial_change.dart';
 import 'screens/serials/serial_label_generator.dart';
@@ -211,6 +212,7 @@ class MainApp extends StatelessWidget {
                 '/igualdad/registro/boton': (_) => const RegistroBotonScreen(),
                 '/igualdad/historial': (_) =>
                     const HistorialExpedicionesScreen(),
+                '/igualdad/cerrar': (_) => const CerrarIdimOystaScreen(),
                 '/dashboard': (_) => const DashboardScreen(),
                 '/dashboard/redesigned': (_) => const DashboardScreen(),
                 '/analisis/dashboard': (_) => const AysDashboard(),

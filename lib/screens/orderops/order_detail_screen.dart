@@ -614,11 +614,65 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     const SizedBox(height: 20),
                     _buildEmbeddedServicePanel(theme),
                     const SizedBox(height: 24),
+                    _buildExecutionBottomGrid(theme),
                   ],
                 )
               : _buildResponsiveGrid(theme),
         ),
       ),
+    );
+  }
+
+  Widget _buildExecutionBottomGrid(ThemeData theme) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 1024;
+        if (isDesktop) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left side - Archivos
+              Expanded(
+                flex: 6,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildArchivosCard(theme),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 24),
+              // Right side - Observaciones, Registro de Calidad, Log
+              Expanded(
+                flex: 4,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildObservationsCard(theme),
+                    const SizedBox(height: 24),
+                    _buildQualityQualityCard(theme),
+                    const SizedBox(height: 24),
+                    _buildLogCard(theme),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildObservationsCard(theme),
+            const SizedBox(height: 24),
+            _buildQualityQualityCard(theme),
+            const SizedBox(height: 24),
+            _buildArchivosCard(theme),
+            const SizedBox(height: 24),
+            _buildLogCard(theme),
+          ],
+        );
+      },
     );
   }
 
@@ -1772,11 +1826,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       theme: theme,
       title: 'Información de la Orden',
       actions: [
-        if (isValidada || isPendiente)
+        if (isValidada)
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: FilledButton.icon(
-              onPressed: () => _updateStatus('3'),
+              onPressed: () => _updateStatus('2', allowWorkflowAction: true),
+              icon: const Icon(Icons.assignment_turned_in),
+              label: const Text('Recepcionar'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        if (isPendiente)
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.icon(
+              onPressed: () => _updateStatus('3', allowWorkflowAction: true),
               icon: const Icon(Icons.play_arrow),
               label: const Text('Comenzar Orden'),
               style: FilledButton.styleFrom(

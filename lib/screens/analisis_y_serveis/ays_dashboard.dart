@@ -54,6 +54,7 @@ class _AysDashboardState extends State<AysDashboard> {
 
   bool _loadingOpen = true;
   bool _loadingHistory = true;
+  final Set<int> _selectedTransactionIds = {};
 
   final _openTransactionsScrollController = ScrollController();
   final _historyTransactionsScrollController = ScrollController();
@@ -335,7 +336,38 @@ class _AysDashboardState extends State<AysDashboard> {
       _filterIdXiaomi = null;
       _filterPaid = null;
       _searchController.clear();
+      _selectedTransactionIds.clear();
     });
+  }
+
+  Future<void> _bulkUpdatePaymentStatus(bool paid) async {
+    if (_selectedTransactionIds.isEmpty) return;
+    setState(() => _loadingHistory = true);
+    try {
+      final futures = _selectedTransactionIds.map((id) =>
+        _analisisService.togglePaymentStatus(id, paid)
+      );
+      await Future.wait(futures);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Se han actualizado ${_selectedTransactionIds.length} registros correctamente.'),
+            backgroundColor: paid ? Colors.green.shade800 : Colors.orange.shade800,
+          ),
+        );
+        setState(() {
+          _selectedTransactionIds.clear();
+        });
+        _loadDashboardData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error actualizando estado de pago: $e')),
+        );
+        setState(() => _loadingHistory = false);
+      }
+    }
   }
 
   @override
@@ -766,13 +798,31 @@ class _AysDashboardState extends State<AysDashboard> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Text(
-                          'Historial y Filtros',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Historial y Filtros',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (user != null && (user.role == 'admin' || user.role == 'chief'))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Text(
+                                    'Selecciona casillas (en azul) para pago masivo',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        const Spacer(),
                         IconButton(
                           icon: Icon(
                             _filtersExpanded
@@ -802,6 +852,69 @@ class _AysDashboardState extends State<AysDashboard> {
                 ),
               ),
               const Divider(height: 1),
+              if (_selectedTransactionIds.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_selectedTransactionIds.length} seleccionados',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.select_all_rounded),
+                        tooltip: 'Seleccionar todos los visibles',
+                        onPressed: () {
+                          setState(() {
+                            for (final t in filtered) {
+                              if (t.id != null) {
+                                _selectedTransactionIds.add(t.id!);
+                              }
+                            }
+                          });
+                        },
+                      ),
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.check_circle_rounded, size: 16),
+                        label: const Text('PAGADO'),
+                        onPressed: () => _bulkUpdatePaymentStatus(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.pending_rounded, size: 16),
+                        label: const Text('PENDIENTE'),
+                        onPressed: () => _bulkUpdatePaymentStatus(false),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade800,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Limpiar selección',
+                        onPressed: () {
+                          setState(() {
+                            _selectedTransactionIds.clear();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+              ],
               if (_loadingHistory)
                 const Expanded(
                   child: Center(child: CircularProgressIndicator()),
@@ -976,19 +1089,60 @@ class _AysDashboardState extends State<AysDashboard> {
                               horizontal: 16,
                               vertical: 8,
                             ),
-                            leading: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: bubbleColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: bubbleColor.withOpacity(0.3)),
-                              ),
-                              child: Icon(
-                                Icons.check_circle_outline_rounded,
-                                color: bubbleColor,
-                                size: 20,
-                              ),
-                            ),
+                             leading: canTogglePaid
+                                ? Tooltip(
+                                    message: 'Seleccionar para pago masivo',
+                                    child: InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          if (_selectedTransactionIds.contains(t.id)) {
+                                            _selectedTransactionIds.remove(t.id);
+                                          } else {
+                                            if (t.id != null) {
+                                              _selectedTransactionIds.add(t.id!);
+                                            }
+                                          }
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: _selectedTransactionIds.contains(t.id)
+                                              ? Colors.blue.withOpacity(0.25)
+                                              : Colors.blue.withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: _selectedTransactionIds.contains(t.id)
+                                                ? Colors.blue.shade700
+                                                : Colors.blue.withOpacity(0.5),
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          _selectedTransactionIds.contains(t.id)
+                                              ? Icons.check_box_rounded
+                                              : Icons.check_box_outline_blank_rounded,
+                                          color: _selectedTransactionIds.contains(t.id)
+                                              ? Colors.blue.shade700
+                                              : Colors.blue.shade600,
+                                          size: 22,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: bubbleColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: bubbleColor.withOpacity(0.3)),
+                                    ),
+                                    child: Icon(
+                                      Icons.check_circle_outline_rounded,
+                                      color: bubbleColor,
+                                      size: 20,
+                                    ),
+                                  ),
                             title: Text(
                               mainTitle,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -1327,24 +1481,38 @@ class _AysDashboardState extends State<AysDashboard> {
         excel_pkg.TextCellValue('FABRICANTE'),
         excel_pkg.TextCellValue('CLIENTE'),
         excel_pkg.TextCellValue('DESCRIPCIÓN'),
+        excel_pkg.TextCellValue('unidades'),
+        excel_pkg.TextCellValue('PVD'),
+        excel_pkg.TextCellValue('total'),
         excel_pkg.TextCellValue('COSTO (€)'),
+        excel_pkg.TextCellValue('subtotal coste'),
         excel_pkg.TextCellValue('ESTADO PAGO'),
         excel_pkg.TextCellValue('FECHA FINAL'),
       ]);
 
       // Add Data
-      double total = 0;
+      double totalSum = 0;
       for (final t in _filteredHistory) {
-        total += (t.cost ?? 0.0);
+        final unitDouble = double.tryParse(t.unit ?? '');
+        final pvdDouble = t.cost;
+        final rowTotal = (unitDouble != null && pvdDouble != null) ? (unitDouble * pvdDouble) : null;
+        if (rowTotal != null) {
+          totalSum += rowTotal;
+        }
+
         sheet.appendRow([
           excel_pkg.TextCellValue(t.idxiaomi ?? ''),
-          excel_pkg.TextCellValue(t.orden ?? ''),
-          excel_pkg.TextCellValue(t.sku ?? ''),
+          excel_pkg.TextCellValue(t.orden ?? t.previ ?? ''),
+          excel_pkg.TextCellValue(t.sku ?? t.csku ?? ''),
           excel_pkg.TextCellValue(t.servicio ?? ''),
           excel_pkg.TextCellValue(t.fabricante ?? ''),
           excel_pkg.TextCellValue(t.cliente ?? ''),
           excel_pkg.TextCellValue(t.descripcion ?? ''),
-          excel_pkg.DoubleCellValue(t.cost ?? 0.0),
+          unitDouble != null ? excel_pkg.DoubleCellValue(unitDouble) : excel_pkg.TextCellValue(t.unit ?? ''),
+          pvdDouble != null ? excel_pkg.DoubleCellValue(pvdDouble) : excel_pkg.TextCellValue(''),
+          rowTotal != null ? excel_pkg.DoubleCellValue(rowTotal) : excel_pkg.TextCellValue(''),
+          excel_pkg.TextCellValue(''), // COSTO (€)
+          excel_pkg.TextCellValue(''), // subtotal coste
           excel_pkg.TextCellValue(t.paid == true ? 'PAGADO' : 'PENDIENTE'),
           excel_pkg.TextCellValue(_formatDate(t.fechaf ?? t.fechai)),
         ]);
@@ -1359,9 +1527,13 @@ class _AysDashboardState extends State<AysDashboard> {
         excel_pkg.TextCellValue(''), 
         excel_pkg.TextCellValue(''), 
         excel_pkg.TextCellValue(''), 
-        excel_pkg.TextCellValue('TOTAL:'), 
-        excel_pkg.DoubleCellValue(total), 
         excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue('TOTAL:'), 
+        excel_pkg.DoubleCellValue(totalSum), 
+        excel_pkg.TextCellValue(''), 
+        excel_pkg.TextCellValue(''),
+        excel_pkg.TextCellValue(''),
         excel_pkg.TextCellValue('')
       ]);
 
