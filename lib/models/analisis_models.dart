@@ -147,8 +147,9 @@ class MasterService {
   final int id;
   final String servicio;
   final double? pvd;
+  final double? cost;
 
-  MasterService({required this.id, required this.servicio, this.pvd});
+  MasterService({required this.id, required this.servicio, this.pvd, this.cost});
 
   factory MasterService.fromJson(Map<String, dynamic> json) {
     return MasterService(
@@ -156,6 +157,8 @@ class MasterService {
       servicio: ProjectFund._parseString(json['servicio']) ?? '',
       pvd: ProjectFund._parseDouble(json['PVD']) ??
           ProjectFund._parseDouble(json['pvd']),
+      cost: ProjectFund._parseDouble(json['cost']) ??
+          ProjectFund._parseDouble(json['coste']),
     );
   }
 }

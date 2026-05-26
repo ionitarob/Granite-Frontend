@@ -224,24 +224,31 @@ class AnalisisService {
         .toList();
   }
 
-  Future<void> createMasterServicio(String name, double? pvd) async {
+  Future<void> createMasterServicio(String name, double? pvd, double? cost) async {
     final res = await _client.post(
       '/serveis/servicios/create/',
-      jsonBody: {'servicio': name, 'pvd': pvd},
+      jsonBody: {'servicio': name, 'pvd': pvd, 'cost': cost},
     );
     if (!res.ok) {
       throw _asException(res, fallback: 'Error creating master service');
     }
   }
 
-  Future<void> updateMasterServicioPrice(int id, double pvd) async {
+  Future<void> updateMasterServicio(int id, {double? pvd, double? cost}) async {
+    final Map<String, dynamic> body = {};
+    if (pvd != null) body['pvd'] = pvd;
+    if (cost != null) body['cost'] = cost;
     final res = await _client.patch(
       '/serveis/servicios/$id/',
-      jsonBody: {'PVD': pvd},
+      jsonBody: body,
     );
     if (!res.ok) {
-      throw _asException(res, fallback: 'Error updating service price');
+      throw _asException(res, fallback: 'Error updating master service');
     }
+  }
+
+  Future<void> updateMasterServicioPrice(int id, double pvd) async {
+    return updateMasterServicio(id, pvd: pvd);
   }
 
   Future<void> deleteMasterServicio(int id) async {

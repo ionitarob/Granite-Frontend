@@ -1,0 +1,63 @@
+Analyzing ays_management_screen.dart...                         
+
+warning • Unused import: 'package:fl_chart/fl_chart.dart' • lib/screens/analisis_y_serveis/ays_management_screen.dart:2:8 • unused_import
+   info • The private field _widgetOrder could be 'final' • lib/screens/analisis_y_serveis/ays_management_screen.dart:38:16 • prefer_final_fields
+warning • The declaration '_manufacturerBudgets' isn't referenced • lib/screens/analisis_y_serveis/ays_management_screen.dart:111:27 • unused_element
+warning • The declaration '_manufacturerDebt' isn't referenced • lib/screens/analisis_y_serveis/ays_management_screen.dart:120:27 • unused_element
+warning • The declaration '_formatDate' isn't referenced • lib/screens/analisis_y_serveis/ays_management_screen.dart:161:10 • unused_element
+warning • The '!' will have no effect because the receiver can't be null • lib/screens/analisis_y_serveis/ays_management_screen.dart:164:28 • unnecessary_non_null_assertion
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:197:27 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:198:49 • deprecated_member_use
+  error • The method '_buildGlobalFilterAction' isn't defined for the type '_AysManagementScreenState' • lib/screens/analisis_y_serveis/ays_management_screen.dart:294:17 • undefined_method
+  error • The method '_buildGlobalFilterAction' isn't defined for the type '_AysManagementScreenState' • lib/screens/analisis_y_serveis/ays_management_screen.dart:338:11 • undefined_method
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:347:32 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:349:54 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:365:32 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:367:54 • deprecated_member_use
+warning • The declaration '_showExportModal' isn't referenced • lib/screens/analisis_y_serveis/ays_management_screen.dart:380:8 • unused_element
+  error • The name '_showExportModal' is already defined • lib/screens/analisis_y_serveis/ays_management_screen.dart:384:8 • duplicate_definition
+warning • The declaration '_showFilterDialog' isn't referenced • lib/screens/analisis_y_serveis/ays_management_screen.dart:459:8 • unused_element
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:498:48 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:502:50 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:538:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:539:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:555:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:556:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:575:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:576:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:701:48 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:736:45 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:737:34 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:740:48 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:744:50 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:854:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:855:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:943:48 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:947:50 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:992:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:993:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1020:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1021:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1144:31 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1149:36 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1150:36 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1155:39 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1173:56 • deprecated_member_use
+   info • 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1257:13 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1333:32 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1334:32 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1377:26 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1378:26 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1382:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1383:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1413:46 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/analisis_y_serveis/ays_management_screen.dart:1431:24 • deprecated_member_use
+   info • Parameter 'key' could be a super parameter • lib/screens/analisis_y_serveis/ays_management_screen.dart:1450:9 • use_super_parameters
+   info • Statements in an if should be enclosed in a block • lib/screens/analisis_y_serveis/ays_management_screen.dart:1600:7 • curly_braces_in_flow_control_structures
+   info • 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1636:17 • deprecated_member_use
+   info • 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1637:17 • deprecated_member_use
+   info • 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1644:17 • deprecated_member_use
+   info • 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1645:17 • deprecated_member_use
+   info • 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1679:17 • deprecated_member_use
+   info • 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre • lib/screens/analisis_y_serveis/ays_management_screen.dart:1680:17 • deprecated_member_use
+

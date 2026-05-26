@@ -36,14 +36,9 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
   // Reordering & Widget State
   List<String> _widgetOrder = [
-    'kpis',
-    'trend',
-    'manufacturers',
-    'services',
-    'clients',
+    'stats',
     'funds',
     'master_list',
-    'efficiency',
   ];
 
   // Analytics Filters
@@ -223,20 +218,13 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth > 900;
-                      return ReorderableListView(
+                      return ListView(
                         padding: EdgeInsets.fromLTRB(
                           isWide ? 24 : 12,
                           isWide ? 24 : 10,
                           isWide ? 24 : 12,
                           isWide ? 120 : 140,
                         ),
-                        onReorder: (oldIndex, newIndex) {
-                          setState(() {
-                            if (newIndex > oldIndex) newIndex -= 1;
-                            final item = _widgetOrder.removeAt(oldIndex);
-                            _widgetOrder.insert(newIndex, item);
-                          });
-                        },
                         children: _buildBentoItems(isWide, theme),
                       );
                     },
@@ -246,10 +234,6 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: isMobile ? 84 : 0),
-        child: _buildFab(isMobile: isMobile),
       ),
     );
   }
@@ -387,19 +371,8 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     );
   }
 
-  Widget _buildFab({required bool isMobile}) {
-    if (isMobile) {
-      return FloatingActionButton(
-        onPressed: _showQuickActionMenu,
-        child: const Icon(Icons.bolt_rounded),
-      );
-    }
-
-    return FloatingActionButton.extended(
-      onPressed: _showQuickActionMenu,
-      label: const Text('Acciones'),
-      icon: const Icon(Icons.bolt_rounded),
-    );
+  void _showExportModal() {
+    showDialog(context: context, builder: (ctx) => const _FilterDataDialog());
   }
 
   Widget _buildGlobalFilterAction(ThemeData theme) {
@@ -417,68 +390,14 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     );
   }
 
-  void _showQuickActionMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Theme.of(ctx).canvasColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add_card_rounded, color: Colors.blue),
-              title: const Text('Añadir Fondo (ID XIAOMI)'),
-              onTap: () {
-                Navigator.pop(ctx);
-                showDialog(
-                  context: context,
-                  builder: (_) => const CreateProjectFundDialog(),
-                ).then((_) => _loadAllData());
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.build_circle_rounded,
-                color: Colors.green,
-              ),
-              title: const Text('Añadir Servicio al Maestro'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showAddMasterServiceDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.refresh_rounded),
-              title: const Text('Refrescar Datos'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _loadAllData();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showExportModal() {
-    showDialog(context: context, builder: (ctx) => const _FilterDataDialog());
-  }
-
   List<Widget> _buildBentoItems(bool isWide, ThemeData theme) {
     final List<Widget> items = [];
 
     // Keys that should be grouped together if wide
-    final distributionKeys = ['manufacturers', 'services', 'clients'];
-    final detailKeys = ['funds', 'master_list', 'efficiency'];
+    final detailKeys = ['master_list', 'funds', 'stats'];
 
     // We process the order but skip the ones we group
-    final skipKeys = isWide ? {...distributionKeys, ...detailKeys} : <String>{};
+    final skipKeys = isWide ? {...detailKeys} : <String>{};
 
     for (var key in _widgetOrder) {
       if (skipKeys.contains(key)) continue;
@@ -493,44 +412,27 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     }
 
     if (isWide) {
-      // Add Distributions as a single reorderable Row
-      items.add(
-        Padding(
-          key: const ValueKey('distributions_row'),
-          padding: const EdgeInsets.only(bottom: 20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: distributionKeys.map((k) {
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: k == distributionKeys.last ? 0 : 20,
-                  ),
-                  child: _buildDashboardWidget(k, isWide),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      );
-
-      // Add Details as a single reorderable Row
       items.add(
         Padding(
           key: const ValueKey('details_row'),
           padding: const EdgeInsets.only(bottom: 20),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: detailKeys.map((k) {
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: k == detailKeys.last ? 0 : 20,
-                  ),
-                  child: _buildDashboardWidget(k, isWide),
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildDashboardWidget('stats', isWide),
+                    const SizedBox(height: 20),
+                    _buildDashboardWidget('funds', isWide),
+                  ],
                 ),
-              );
-            }).toList(),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: _buildDashboardWidget('master_list', isWide),
+              ),
+            ],
           ),
         ),
       );
@@ -541,34 +443,6 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
   Widget _buildDashboardWidget(String key, bool isWide) {
     switch (key) {
-      case 'kpis':
-        return _DashboardKpis(
-          history: _history,
-          filterManufacturer: _filterManufacturer,
-          filterDateStart: _filterDateStart,
-          filterDateEnd: _filterDateEnd,
-          parseDate: _parseDate,
-        );
-      case 'trend':
-        return _DashboardTrend(history: _history, parseDate: _parseDate);
-      case 'manufacturers':
-        return _DashboardDistribution(
-          title: 'Gasto por Fabricante',
-          data: _getManufacturerDistribution(),
-          isWide: isWide,
-        );
-      case 'services':
-        return _DashboardDistribution(
-          title: 'Gasto por Servicio',
-          data: _getServiceDistribution(),
-          isWide: isWide,
-        );
-      case 'clients':
-        return _DashboardDistribution(
-          title: 'Gasto por Cliente',
-          data: _getClientDistribution(),
-          isWide: isWide,
-        );
       case 'funds':
         return _DashboardFunds(
           funds: _funds,
@@ -582,44 +456,18 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
               services: services,
               masterServicesNotifier: _masterServicesNotifier,
               onRefresh: () => _loadAllData(showLoader: false),
+              onAddService: _showAddMasterServiceDialog,
             );
           },
         );
-      case 'efficiency':
-        return _DashboardEfficiency(
-          budgets: _manufacturerBudgets,
-          debt: _manufacturerDebt,
+      case 'stats':
+        return _DashboardServiceStats(
+          history: _history,
+          masterServices: _masterServices,
         );
       default:
         return const SizedBox.shrink();
     }
-  }
-
-  Map<String, double> _getManufacturerDistribution() {
-    final Map<String, double> dist = {};
-    for (var t in _history) {
-      final m = t.fabricante ?? 'Otros';
-      dist[m] = (dist[m] ?? 0) + (t.cost ?? 0.0);
-    }
-    return dist;
-  }
-
-  Map<String, double> _getServiceDistribution() {
-    final Map<String, double> dist = {};
-    for (var t in _history) {
-      final s = t.servicio ?? 'Varios';
-      dist[s] = (dist[s] ?? 0) + (t.cost ?? 0.0);
-    }
-    return dist;
-  }
-
-  Map<String, double> _getClientDistribution() {
-    final Map<String, double> dist = {};
-    for (var t in _history) {
-      final c = t.cliente ?? 'General';
-      dist[c] = (dist[c] ?? 0) + (t.cost ?? 0.0);
-    }
-    return dist;
   }
 
   void _showFilterDialog() {
@@ -644,6 +492,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
   Future<void> _showAddMasterServiceDialog() async {
     final nameController = TextEditingController();
     final pvdController = TextEditingController();
+    final costController = TextEditingController();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -728,6 +577,26 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
                     decimal: true,
                   ),
                 ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: costController,
+                  decoration: InputDecoration(
+                    labelText: 'Costo del Servicio',
+                    suffixText: '€',
+                    prefixIcon: const Icon(Icons.money_off_rounded, size: 20),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withOpacity(0.03)
+                        : Colors.black.withOpacity(0.02),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
                 const SizedBox(height: 32),
                 Row(
                   children: [
@@ -768,7 +637,8 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
     if (result == true && nameController.text.isNotEmpty) {
       try {
         final pvd = double.tryParse(pvdController.text);
-        await _analisisService.createMasterServicio(nameController.text, pvd);
+        final cost = double.tryParse(costController.text);
+        await _analisisService.createMasterServicio(nameController.text, pvd, cost);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Servicio añadido correctamente')),
@@ -788,511 +658,105 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
 // --- Dashboard Widgets ---
 
-class _DashboardKpis extends StatelessWidget {
-  final List<Transaction> history;
-  final String? filterManufacturer;
-  final DateTime? filterDateStart;
-  final DateTime? filterDateEnd;
-  final DateTime? Function(String?) parseDate;
 
-  const _DashboardKpis({
-    required this.history,
-    this.filterManufacturer,
-    this.filterDateStart,
-    this.filterDateEnd,
-    required this.parseDate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = history.where((t) {
-      if (filterManufacturer != null && t.fabricante != filterManufacturer) {
-        return false;
-      }
-      if (filterDateStart != null || filterDateEnd != null) {
-        final d = parseDate(t.fechaf ?? t.fechai);
-        if (d == null) return false;
-        if (filterDateStart != null && d.isBefore(filterDateStart!)) {
-          return false;
-        }
-        if (filterDateEnd != null && d.isAfter(filterDateEnd!)) return false;
-      }
-      return true;
-    }).toList();
-
-    double total = 0;
-    double paid = 0;
-    for (var t in filtered) {
-      total += (t.cost ?? 0);
-      if (t.paid == true) paid += (t.cost ?? 0);
-    }
-
-    double previousTotal = 0;
-    final now = DateTime.now();
-    final lastMonth = DateTime(now.year, now.month - 1);
-
-    for (var t in history) {
-      final d = parseDate(t.fechai);
-      if (d == null) continue;
-
-      // Filter logic matches DashboardKpis logic for consistency
-      bool matchesFilter = true;
-      if (filterManufacturer != null && t.fabricante != filterManufacturer) {
-        matchesFilter = false;
-      }
-      if (filterDateStart != null && d.isBefore(filterDateStart!)) {
-        matchesFilter = false;
-      }
-      if (filterDateEnd != null && d.isAfter(filterDateEnd!)) {
-        matchesFilter = false;
-      }
-
-      if (matchesFilter) {
-        // We already calculated Current Month 'total' above in the loop,
-        // but here we specifically need MoM comparison.
-        if (d.year == lastMonth.year && d.month == lastMonth.month) {
-          previousTotal += (t.cost ?? 0);
-        }
-      }
-    }
-
-    double mom = 0;
-    if (previousTotal > 0) {
-      mom = ((total - previousTotal) / previousTotal) * 100;
-    }
-
-    final cards = [
-      _KpiCard(
-        title: 'Gasto Total',
-        value: total.asCurrency,
-        icon: Icons.account_balance_wallet_rounded,
-        color: const Color(0xFF2E7D32),
-      ),
-      _KpiCard(
-        title: 'Tendencia MoM',
-        value: '${mom > 0 ? "+" : ""}${mom.formatted}%',
-        icon: mom > 0
-            ? Icons.trending_up_rounded
-            : Icons.trending_down_rounded,
-        color: mom > 10 ? Colors.red : (mom < 0 ? Colors.blue : Colors.orange),
-        subtitle: 'Vs mes anterior',
-      ),
-      _KpiCard(
-        title: 'Pendiente',
-        value: (total - paid).asCurrency,
-        icon: Icons.pending_actions_rounded,
-        color: Colors.orange,
-      ),
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 760;
-        if (isCompact) {
-          return Column(
-            children: [
-              for (int i = 0; i < cards.length; i++) ...[
-                cards[i],
-                if (i < cards.length - 1) const SizedBox(height: 12),
-              ],
-            ],
-          );
-        }
-
-        return Row(
-          children: [
-            Expanded(child: cards[0]),
-            const SizedBox(width: 16),
-            Expanded(child: cards[1]),
-            const SizedBox(width: 16),
-            Expanded(child: cards[2]),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _DashboardTrend extends StatelessWidget {
-  final List<Transaction> history;
-  final DateTime? Function(String?) parseDate;
-
-  const _DashboardTrend({required this.history, required this.parseDate});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final Map<DateTime, double> monthly = {};
-    for (var t in history) {
-      final date = parseDate(t.fechai);
-      if (date != null) {
-        final key = DateTime(date.year, date.month);
-        monthly[key] = (monthly[key] ?? 0) + (t.cost ?? 0);
-      }
-    }
-
-    final sortedEntries = monthly.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
-    // Map DateTime to a sequence for the chart X axis
-    final spots = sortedEntries.asMap().entries.map((e) {
-      return FlSpot(e.key.toDouble(), e.value.value);
-    }).toList();
-
-    return _ChartContainer(
-      title: 'Tendencia Mensual de Gastos',
-      child: LineChart(
-        LineChartData(
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (_) => theme.cardColor.withOpacity(0.8),
-              getTooltipItems: (touchedSpots) {
-                return touchedSpots.map((spot) {
-                  return LineTooltipItem(
-                    '${spot.y.asCurrency}',
-                    TextStyle(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  );
-                }).toList();
-              },
-            ),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: theme.dividerColor.withOpacity(0.05),
-              strokeWidth: 1,
-            ),
-          ),
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(),
-            topTitles: const AxisTitles(),
-            rightTitles: const AxisTitles(),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (val, _) {
-                  int idx = val.toInt();
-                  if (idx < 0 || idx >= sortedEntries.length) {
-                    return const SizedBox.shrink();
-                  }
-                  final date = sortedEntries[idx].key;
-                  final months = [
-                    '',
-                    'Ene',
-                    'Feb',
-                    'Mar',
-                    'Abr',
-                    'May',
-                    'Jun',
-                    'Jul',
-                    'Ago',
-                    'Sep',
-                    'Oct',
-                    'Nov',
-                    'Dic',
-                  ];
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      '${months[date.month]}\n${date.year.toString().substring(2)}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: theme.hintColor,
-                        fontWeight: FontWeight.w500,
-                        height: 1.2,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              curveSmoothness: 0.4,
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF43A047),
-                  Color(0xFF2E7D32),
-                ], // Emerald/Forest Green
-              ),
-              barWidth: 4,
-              isStrokeCapRound: true,
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (spot, percent, barData, index) =>
-                    FlDotCirclePainter(
-                      radius: 4,
-                      color: Colors.white,
-                      strokeWidth: 2,
-                      strokeColor: const Color(0xFF43A047),
-                    ),
-              ),
-              belowBarData: BarAreaData(
-                show: true,
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF43A047).withOpacity(0.2),
-                    const Color(0xFF43A047).withOpacity(0.0),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardDistribution extends StatelessWidget {
-  final String title;
-  final Map<String, double> data;
-  final bool isWide;
-
-  const _DashboardDistribution({
-    required this.title,
-    required this.data,
-    required this.isWide,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = data.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final top = sorted.take(5).toList();
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final colors = [
-      const Color(0xFF43A047), // Emerald
-      const Color(0xFF651FFF), // Deep Purple
-      const Color(0xFFFBC02D), // Amber (Professional Yellow)
-      const Color(0xFFFF9100), // Orange
-      const Color(0xFFF50057), // Pink
-    ];
-
-    return _ChartContainer(
-      title: title,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 420;
-          final chart = PieChart(
-            PieChartData(
-              sectionsSpace: 4,
-              centerSpaceRadius: isWide ? 40 : 50,
-              sections: top.asMap().entries.map((e) {
-                return PieChartSectionData(
-                  value: e.value.value,
-                  title: '',
-                  radius: isWide ? 25 : 30,
-                  color: colors[e.key % colors.length],
-                  badgeWidget: null,
-                );
-              }).toList(),
-            ),
-          );
-
-          final legend = ListView(
-            padding: EdgeInsets.zero,
-            children: top.asMap().entries.map((e) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: colors[e.key % colors.length],
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        e.value.key,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      e.value.value.asCurrency,
-                      style: TextStyle(fontSize: 10, color: theme.hintColor),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          );
-
-          if (compact) {
-            return Column(
-              children: [
-                Expanded(child: chart),
-                const SizedBox(height: 10),
-                Expanded(child: legend),
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Expanded(flex: 3, child: chart),
-              const SizedBox(width: 16),
-              Expanded(flex: 2, child: legend),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _DashboardFunds extends StatelessWidget {
+class _DashboardFunds extends StatefulWidget {
   final List<ProjectFund> funds;
   final VoidCallback onRefresh;
 
   const _DashboardFunds({required this.funds, required this.onRefresh});
 
   @override
-  Widget build(BuildContext context) {
-    return _BentoCard(
-      title: 'Control de Fondos',
-      icon: Icons.account_balance_rounded,
-      action: TextButton(
-        onPressed: () => _showAllFundsDialog(context),
-        child: const Text('Ver todo'),
-      ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: funds.length.clamp(0, 3), // Show top 3 in dashboard
-        itemBuilder: (ctx, i) {
-          final f = funds[i];
-          final percent = (f.totalSpent / (f.fondos ?? 1.0)).clamp(0.0, 1.0);
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (ctx) =>
-                    ProjectTransactionsDialog(idxiaomi: f.idxiaomi ?? 'Varios'),
-              ).then((_) => onRefresh());
-            },
-            title: Text(f.idxiaomi ?? 'Varios'),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: percent,
-                  backgroundColor: Colors.grey.withOpacity(0.1),
-                  valueColor: AlwaysStoppedAnimation(
-                    percent > 0.9 ? Colors.red : Colors.blue,
-                  ),
-                ),
-              ],
-            ),
-            trailing: Text(
-              f.fondos?.asCurrency ?? '-',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          );
-        },
-      ),
-    );
+  State<_DashboardFunds> createState() => _DashboardFundsState();
+}
+
+class _DashboardFundsState extends State<_DashboardFunds> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
-  void _showAllFundsDialog(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 40,
+  @override
+  Widget build(BuildContext context) {
+    return _BentoCard(
+      title: 'Control ID XIAOMI',
+      icon: Icons.account_balance_rounded,
+      action: FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.blue.withOpacity(0.15),
+          foregroundColor: Colors.blue,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Container(
-            width: 500,
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1E1E26).withOpacity(0.9)
-                  : Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(
-                color: const Color(0xFF2E7D32).withOpacity(0.1),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF2E7D32).withOpacity(0.05),
-                  blurRadius: 40,
-                  spreadRadius: -10,
+          elevation: 0,
+        ),
+        icon: const Icon(Icons.add_rounded, size: 16),
+        label: const Text('Añadir ID Xiaomi', style: TextStyle(fontWeight: FontWeight.bold)),
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => const CreateProjectFundDialog(),
+          ).then((_) => widget.onRefresh());
+        },
+      ),
+      child: SizedBox(
+        height: 200,
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          child: ListView.builder(
+            controller: _scrollController,
+            shrinkWrap: false,
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: widget.funds.length,
+            itemBuilder: (ctx, i) {
+              final f = widget.funds[i];
+              final percent = (f.totalSpent / (f.fondos ?? 1.0)).clamp(0.0, 1.0);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8, right: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withOpacity(0.03)
+                      : Colors.black.withOpacity(0.02),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDialogHeader(
-                  ctx,
-                  'Fondos Activos (ID XIAOMI)',
-                  Icons.account_balance_wallet_rounded,
-                ),
-                Flexible(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(24),
-                    shrinkWrap: true,
-                    itemCount: funds.length,
-                    itemBuilder: (ctx, i) {
-                      final f = funds[i];
-                      final percent = (f.totalSpent / (f.fondos ?? 1.0)).clamp(
-                        0.0,
-                        1.0,
-                      );
-                      return _buildDialogRow(
-                        context: ctx,
-                        title: f.idxiaomi ?? 'Varios',
-                        subtitle:
-                            '${f.totalSpent.formattedInt}€ gastados de ${f.fondos?.formattedInt}€',
-                        trailing: '${f.fondos?.formattedInt}€',
-                        percent: percent,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => ProjectTransactionsDialog(
-                              idxiaomi: f.idxiaomi ?? 'Varios',
-                            ),
-                          ).then((_) => onRefresh());
-                        },
-                      );
-                    },
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) =>
+                          ProjectTransactionsDialog(idxiaomi: f.idxiaomi ?? 'Varios'),
+                    ).then((_) => widget.onRefresh());
+                  },
+                  title: Text(
+                    f.idxiaomi ?? 'Varios',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      LinearProgressIndicator(
+                        value: percent,
+                        backgroundColor: Colors.grey.withOpacity(0.1),
+                        valueColor: AlwaysStoppedAnimation(
+                          percent > 0.9 ? Colors.red : Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  trailing: Text(
+                    f.fondos?.asCurrency ?? '-',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-                _buildDialogFooter(ctx),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -1300,170 +764,143 @@ class _DashboardFunds extends StatelessWidget {
   }
 }
 
-class _DashboardMasterServices extends StatelessWidget {
+class _DashboardMasterServices extends StatefulWidget {
   final List<MasterService> services;
   final ValueNotifier<List<MasterService>> masterServicesNotifier;
   final VoidCallback onRefresh;
+  final VoidCallback? onAddService;
 
   const _DashboardMasterServices({
     required this.services,
     required this.masterServicesNotifier,
     required this.onRefresh,
+    this.onAddService,
   });
+
+  @override
+  State<_DashboardMasterServices> createState() => _DashboardMasterServicesState();
+}
+
+class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return _BentoCard(
-      title: 'Servicios Maestros',
+      title: 'Servicios Configuraciones',
       icon: Icons.list_alt_rounded,
-      action: TextButton(
-        onPressed: () => _showAllServicesDialog(context),
-        child: const Text('Ver todo'),
-      ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: services.length.clamp(0, 5),
-        itemBuilder: (ctx, i) {
-          final s = services[i];
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white.withOpacity(0.03)
-                  : Colors.black.withOpacity(0.02),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              title: Text(
-                s.servicio,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+      action: widget.onAddService != null
+          ? FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32).withOpacity(0.15),
+                foregroundColor: const Color(0xFF2E7D32),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
               ),
-              subtitle: Text(
-                'PVD: ${s.pvd?.formatted ?? "0,00"}€',
-                style: const TextStyle(color: Color(0xFF43A047)),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_rounded, size: 18),
-                    onPressed: () => _showEditPriceDialog(context, s),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Añadir Servicio', style: TextStyle(fontWeight: FontWeight.bold)),
+              onPressed: widget.onAddService,
+            )
+          : null,
+      child: SizedBox(
+        height: 600,
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          child: ListView.builder(
+            controller: _scrollController,
+            shrinkWrap: false,
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: widget.services.length,
+            itemBuilder: (ctx, i) {
+              final s = widget.services[i];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8, right: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withOpacity(0.03)
+                      : Colors.black.withOpacity(0.02),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  title: Text(
+                    s.servicio,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: Colors.redAccent,
+                  subtitle: Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: 'PVD: ',
+                          style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
+                        ),
+                        TextSpan(
+                          text: '${s.pvd?.formatted ?? "0,00"}€',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF43A047),
+                          ),
+                        ),
+                        const TextSpan(
+                          text: '  •  ',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        const TextSpan(
+                          text: 'Coste: ',
+                          style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
+                        ),
+                        TextSpan(
+                          text: '${s.cost?.formatted ?? "0,00"}€',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFFB8C00),
+                          ),
+                        ),
+                      ],
                     ),
-                    onPressed: () => _showDeleteConfirm(context, s),
                   ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _showAllServicesDialog(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 40,
-          ),
-          child: Container(
-            width: 500,
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1E1E26).withOpacity(0.9)
-                  : Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(
-                color: const Color(0xFF43A047).withOpacity(0.1),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF2E7D32).withOpacity(0.05),
-                  blurRadius: 40,
-                  spreadRadius: -10,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDialogHeader(
-                  ctx,
-                  'Catálogo de Servicios',
-                  Icons.list_alt_rounded,
-                ),
-                Flexible(
-                  child: ValueListenableBuilder<List<MasterService>>(
-                    valueListenable: masterServicesNotifier,
-                    builder: (context, latestServices, _) {
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(24),
-                        shrinkWrap: true,
-                        itemCount: latestServices.length,
-                        itemBuilder: (ctx, i) {
-                          final s = latestServices[i];
-                          return _buildDialogRow(
-                            context: ctx,
-                            title: s.servicio,
-                            subtitle:
-                                'Precio actual: ${s.pvd?.formatted ?? "0,00"}€',
-                            trailingWidget: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${s.pvd?.formatted ?? "0,00"}€',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF43A047),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 16,
-                                ),
-                              ],
-                            ),
-                            onTap: () {
-                              _showEditPriceDialog(context, s);
-                            },
-                            onLongPress: () {
-                              _showDeleteConfirm(context, s);
-                            },
-                          );
-                        },
-                      );
-                    },
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_rounded, size: 18),
+                        onPressed: () => _showEditPriceDialog(context, s),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => _showDeleteConfirm(context, s),
+                      ),
+                    ],
                   ),
                 ),
-                _buildDialogFooter(ctx),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
     );
   }
 
+
   void _showEditPriceDialog(BuildContext context, MasterService s) {
-    final controller = TextEditingController(text: s.pvd?.toString() ?? '');
+    final pvdController = TextEditingController(text: s.pvd?.toString() ?? '');
+    final costController = TextEditingController(text: s.cost?.toString() ?? '');
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -1503,7 +940,7 @@ class _DashboardMasterServices extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'Editar Precio',
+                      'Editar Tarifas',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1,
@@ -1520,13 +957,41 @@ class _DashboardMasterServices extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 TextField(
-                  controller: controller,
+                  controller: pvdController,
                   autofocus: true,
                   style: const TextStyle(fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
                     labelText: 'Precio PVD',
                     suffixText: '€',
                     prefixIcon: const Icon(Icons.euro_rounded, size: 20),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withOpacity(0.03)
+                        : Colors.black.withOpacity(0.02),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF43A047),
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: costController,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Costo del Servicio',
+                    suffixText: '€',
+                    prefixIcon: const Icon(Icons.money_off_rounded, size: 20),
                     filled: true,
                     fillColor: isDark
                         ? Colors.white.withOpacity(0.03)
@@ -1569,29 +1034,22 @@ class _DashboardMasterServices extends StatelessWidget {
                           elevation: 0,
                         ),
                         onPressed: () async {
-                          // Allow both dot and comma as decimal separator
-                          final cleanText =
-                              controller.text.trim().replaceAll(',', '.');
-                          final price = double.tryParse(cleanText);
-                          if (price != null) {
-                            try {
-                              await const AnalisisService()
-                                  .updateMasterServicioPrice(s.id, price);
-                              onRefresh();
-                              if (ctx.mounted) Navigator.pop(ctx);
-                            } catch (e) {
-                              if (ctx.mounted) {
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  SnackBar(content: Text('Error: $e')),
-                                );
-                              }
-                            }
-                          } else {
+                          final cleanPvd = pvdController.text.trim().replaceAll(',', '.');
+                          final cleanCost = costController.text.trim().replaceAll(',', '.');
+                          final price = double.tryParse(cleanPvd);
+                          final costVal = double.tryParse(cleanCost);
+                          try {
+                            await const AnalisisService().updateMasterServicio(
+                              s.id,
+                              pvd: price,
+                              cost: costVal,
+                            );
+                            widget.onRefresh();
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          } catch (e) {
                             if (ctx.mounted) {
                               ScaffoldMessenger.of(ctx).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Precio no válido'),
-                                ),
+                                SnackBar(content: Text('Error: $e')),
                               );
                             }
                           }
@@ -1627,7 +1085,7 @@ class _DashboardMasterServices extends StatelessWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               await const AnalisisService().deleteMasterServicio(s.id);
-              onRefresh();
+              widget.onRefresh();
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Eliminar'),
@@ -1638,48 +1096,316 @@ class _DashboardMasterServices extends StatelessWidget {
   }
 }
 
-class _DashboardEfficiency extends StatelessWidget {
-  final Map<String, double> budgets;
-  final Map<String, double> debt;
+class ServiceStat {
+  final String name;
+  final double units;
+  final double pvd;
+  final double totalPrice;
 
-  const _DashboardEfficiency({required this.budgets, required this.debt});
+  ServiceStat({
+    required this.name,
+    required this.units,
+    required this.pvd,
+    required this.totalPrice,
+  });
+}
+
+class _DashboardServiceStats extends StatefulWidget {
+  final List<Transaction> history;
+  final List<MasterService> masterServices;
+
+  const _DashboardServiceStats({
+    required this.history,
+    required this.masterServices,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    // Top Efficiency Insight: Consumption vs Debt
-    return _BentoCard(
-      title: 'Consumo de Presupuesto (Top 3)',
-      icon: Icons.speed_rounded,
-      child: Column(
-        children: budgets.entries.take(3).map((e) {
-          final total = e.value;
-          final spent = debt[e.key] ?? 0;
-          final pct = (spent / (total > 0 ? total : 1)).clamp(0.0, 1.0);
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Text(e.key, overflow: TextOverflow.ellipsis),
+  State<_DashboardServiceStats> createState() => _DashboardServiceStatsState();
+}
+
+class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
+  final ScrollController _scrollController = ScrollController();
+  String _selectedPeriod = 'Semana';
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  DateTime? _parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    String clean = s.trim().replaceAll(',', '');
+    clean = clean
+        .replaceAll('AM', ' AM')
+        .replaceAll('PM', ' PM')
+        .replaceAll('  ', ' ');
+    final iso = DateTime.tryParse(clean);
+    if (iso != null) return iso;
+    final formats = [
+      'MMM d yyyy h:mm a',
+      'MMMM d yyyy h:mm a',
+      'd/M/yyyy',
+      'dd/MM/yyyy',
+      'MMM d yyyy HH:mm',
+      'yyyy-MM-dd',
+      'yyyy-MM-dd HH:mm:ss',
+    ];
+    for (final format in formats) {
+      try {
+        return DateFormat(format, 'en_US').parse(clean);
+      } catch (_) {
+        try {
+          return DateFormat(format, 'es_ES').parse(clean);
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  double _parseUnits(String? s) {
+    if (s == null || s.isEmpty) return 0.0;
+    String clean = s.replaceAll(',', '.').trim();
+    return double.tryParse(clean) ?? 0.0;
+  }
+
+  List<ServiceStat> _getServiceStats() {
+    final now = DateTime.now();
+    final filtered = widget.history.where((t) {
+      final date = _parseDate(t.fechaf) ?? _parseDate(t.fechai);
+      if (date == null) return false;
+
+      final diff = now.difference(date);
+      if (_selectedPeriod == 'Día') {
+        return date.year == now.year && date.month == now.month && date.day == now.day;
+      } else if (_selectedPeriod == 'Semana') {
+        return diff.inDays <= 7;
+      } else if (_selectedPeriod == 'Mes') {
+        return diff.inDays <= 30;
+      } else if (_selectedPeriod == 'Año') {
+        return diff.inDays <= 365;
+      }
+      return true;
+    }).toList();
+
+    final Map<String, double> serviceUnits = {};
+    for (final t in filtered) {
+      final sName = t.servicio ?? 'Sin servicio';
+      final units = _parseUnits(t.unit);
+      serviceUnits[sName] = (serviceUnits[sName] ?? 0.0) + units;
+    }
+
+    final List<ServiceStat> stats = [];
+    serviceUnits.forEach((name, units) {
+      final master = widget.masterServices.firstWhere(
+        (m) => m.servicio.trim().toLowerCase() == name.trim().toLowerCase(),
+        orElse: () => MasterService(id: 0, servicio: name, pvd: 0.0),
+      );
+      final pvd = master.pvd ?? 0.0;
+      final totalPrice = units * pvd;
+      stats.add(ServiceStat(
+        name: name,
+        units: units,
+        pvd: pvd,
+        totalPrice: totalPrice,
+      ));
+    });
+
+    stats.sort((a, b) {
+      final comp = b.units.compareTo(a.units);
+      if (comp != 0) return comp;
+      return b.totalPrice.compareTo(a.totalPrice);
+    });
+
+    return stats;
+  }
+
+  Widget _buildPeriodSelector() {
+    final theme = Theme.of(context);
+    final periods = ['Día', 'Semana', 'Mes', 'Año'];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: periods.map((p) {
+          final isSelected = _selectedPeriod == p;
+          return Expanded(
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedPeriod = p;
+                });
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected ? theme.primaryColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                Expanded(
-                  flex: 3,
-                  child: LinearProgressIndicator(
-                    value: pct,
-                    color: spent > total ? Colors.red : Colors.teal,
+                child: Center(
+                  child: Text(
+                    p,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : theme.textTheme.bodyMedium?.color,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 11,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text('${(pct * 100).formattedInt}%'),
-              ],
+              ),
             ),
           );
         }).toList(),
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final stats = _getServiceStats();
+
+    return _BentoCard(
+      title: 'Servicios más usados',
+      icon: Icons.analytics_rounded,
+      child: SizedBox(
+        height: 380,
+        child: Column(
+          children: [
+            _buildPeriodSelector(),
+            const SizedBox(height: 12),
+            Expanded(
+              child: stats.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No hay estadísticas para este período.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    )
+                  : Scrollbar(
+                      controller: _scrollController,
+                      thumbVisibility: true,
+                      trackVisibility: true,
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.only(right: 8),
+                        itemCount: stats.length,
+                        separatorBuilder: (context, index) => const Divider(height: 12),
+                        itemBuilder: (context, index) {
+                          final stat = stats[index];
+                          return InkWell(
+                            onTap: () {
+                              final now = DateTime.now();
+                              final serviceTx = widget.history.where((t) {
+                                if (t.servicio?.trim().toLowerCase() != stat.name.trim().toLowerCase()) {
+                                  return false;
+                                }
+                                final date = _parseDate(t.fechaf) ?? _parseDate(t.fechai);
+                                if (date == null) return false;
+
+                                final diff = now.difference(date);
+                                if (_selectedPeriod == 'Día') {
+                                  return date.year == now.year && date.month == now.month && date.day == now.day;
+                                } else if (_selectedPeriod == 'Semana') {
+                                  return diff.inDays <= 7;
+                                } else if (_selectedPeriod == 'Mes') {
+                                  return diff.inDays <= 30;
+                                } else if (_selectedPeriod == 'Año') {
+                                  return diff.inDays <= 365;
+                                }
+                                return true;
+                              }).toList();
+
+                              showDialog(
+                                context: context,
+                                builder: (_) => AysFilteredDataDialog(
+                                  transactions: serviceTx,
+                                  title: 'Servicio: ${stat.name} ($_selectedPeriod)',
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: theme.primaryColor.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: theme.primaryColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          stat.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${stat.units.toStringAsFixed(0)} unds. x ${stat.pvd.formatted} €',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: theme.textTheme.bodySmall?.color,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${stat.totalPrice.formatted} €',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: theme.primaryColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+
 
 class _BentoCard extends StatelessWidget {
   final String title;
@@ -1865,287 +1591,7 @@ class _DashboardFilterDialogState extends State<_DashboardFilterDialog> {
   }
 }
 
-class _ChartContainer extends StatelessWidget {
-  final String title;
-  final Widget child;
 
-  const _ChartContainer({required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      height: 260, // Reduced height
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark
-            ? theme.cardColor.withOpacity(0.5)
-            : theme.cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: theme.brightness == Brightness.dark
-              ? theme.dividerColor.withOpacity(0.1)
-              : theme.dividerColor.withOpacity(0.3),
-        ),
-        boxShadow: theme.brightness == Brightness.light
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          Expanded(child: child),
-        ],
-      ),
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String? subtitle;
-  final IconData icon;
-  final Color color;
-
-  const _KpiCard({
-    required this.title,
-    required this.value,
-    this.subtitle,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E26) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withOpacity(0.08)
-              : Colors.black.withOpacity(0.05),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(isDark ? 0.15 : 0.1),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-          if (!isDark)
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withOpacity(0.2)),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white60 : Colors.black54,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: isDark ? Colors.white : Colors.black87,
-                    letterSpacing: -1,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle!,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: color.withOpacity(0.8),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- Premium Dialog Helpers ---
-
-Widget _buildDialogHeader(BuildContext context, String title, IconData icon) {
-  final theme = Theme.of(context);
-  return Container(
-    padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
-    child: Row(
-      children: [
-        Icon(icon, color: const Color(0xFF43A047), size: 28),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: -1,
-            ),
-          ),
-        ),
-        IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.close_rounded),
-          style: IconButton.styleFrom(
-            backgroundColor: theme.brightness == Brightness.dark
-                ? Colors.white.withOpacity(0.03)
-                : Colors.black.withOpacity(0.02),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-Widget _buildDialogFooter(BuildContext context) {
-  return Container(
-    padding: const EdgeInsets.all(28),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(
-            'Cerrar Ventana',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-Widget _buildDialogRow({
-  required BuildContext context,
-  required String title,
-  required String subtitle,
-  String? trailing,
-  Widget? trailingWidget,
-  required VoidCallback onTap,
-  VoidCallback? onLongPress,
-  double? percent,
-  IconData? icon,
-}) {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-  return Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(
-      color: isDark
-          ? Colors.white.withOpacity(0.03)
-          : Colors.black.withOpacity(0.02),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: isDark
-            ? Colors.white.withOpacity(0.02)
-            : Colors.black.withOpacity(0.02),
-      ),
-    ),
-    child: ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      onTap: onTap,
-      onLongPress: onLongPress,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
-          ),
-          if (percent != null) ...[
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: percent,
-                minHeight: 4,
-                backgroundColor: Colors.grey.withOpacity(0.1),
-                valueColor: AlwaysStoppedAnimation(
-                  percent > 0.9 ? Colors.redAccent : const Color(0xFF43A047),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-      trailing:
-          trailingWidget ??
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color:
-                  (icon != null
-                          ? const Color(0xFF43A047)
-                          : const Color(0xFF2E7D32))
-                      .withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: icon != null
-                ? Icon(icon, size: 16, color: const Color(0xFF43A047))
-                : Text(
-                    trailing ?? '',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF43A047),
-                      fontSize: 12,
-                    ),
-                  ),
-          ),
-    ),
-  );
-}
 
 class _FilterDataDialog extends StatefulWidget {
   const _FilterDataDialog({Key? key}) : super(key: key);
