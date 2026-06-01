@@ -47,8 +47,8 @@ class _MainSidebarState extends State<MainSidebar> {
                 AppRouteTracker.currentRoute.value!.isNotEmpty
             ? AppRouteTracker.currentRoute.value
             : (ModalRoute.of(context)?.settings.name == '/'
-                ? '/dashboard'
-                : ModalRoute.of(context)?.settings.name));
+                  ? '/dashboard'
+                  : ModalRoute.of(context)?.settings.name));
     final logoAsset = 'lib/assets/logo.png';
 
     final textPrimary = isDark ? Colors.white : Colors.black87;
@@ -1217,7 +1217,7 @@ class _MainSidebarState extends State<MainSidebar> {
             ]),
             children: [
               _SidebarTile(
-                label: 'Dashboard',
+                label: 'Gestión',
                 icon: Icons.dashboard_rounded,
                 selected: isRoute('/analisis/dashboard'),
                 onTap: () => _navigate(
@@ -1230,7 +1230,7 @@ class _MainSidebarState extends State<MainSidebar> {
                 isDark: isDark,
               ),
               _SidebarTile(
-                label: 'Gestión',
+                label: 'Dashboard',
                 icon: Icons.settings_suggest_rounded,
                 selected: isRoute('/analisis/management'),
                 onTap: () => _navigate(
@@ -1997,7 +1997,8 @@ Future<void> showAppSidebar(
 }) {
   if (_AppNavState._isOpen) return Future.value();
   _AppNavState._isOpen = true;
-  final currentRouteName = currentRoute ??
+  final currentRouteName =
+      currentRoute ??
       (AppRouteTracker.currentRoute.value != null &&
               AppRouteTracker.currentRoute.value!.isNotEmpty
           ? AppRouteTracker.currentRoute.value
@@ -2225,11 +2226,11 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
         final actualRoute = (trackedRoute != null && trackedRoute.isNotEmpty)
             ? trackedRoute
             : (widget.currentRoute ??
-                (ModalRoute.of(context)?.settings.name != '/' &&
-                        ModalRoute.of(context)?.settings.name != null &&
-                        ModalRoute.of(context)!.settings.name!.isNotEmpty
-                    ? ModalRoute.of(context)!.settings.name
-                    : null));
+                  (ModalRoute.of(context)?.settings.name != '/' &&
+                          ModalRoute.of(context)?.settings.name != null &&
+                          ModalRoute.of(context)!.settings.name!.isNotEmpty
+                      ? ModalRoute.of(context)!.settings.name
+                      : null));
 
         return MouseRegion(
           onEnter: (_) {

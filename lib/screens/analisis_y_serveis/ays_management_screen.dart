@@ -35,11 +35,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
   bool _loading = true;
 
   // Reordering & Widget State
-  List<String> _widgetOrder = [
-    'stats',
-    'funds',
-    'master_list',
-  ];
+  List<String> _widgetOrder = ['stats', 'funds', 'master_list'];
 
   // Analytics Filters
   DateTime? _filterDateStart;
@@ -257,7 +253,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AYS Management Dashboard',
+                        'Análisis y Servicios Dashboard',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleLarge?.copyWith(
@@ -308,7 +304,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'AYS Management Dashboard',
+                    'Análisis y Servicios Dashboard',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       letterSpacing: -0.5,
@@ -346,7 +342,10 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
         icon: const Icon(Icons.table_view_rounded, color: Colors.blue),
         label: Text(
           isMobile ? 'Datos' : 'Ver Datos',
-          style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         onPressed: _showExportModal, // Both use same dialog now
       ),
@@ -364,7 +363,10 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
         icon: const Icon(Icons.file_download_rounded, color: Colors.orange),
         label: Text(
           isMobile ? 'Excel' : 'Exportar',
-          style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         onPressed: _showExportModal,
       ),
@@ -429,9 +431,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
                 ),
               ),
               const SizedBox(width: 20),
-              Expanded(
-                child: _buildDashboardWidget('master_list', isWide),
-              ),
+              Expanded(child: _buildDashboardWidget('master_list', isWide)),
             ],
           ),
         ),
@@ -638,7 +638,11 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
       try {
         final pvd = double.tryParse(pvdController.text);
         final cost = double.tryParse(costController.text);
-        await _analisisService.createMasterServicio(nameController.text, pvd, cost);
+        await _analisisService.createMasterServicio(
+          nameController.text,
+          pvd,
+          cost,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Servicio añadido correctamente')),
@@ -657,7 +661,6 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 }
 
 // --- Dashboard Widgets ---
-
 
 class _DashboardFunds extends StatefulWidget {
   final List<ProjectFund> funds;
@@ -694,7 +697,10 @@ class _DashboardFundsState extends State<_DashboardFunds> {
           elevation: 0,
         ),
         icon: const Icon(Icons.add_rounded, size: 16),
-        label: const Text('Añadir ID Xiaomi', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+          'Añadir ID Xiaomi',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         onPressed: () {
           showDialog(
             context: context,
@@ -715,7 +721,10 @@ class _DashboardFundsState extends State<_DashboardFunds> {
             itemCount: widget.funds.length,
             itemBuilder: (ctx, i) {
               final f = widget.funds[i];
-              final percent = (f.totalSpent / (f.fondos ?? 1.0)).clamp(0.0, 1.0);
+              final percent = (f.totalSpent / (f.fondos ?? 1.0)).clamp(
+                0.0,
+                1.0,
+              );
               return Container(
                 margin: const EdgeInsets.only(bottom: 8, right: 12),
                 decoration: BoxDecoration(
@@ -725,12 +734,16 @@ class _DashboardFundsState extends State<_DashboardFunds> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   onTap: () {
                     showDialog(
                       context: context,
-                      builder: (ctx) =>
-                          ProjectTransactionsDialog(idxiaomi: f.idxiaomi ?? 'Varios'),
+                      builder: (ctx) => ProjectTransactionsDialog(
+                        idxiaomi: f.idxiaomi ?? 'Varios',
+                      ),
                     ).then((_) => widget.onRefresh());
                   },
                   title: Text(
@@ -778,7 +791,8 @@ class _DashboardMasterServices extends StatefulWidget {
   });
 
   @override
-  State<_DashboardMasterServices> createState() => _DashboardMasterServicesState();
+  State<_DashboardMasterServices> createState() =>
+      _DashboardMasterServicesState();
 }
 
 class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
@@ -800,14 +814,20 @@ class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF2E7D32).withOpacity(0.15),
                 foregroundColor: const Color(0xFF2E7D32),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 elevation: 0,
               ),
               icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Añadir Servicio', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text(
+                'Añadir Servicio',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               onPressed: widget.onAddService,
             )
           : null,
@@ -844,7 +864,10 @@ class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
                       children: [
                         const TextSpan(
                           text: 'PVD: ',
-                          style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey,
+                          ),
                         ),
                         TextSpan(
                           text: '${s.pvd?.formatted ?? "0,00"}€',
@@ -859,7 +882,10 @@ class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
                         ),
                         const TextSpan(
                           text: 'Coste: ',
-                          style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey,
+                          ),
                         ),
                         TextSpan(
                           text: '${s.cost?.formatted ?? "0,00"}€',
@@ -897,10 +923,11 @@ class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
     );
   }
 
-
   void _showEditPriceDialog(BuildContext context, MasterService s) {
     final pvdController = TextEditingController(text: s.pvd?.toString() ?? '');
-    final costController = TextEditingController(text: s.cost?.toString() ?? '');
+    final costController = TextEditingController(
+      text: s.cost?.toString() ?? '',
+    );
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -1034,8 +1061,13 @@ class _DashboardMasterServicesState extends State<_DashboardMasterServices> {
                           elevation: 0,
                         ),
                         onPressed: () async {
-                          final cleanPvd = pvdController.text.trim().replaceAll(',', '.');
-                          final cleanCost = costController.text.trim().replaceAll(',', '.');
+                          final cleanPvd = pvdController.text.trim().replaceAll(
+                            ',',
+                            '.',
+                          );
+                          final cleanCost = costController.text
+                              .trim()
+                              .replaceAll(',', '.');
                           final price = double.tryParse(cleanPvd);
                           final costVal = double.tryParse(cleanCost);
                           try {
@@ -1177,7 +1209,9 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
 
       final diff = now.difference(date);
       if (_selectedPeriod == 'Día') {
-        return date.year == now.year && date.month == now.month && date.day == now.day;
+        return date.year == now.year &&
+            date.month == now.month &&
+            date.day == now.day;
       } else if (_selectedPeriod == 'Semana') {
         return diff.inDays <= 7;
       } else if (_selectedPeriod == 'Mes') {
@@ -1203,12 +1237,9 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
       );
       final pvd = master.pvd ?? 0.0;
       final totalPrice = units * pvd;
-      stats.add(ServiceStat(
-        name: name,
-        units: units,
-        pvd: pvd,
-        totalPrice: totalPrice,
-      ));
+      stats.add(
+        ServiceStat(name: name, units: units, pvd: pvd, totalPrice: totalPrice),
+      );
     });
 
     stats.sort((a, b) {
@@ -1254,7 +1285,9 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                       color: isSelected
                           ? Colors.white
                           : theme.textTheme.bodyMedium?.color,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       fontSize: 11,
                     ),
                   ),
@@ -1298,22 +1331,28 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                         controller: _scrollController,
                         padding: const EdgeInsets.only(right: 8),
                         itemCount: stats.length,
-                        separatorBuilder: (context, index) => const Divider(height: 12),
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 12),
                         itemBuilder: (context, index) {
                           final stat = stats[index];
                           return InkWell(
                             onTap: () {
                               final now = DateTime.now();
                               final serviceTx = widget.history.where((t) {
-                                if (t.servicio?.trim().toLowerCase() != stat.name.trim().toLowerCase()) {
+                                if (t.servicio?.trim().toLowerCase() !=
+                                    stat.name.trim().toLowerCase()) {
                                   return false;
                                 }
-                                final date = _parseDate(t.fechaf) ?? _parseDate(t.fechai);
+                                final date =
+                                    _parseDate(t.fechaf) ??
+                                    _parseDate(t.fechai);
                                 if (date == null) return false;
 
                                 final diff = now.difference(date);
                                 if (_selectedPeriod == 'Día') {
-                                  return date.year == now.year && date.month == now.month && date.day == now.day;
+                                  return date.year == now.year &&
+                                      date.month == now.month &&
+                                      date.day == now.day;
                                 } else if (_selectedPeriod == 'Semana') {
                                   return diff.inDays <= 7;
                                 } else if (_selectedPeriod == 'Mes') {
@@ -1328,13 +1367,17 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                                 context: context,
                                 builder: (_) => AysFilteredDataDialog(
                                   transactions: serviceTx,
-                                  title: 'Servicio: ${stat.name} ($_selectedPeriod)',
+                                  title:
+                                      'Servicio: ${stat.name} ($_selectedPeriod)',
                                 ),
                               );
                             },
                             borderRadius: BorderRadius.circular(8),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 4,
+                              ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
@@ -1342,7 +1385,9 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                                     width: 24,
                                     height: 24,
                                     decoration: BoxDecoration(
-                                      color: theme.primaryColor.withOpacity(0.1),
+                                      color: theme.primaryColor.withOpacity(
+                                        0.1,
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Center(
@@ -1359,7 +1404,8 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           stat.name,
@@ -1375,7 +1421,10 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                                           '${stat.units.toStringAsFixed(0)} unds. x ${stat.pvd.formatted} €',
                                           style: TextStyle(
                                             fontSize: 10,
-                                            color: theme.textTheme.bodySmall?.color,
+                                            color: theme
+                                                .textTheme
+                                                .bodySmall
+                                                ?.color,
                                           ),
                                         ),
                                       ],
@@ -1404,8 +1453,6 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
     );
   }
 }
-
-
 
 class _BentoCard extends StatelessWidget {
   final String title;
@@ -1459,7 +1506,11 @@ class _BentoCard extends StatelessWidget {
                       color: theme.colorScheme.primary.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(icon, size: 16, color: theme.colorScheme.primary),
+                    child: Icon(
+                      icon,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1591,8 +1642,6 @@ class _DashboardFilterDialogState extends State<_DashboardFilterDialog> {
   }
 }
 
-
-
 class _FilterDataDialog extends StatefulWidget {
   const _FilterDataDialog({Key? key}) : super(key: key);
 
@@ -1702,7 +1751,8 @@ class _FilterDataDialogState extends State<_FilterDataDialog> {
       if (mounted) {
         String msg = 'Error al exportar: $e';
         if (e.toString().contains('Permission denied')) {
-          msg = 'Error de permisos: No se pudo escribir el archivo en esa ubicación.';
+          msg =
+              'Error de permisos: No se pudo escribir el archivo en esa ubicación.';
         } else if (e.toString().contains('AnalisisService')) {
           msg = 'Error del servidor: No se pudo obtener el archivo Excel.';
         }
