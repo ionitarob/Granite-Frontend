@@ -322,7 +322,7 @@ class _RegistroPowerbankScreenState extends State<RegistroPowerbankScreen> {
               ),
             ),
           ),
-          Positioned(top: 12, left: 6, child: const EdgeNavHandle()),
+          const Positioned(left: 0, top: 0, bottom: 0, child: Align(alignment: Alignment.centerLeft, child: EdgeNavHandle())),
         ],
       ),
     );

@@ -625,7 +625,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
               },
             ),
           ),
-          const Positioned(top: 12, left: 6, child: EdgeNavHandle()),
+          const Positioned(left: 0, top: 0, bottom: 0, child: Align(alignment: Alignment.centerLeft, child: EdgeNavHandle())),
         ],
       ),
     );
