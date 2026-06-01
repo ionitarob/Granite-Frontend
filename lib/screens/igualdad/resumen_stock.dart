@@ -8,6 +8,8 @@ class ResumenStock extends StatefulWidget {
   final Map<String, int>? oystaActivoVals;
   final String? idimCodigo;
   final String? oystaCodigo;
+  /// Irrecuperables del IDIM activo. Keys: 'sm', 'pulseras', 'botones', 'powerbanks'.
+  final Map<String, int>? irrecuperablesVals;
 
   const ResumenStock({
     super.key,
@@ -16,6 +18,7 @@ class ResumenStock extends StatefulWidget {
     required this.oystaActivoVals,
     required this.idimCodigo,
     required this.oystaCodigo,
+    this.irrecuperablesVals,
   });
 
   @override
@@ -59,22 +62,8 @@ class _ResumenStockState extends State<ResumenStock>
     }
   }
 
-  Widget _neonCar(Color color) => Container(
-    width: 12,
-    height: 12,
-    decoration: BoxDecoration(
-      color: color,
-      shape: BoxShape.circle,
-      boxShadow: [
-        BoxShadow(
-          color: color.withOpacity(0.8),
-          blurRadius: 8,
-          spreadRadius: 4,
-        ),
-      ],
-    ),
-  );
-
+  /// Standard row for Stock Real / IDIM activo / OYSTA activo.
+  /// Uses keys: sma, smv, pulseras, botones, powerbanks.
   TableRow _buildRow(String label, Map<String, int> datos, Color color) {
     return TableRow(
       decoration: BoxDecoration(color: color.withOpacity(0.1)),
@@ -98,7 +87,7 @@ class _ResumenStockState extends State<ResumenStock>
                 Icon(Icons.circle, size: 12, color: color),
                 const SizedBox(width: 6),
                 Text(
-                  '${datos[key]}',
+                  '${datos[key] ?? 0}',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
@@ -110,12 +99,71 @@ class _ResumenStockState extends State<ResumenStock>
     );
   }
 
+  /// Irrecuperables row: SM is grouped (no distinction agresor/victima).
+  /// Column order: label | SM (sma col) | — (smv col) | Pulseras | Botones | P.Banks
+  TableRow _buildIrrecuperablesRow(Map<String, int> datos) {
+    const color = Color(0xFFE53935); // red
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    Widget numCell(int value) => Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.circle, size: 12, color: color),
+              const SizedBox(width: 6),
+              Text('$value', style: TextStyle(color: onSurface, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        );
+
+    Widget dashCell() => Padding(
+          padding: const EdgeInsets.all(8),
+          child: Center(
+            child: Text('—', style: TextStyle(color: onSurface.withOpacity(0.35), fontSize: 13)),
+          ),
+        );
+
+    return TableRow(
+      decoration: BoxDecoration(color: color.withOpacity(0.08)),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 15, color: color),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  'Irrecuperables',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // SMA column → SM total
+        numCell(datos['sm'] ?? 0),
+        // SMV column → dash (no distinction)
+        dashCell(),
+        numCell(datos['pulseras'] ?? 0),
+        numCell(datos['botones'] ?? 0),
+        numCell(datos['powerbanks'] ?? 0),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final availW = constraints.maxWidth;
-        
+
+        final hasIrrecuperables = widget.irrecuperablesVals != null;
+
         // build the table as a horizontal scrollable list
         Widget table = SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -157,6 +205,8 @@ class _ResumenStockState extends State<ResumenStock>
                 _buildRow("Stock Real", widget.stockReal!, Colors.green),
                 _buildRow("IDIM activo", widget.idimActivoVals!, Colors.blue),
                 _buildRow("OYSTA activo", widget.oystaActivoVals!, Colors.red),
+                if (hasIrrecuperables)
+                  _buildIrrecuperablesRow(widget.irrecuperablesVals!),
               ],
             ),
           ),
@@ -198,6 +248,23 @@ class _ResumenStockState extends State<ResumenStock>
                           _buildCodeBadge('OYSTA: ${widget.oystaCodigo}', Colors.red),
                       ],
                     ),
+                    if (hasIrrecuperables) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, size: 13, color: Color(0xFFE53935)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Irrecuperables: columna SM agrupa agresor+víctima',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: const Color(0xFFE53935).withOpacity(0.75),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     table,
                   ],

@@ -369,6 +369,29 @@ class _AmazonInventoryScreenState extends State<AmazonInventoryScreen> with Sing
     }
   }
 
+  Future<void> _exportAll() async {
+    try {
+      setState(() { _loading = true; _error = null; });
+      final api = Provider.of<ApiService>(context, listen: false);
+      final res = await api.client.getBytes('/amz/inventory/export');
+      if (res.ok && res.body is Uint8List) {
+        final bytes = res.body as Uint8List;
+        final dir = await getTemporaryDirectory();
+        final fname = 'inventory_export_all_${DateTime.now().toUtc().toIso8601String().replaceAll(':', '')}.xlsx';
+        final path = '${dir.path}/$fname';
+        final f = File(path);
+        await f.writeAsBytes(bytes, flush: true);
+        await OpenFilex.open(path);
+      } else {
+        setState(() { _error = res.error ?? 'Export failed'; });
+      }
+    } catch (e) {
+      setState(() { _error = 'Export exception: $e'; });
+    } finally {
+      setState(() { _loading = false; });
+    }
+  }
+
   Widget _buildKeyValueList(Map<String, dynamic> m) {
     final entries = m.entries.toList();
     return ListView.separated(
@@ -439,17 +462,24 @@ class _AmazonInventoryScreenState extends State<AmazonInventoryScreen> with Sing
     return AmazonTheme(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Amazon Inventory'),
-          bottom: TabBar(controller: _tabs, tabs: const [Tab(text: 'By Part'), Tab(text: 'By WPL')]),
+          title: const Text('Inventario de Amazon'),
+          actions: [
+            IconButton(
+              tooltip: 'Exportar Inventario',
+              icon: const Icon(Icons.download_rounded),
+              onPressed: _loading ? null : _exportAll,
+            ),
+          ],
+          bottom: TabBar(controller: _tabs, tabs: const [Tab(text: 'Por Parte'), Tab(text: 'Por WPL')]),
         ),
         body: TabBarView(controller: _tabs, children: [
           // By Part
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(children: [
-              TextField(controller: _partCtrl, decoration: const InputDecoration(labelText: 'Part number', border: OutlineInputBorder())),
+              TextField(controller: _partCtrl, decoration: const InputDecoration(labelText: 'Número de Parte', border: OutlineInputBorder())),
               const SizedBox(height: 8),
-              Row(children: [Expanded(child: ElevatedButton(onPressed: _loading ? null : _searchPart, child: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Search')))]),
+              Row(children: [Expanded(child: ElevatedButton(onPressed: _loading ? null : _searchPart, child: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Buscar')))]),
               const SizedBox(height: 8),
               if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
               Expanded(
@@ -463,12 +493,12 @@ class _AmazonInventoryScreenState extends State<AmazonInventoryScreen> with Sing
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text('Parts Registry', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Registro de Partes', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(width: 8),
                         if (_partsRegistryLoading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                         const Spacer(),
                         IconButton(
-                          tooltip: 'Refresh parts registry',
+                          tooltip: 'Actualizar registro de partes',
                           onPressed: _partsRegistryLoading ? null : () => _fetchPartsRegistry(),
                           icon: const Icon(Icons.refresh),
                         ),
@@ -491,12 +521,12 @@ class _AmazonInventoryScreenState extends State<AmazonInventoryScreen> with Sing
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(children: [
-              TextField(controller: _wplCtrl, decoration: const InputDecoration(labelText: 'WPL ID', border: OutlineInputBorder())),
+              TextField(controller: _wplCtrl, decoration: const InputDecoration(labelText: 'ID de WPL', border: OutlineInputBorder())),
               const SizedBox(height: 8),
               Row(children: [
-                Expanded(child: ElevatedButton(onPressed: _loading ? null : _searchWpl, child: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Search'))),
+                Expanded(child: ElevatedButton(onPressed: _loading ? null : _searchWpl, child: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Buscar'))),
                 const SizedBox(width: 8),
-                ElevatedButton(onPressed: (_loading || _wplCtrl.text.trim().isEmpty) ? null : () => _exportWplExcel(_wplCtrl.text.trim()), child: const Text('Export'))
+                ElevatedButton(onPressed: (_loading || _wplCtrl.text.trim().isEmpty) ? null : () => _exportWplExcel(_wplCtrl.text.trim()), child: const Text('Exportar'))
               ]),
               const SizedBox(height: 8),
               if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -511,12 +541,12 @@ class _AmazonInventoryScreenState extends State<AmazonInventoryScreen> with Sing
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text('WPLs Registry', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Registro de WPLs', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(width: 8),
                         if (_wplsRegistryLoading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                         const Spacer(),
                         IconButton(
-                          tooltip: 'Refresh WPLs registry',
+                          tooltip: 'Actualizar registro de WPLs',
                           onPressed: _wplsRegistryLoading ? null : () => _fetchWplsRegistry(),
                           icon: const Icon(Icons.refresh),
                         ),
@@ -547,21 +577,21 @@ class _AmazonInventoryScreenState extends State<AmazonInventoryScreen> with Sing
     final logs = m['logs'] as List<dynamic>?;
     return ListView(children: [
       ListTile(title: const Text('WPL'), subtitle: Text(m['wpl_id']?.toString() ?? '—')),
-      ListTile(title: const Text('Location'), subtitle: Text(m['location_no']?.toString() ?? '—')),
-      ListTile(title: const Text('Total units'), subtitle: Text('${m['total_units'] ?? 0}')),
+      ListTile(title: const Text('Ubicación'), subtitle: Text(m['location_no']?.toString() ?? '—')),
+      ListTile(title: const Text('Unidades totales'), subtitle: Text('${m['total_units'] ?? 0}')),
       if (parts != null) ...[
         const Divider(),
-        const ListTile(title: Text('Parts')),
+        const ListTile(title: Text('Componentes')),
         ...parts.map((p) => ListTile(title: Text(p['part_number']?.toString() ?? ''), trailing: Text('${p['units'] ?? 0}'))),
       ],
       if (units != null) ...[
         const Divider(),
-        const ListTile(title: Text('Units')),
-        ...units.map((u) => ListTile(title: Text(u['part_number']?.toString() ?? ''), subtitle: Text('Qty: ${u['quantity'] ?? 0}'))),
+        const ListTile(title: Text('Unidades')),
+        ...units.map((u) => ListTile(title: Text(u['part_number']?.toString() ?? ''), subtitle: Text('Cant: ${u['quantity'] ?? 0}'))),
       ],
       if (logs != null) ...[
         const Divider(),
-        const ListTile(title: Text('History')),
+        const ListTile(title: Text('Historial')),
         ...logs.map((h) => ListTile(title: Text(h['action']?.toString() ?? ''), subtitle: Text('${h['date'] ?? ''} • ${h['user'] ?? ''}'))),
       ],
     ]);

@@ -43,9 +43,12 @@ class _MainSidebarState extends State<MainSidebar> {
     final isDark = theme?.isDark ?? true;
     final routeName =
         widget.currentRoute ??
-        (ModalRoute.of(context)?.settings.name == '/'
-            ? '/dashboard'
-            : ModalRoute.of(context)?.settings.name);
+        (AppRouteTracker.currentRoute.value != null &&
+                AppRouteTracker.currentRoute.value!.isNotEmpty
+            ? AppRouteTracker.currentRoute.value
+            : (ModalRoute.of(context)?.settings.name == '/'
+                ? '/dashboard'
+                : ModalRoute.of(context)?.settings.name));
     final logoAsset = 'lib/assets/logo.png';
 
     final textPrimary = isDark ? Colors.white : Colors.black87;
@@ -594,6 +597,11 @@ class _MainSidebarState extends State<MainSidebar> {
           route: '/serials/match-history',
         ),
         (
+          label: 'Verificación de Serials',
+          icon: Icons.fact_check_rounded,
+          route: '/serials/verification',
+        ),
+        (
           label: 'RMA · Cambio de Serial',
           icon: Icons.swap_horiz_rounded,
           route: '/serials/serial-change',
@@ -733,6 +741,7 @@ class _MainSidebarState extends State<MainSidebar> {
     ];
     const serialRoutes = [
       '/serials/cambio',
+      '/serials/verification',
       '/serials/change',
       '/serials/labels',
       '/serials/masks',
@@ -1196,6 +1205,139 @@ class _MainSidebarState extends State<MainSidebar> {
             color: textMuted.withOpacity(0.12),
           ),
         ),
+        if (user != null && (user.role == 'admin' || user.role == 'chief')) ...[
+          SidebarExpansionTile(
+            title: 'Análisis y Servicios',
+            icon: Icons.analytics_rounded,
+            highlight: highlight,
+            textPrimary: textPrimary,
+            initiallyExpanded: routeIn([
+              '/analisis/dashboard',
+              '/analisis/management',
+            ]),
+            children: [
+              _SidebarTile(
+                label: 'Dashboard',
+                icon: Icons.dashboard_rounded,
+                selected: isRoute('/analisis/dashboard'),
+                onTap: () => _navigate(
+                  context,
+                  '/analisis/dashboard',
+                  closeOverlay: !permanent,
+                ),
+                highlight: highlight,
+                textPrimary: textPrimary,
+                isDark: isDark,
+              ),
+              _SidebarTile(
+                label: 'Gestión',
+                icon: Icons.settings_suggest_rounded,
+                selected: isRoute('/analisis/management'),
+                onTap: () => _navigate(
+                  context,
+                  '/analisis/management',
+                  closeOverlay: !permanent,
+                ),
+                highlight: highlight,
+                textPrimary: textPrimary,
+                isDark: isDark,
+              ),
+            ],
+          ),
+        ] else ...[
+          _SidebarTile(
+            label: 'Análisis y Servicios',
+            icon: Icons.analytics_rounded,
+            selected: isRoute('/analisis/dashboard'),
+            onTap: () => _navigate(
+              context,
+              '/analisis/dashboard',
+              closeOverlay: !permanent,
+            ),
+            highlight: highlight,
+            textPrimary: textPrimary,
+            isDark: isDark,
+          ),
+        ],
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
+        SidebarExpansionTile(
+          title: 'Xiaomi',
+          icon: Icons.phone_android_rounded,
+          highlight: highlight,
+          textPrimary: textPrimary,
+          initiallyExpanded: xiaomiExpanded,
+          children: [
+            _SidebarTile(
+              label: 'Registro Unidades',
+              icon: Icons.app_registration_rounded,
+              selected: isRoute('/xiaomi/registro/unidades'),
+              onTap: () => _navigate(
+                context,
+                '/xiaomi/registro/unidades',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Producción CESB',
+              icon: Icons.check_circle_outline_rounded,
+              selected: isRoute('/xiaomi/cerrar_cesb'),
+              onTap: () => _navigate(
+                context,
+                '/xiaomi/cerrar_cesb',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Historial',
+              icon: Icons.history_rounded,
+              selected: isRoute('/xiaomi/historial'),
+              onTap: () => _navigate(
+                context,
+                '/xiaomi/historial',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Estadísticas',
+              icon: Icons.bar_chart_rounded,
+              selected: isRoute('/xiaomi/estadisticas'),
+              onTap: () => _navigate(
+                context,
+                '/xiaomi/estadisticas',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Divider(
+            thickness: 0.6,
+            height: 1,
+            color: textMuted.withOpacity(0.12),
+          ),
+        ),
+        const SidebarSectionHeader(title: 'HERRAMIENTAS'),
+        const SizedBox(height: 8),
         SidebarExpansionTile(
           title: 'Serials',
           icon: Icons.qr_code_rounded,
@@ -1211,6 +1353,19 @@ class _MainSidebarState extends State<MainSidebar> {
               onTap: () => _navigate(
                 context,
                 '/serials/match',
+                closeOverlay: !permanent,
+              ),
+              highlight: highlight,
+              textPrimary: textPrimary,
+              isDark: isDark,
+            ),
+            _SidebarTile(
+              label: 'Verificación de Serials',
+              icon: Icons.fact_check_rounded,
+              selected: isRoute('/serials/verification'),
+              onTap: () => _navigate(
+                context,
+                '/serials/verification',
                 closeOverlay: !permanent,
               ),
               highlight: highlight,
@@ -1334,75 +1489,6 @@ class _MainSidebarState extends State<MainSidebar> {
           ),
         ),
         SidebarExpansionTile(
-          title: 'Xiaomi',
-          icon: Icons.phone_android_rounded,
-          highlight: highlight,
-          textPrimary: textPrimary,
-          initiallyExpanded: xiaomiExpanded,
-          children: [
-            _SidebarTile(
-              label: 'Registro Unidades',
-              icon: Icons.app_registration_rounded,
-              selected: isRoute('/xiaomi/registro/unidades'),
-              onTap: () => _navigate(
-                context,
-                '/xiaomi/registro/unidades',
-                closeOverlay: !permanent,
-              ),
-              highlight: highlight,
-              textPrimary: textPrimary,
-              isDark: isDark,
-            ),
-            _SidebarTile(
-              label: 'Producción CESB',
-              icon: Icons.check_circle_outline_rounded,
-              selected: isRoute('/xiaomi/cerrar_cesb'),
-              onTap: () => _navigate(
-                context,
-                '/xiaomi/cerrar_cesb',
-                closeOverlay: !permanent,
-              ),
-              highlight: highlight,
-              textPrimary: textPrimary,
-              isDark: isDark,
-            ),
-            _SidebarTile(
-              label: 'Historial',
-              icon: Icons.history_rounded,
-              selected: isRoute('/xiaomi/historial'),
-              onTap: () => _navigate(
-                context,
-                '/xiaomi/historial',
-                closeOverlay: !permanent,
-              ),
-              highlight: highlight,
-              textPrimary: textPrimary,
-              isDark: isDark,
-            ),
-            _SidebarTile(
-              label: 'Estadísticas',
-              icon: Icons.bar_chart_rounded,
-              selected: isRoute('/xiaomi/estadisticas'),
-              onTap: () => _navigate(
-                context,
-                '/xiaomi/estadisticas',
-                closeOverlay: !permanent,
-              ),
-              highlight: highlight,
-              textPrimary: textPrimary,
-              isDark: isDark,
-            ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Divider(
-            thickness: 0.6,
-            height: 1,
-            color: textMuted.withOpacity(0.12),
-          ),
-        ),
-        SidebarExpansionTile(
           title: 'Servidores',
           icon: Icons.dns_rounded,
           highlight: highlight,
@@ -1497,68 +1583,6 @@ class _MainSidebarState extends State<MainSidebar> {
             ),
           ],
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Divider(
-            thickness: 0.6,
-            height: 1,
-            color: textMuted.withOpacity(0.12),
-          ),
-        ),
-        if (user != null && (user.role == 'admin' || user.role == 'chief')) ...[
-          SidebarExpansionTile(
-            title: 'Análisis y Servicios',
-            icon: Icons.analytics_rounded,
-            highlight: highlight,
-            textPrimary: textPrimary,
-            initiallyExpanded: routeIn([
-              '/analisis/dashboard',
-              '/analisis/management',
-            ]),
-            children: [
-              _SidebarTile(
-                label: 'Dashboard',
-                icon: Icons.dashboard_rounded,
-                selected: isRoute('/analisis/dashboard'),
-                onTap: () => _navigate(
-                  context,
-                  '/analisis/dashboard',
-                  closeOverlay: !permanent,
-                ),
-                highlight: highlight,
-                textPrimary: textPrimary,
-                isDark: isDark,
-              ),
-              _SidebarTile(
-                label: 'Gestión',
-                icon: Icons.settings_suggest_rounded,
-                selected: isRoute('/analisis/management'),
-                onTap: () => _navigate(
-                  context,
-                  '/analisis/management',
-                  closeOverlay: !permanent,
-                ),
-                highlight: highlight,
-                textPrimary: textPrimary,
-                isDark: isDark,
-              ),
-            ],
-          ),
-        ] else ...[
-          _SidebarTile(
-            label: 'Análisis y Servicios',
-            icon: Icons.analytics_rounded,
-            selected: isRoute('/analisis/dashboard'),
-            onTap: () => _navigate(
-              context,
-              '/analisis/dashboard',
-              closeOverlay: !permanent,
-            ),
-            highlight: highlight,
-            textPrimary: textPrimary,
-            isDark: isDark,
-          ),
-        ],
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Divider(
@@ -1973,8 +1997,11 @@ Future<void> showAppSidebar(
 }) {
   if (_AppNavState._isOpen) return Future.value();
   _AppNavState._isOpen = true;
-  final currentRouteName =
-      currentRoute ?? ModalRoute.of(context)?.settings.name;
+  final currentRouteName = currentRoute ??
+      (AppRouteTracker.currentRoute.value != null &&
+              AppRouteTracker.currentRoute.value!.isNotEmpty
+          ? AppRouteTracker.currentRoute.value
+          : ModalRoute.of(context)?.settings.name);
   return showGeneralDialog(
     context: context,
     barrierDismissible: true,
@@ -2192,53 +2219,64 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final actualRoute =
-        widget.currentRoute ?? ModalRoute.of(context)?.settings.name;
+    return ValueListenableBuilder<String?>(
+      valueListenable: AppRouteTracker.currentRoute,
+      builder: (context, trackedRoute, _) {
+        final actualRoute = (trackedRoute != null && trackedRoute.isNotEmpty)
+            ? trackedRoute
+            : (widget.currentRoute ??
+                (ModalRoute.of(context)?.settings.name != '/' &&
+                        ModalRoute.of(context)?.settings.name != null &&
+                        ModalRoute.of(context)!.settings.name!.isNotEmpty
+                    ? ModalRoute.of(context)!.settings.name
+                    : null));
 
-    return MouseRegion(
-      onEnter: (_) {
-        _hovering = true;
-        if (widget.openOnHover) {
-          _scheduleOpen(context, actualRoute);
-        }
-      },
-      onExit: (_) {
-        _hovering = false;
-      },
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => showAppSidebar(
-          context,
-          user: widget.user,
-          currentRoute: actualRoute,
-        ),
-        child: Container(
-          width: widget.width,
-          height: 48,
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withOpacity(0.1)
-                : Colors.black.withOpacity(0.1),
-            borderRadius: const BorderRadius.only(
-              topRight: Radius.circular(12),
-              bottomRight: Radius.circular(12),
+        return MouseRegion(
+          onEnter: (_) {
+            _hovering = true;
+            if (widget.openOnHover) {
+              _scheduleOpen(context, actualRoute);
+            }
+          },
+          onExit: (_) {
+            _hovering = false;
+          },
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => showAppSidebar(
+              context,
+              user: widget.user,
+              currentRoute: actualRoute,
             ),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withOpacity(0.2)
-                  : Colors.black.withOpacity(0.1),
-              width: 1,
+            child: Container(
+              width: widget.width,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(12),
+                  bottomRight: Radius.circular(12),
+                ),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.2)
+                      : Colors.black.withOpacity(0.1),
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: isDark
+                    ? Colors.white.withOpacity(0.7)
+                    : Colors.black.withOpacity(0.6),
+                size: 20,
+              ),
             ),
           ),
-          child: Icon(
-            Icons.chevron_right_rounded,
-            color: isDark
-                ? Colors.white.withOpacity(0.7)
-                : Colors.black.withOpacity(0.6),
-            size: 20,
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -2956,6 +2994,13 @@ class GlobalMobileSidebarDock extends StatelessWidget {
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
+              title: 'Verificación',
+              icon: Icons.fact_check_rounded,
+              route: '/serials/verification',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
               title: 'Cambio Serial',
               icon: Icons.swap_horiz_rounded,
               route: '/serials/change',
@@ -2973,6 +3018,13 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               title: 'Máscaras',
               icon: Icons.masks_rounded,
               route: '/serials/masks',
+              currentRoute: currentRoute,
+            ),
+            _menuRouteTile(
+              dialogContext: dialogCtx,
+              title: 'Bartender Labels',
+              icon: Icons.inventory_2_rounded,
+              route: '/serials/repository',
               currentRoute: currentRoute,
             ),
             _menuRouteTile(

@@ -10,12 +10,14 @@ class SerigrafiaStandard {
   final String name;
   final String url;
   final List<String> variables;
+  final String? image;
 
   SerigrafiaStandard({
     this.id,
     required this.name,
     required this.url,
     required this.variables,
+    this.image,
   });
 
   factory SerigrafiaStandard.fromJson(Map<String, dynamic> json) {
@@ -24,6 +26,7 @@ class SerigrafiaStandard {
       name: json['name'] as String,
       url: json['url'] as String,
       variables: List<String>.from(json['variables'] ?? []),
+      image: json['image'] as String?,
     );
   }
 
@@ -31,6 +34,7 @@ class SerigrafiaStandard {
     'name': name,
     'url': url,
     'variables': variables,
+    'image': image,
   };
 }
 
@@ -95,6 +99,20 @@ class SerigrafiaService {
   /// Delete a standard
   Future<ApiResult> deleteStandard(int id) async {
     return await client.delete('/orderops/serigrafia/standards/$id');
+  }
+
+  /// Upload an image file for a Serigrafia standard
+  Future<ApiResult> uploadStandardImage(int id, Uint8List bytes, String fileName) async {
+    return await client.postMultipart(
+      '/orderops/serigrafia/standards/$id/upload-image',
+      files: [
+        MultipartAttachment(
+          fieldName: 'file',
+          bytes: bytes,
+          fileName: fileName,
+        ),
+      ],
+    );
   }
 
   /// Save scan/print registration to database

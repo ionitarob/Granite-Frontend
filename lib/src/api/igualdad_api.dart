@@ -233,6 +233,16 @@ class IgualdadApi {
     await _postManualAdjustment('en_diagnostico', body);
   }
 
+  // POST /igualdad/registrar_irrecuperable_dispositivo
+  /// Registra un dispositivo individual (SM o PULSERA) como irrecuperable.
+  /// No incrementa IDIM_Devoluciones; el conteo aparece en ResumenSemanal
+  /// bajo la categoría "Irrecuperables".
+  static Future<void> registrarIrrecuperableDispositivo(
+    Map<String, dynamic> body,
+  ) async {
+    await _doPost('/igualdad/registrar_irrecuperable_dispositivo', jsonBody: body);
+  }
+
   static Future<void> registrarServiciosAdicionales(Map<String, dynamic> body) async {
     await _postManualAdjustment('servicios_adicionales', body);
   }

@@ -183,32 +183,42 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final compact = size.width < 420;
-    // Use an edge navigation handle (like AmazonGradingScreen) so the sidebar
-    // can be opened from the left; don't show a permanent sidebar here.
-    return Scaffold(
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      backgroundColor: Colors.transparent,
-      appBar: _buildGlassAppBar(context, compact: compact),
-      body: Stack(
-        children: [
-          _InventoryBackground(animation: _bgController),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _bgController,
-                builder: (_, __) => CustomPaint(
-                  painter: _InventoryAmbientPainter(
-                    progress: _bgController.value,
+    final parentPrimary = Theme.of(context).colorScheme.primary;
+
+    return Theme(
+      data: ThemeData(
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.dark(
+          primary: parentPrimary,
+          surface: const Color(0xFF1E1E24),
+        ),
+      ),
+      child: Builder(
+        builder: (context) {
+          return Scaffold(
+            extendBody: true,
+            extendBodyBehindAppBar: true,
+            backgroundColor: Colors.transparent,
+            appBar: _buildGlassAppBar(context, compact: compact),
+            body: Stack(
+              children: [
+                _InventoryBackground(animation: _bgController),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _bgController,
+                      builder: (_, __) => CustomPaint(
+                        painter: _InventoryAmbientPainter(
+                          progress: _bgController.value,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-          // Make all body text white by default (app bar remains unchanged)
-          DefaultTextStyle(
-            style: const TextStyle(color: Colors.white),
-            child: SafeArea(
+                // Make all body text white by default (app bar remains unchanged)
+                DefaultTextStyle(
+                  style: const TextStyle(color: Colors.white),
+                  child: SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   compact ? 14 : 24,
@@ -244,6 +254,9 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
           // Edge nav handle so the MainSidebar can be shown (same pattern as grading screen)
           // EdgeNavHandle moved to OverlayEntry
         ],
+      ),
+    );
+        },
       ),
     );
   }
@@ -295,7 +308,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                     ).createShader(r),
                     blendMode: BlendMode.srcIn,
                     child: const Text(
-                      'Inventory Control',
+                      'Control de Inventario',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
@@ -307,7 +320,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                   _ExportAllButton(onExport: _exportAll),
                   const SizedBox(width: 8),
                   IconButton(
-                    tooltip: 'Clear',
+                    tooltip: 'Limpiar',
                     onPressed: () {
                       setState(() {
                         _controller.clear();
@@ -328,6 +341,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
   }
 
   Widget _buildSearchBar({required bool compact}) {
+    final primary = Theme.of(context).colorScheme.primary;
     return ClipRRect(
       borderRadius: BorderRadius.circular(26),
       child: BackdropFilter(
@@ -336,13 +350,14 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
           padding: EdgeInsets.fromLTRB(18, 18, 18, compact ? 18 : 20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+            border: Border.all(color: primary.withOpacity(0.18), width: 1.5),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.07),
-                Colors.white.withOpacity(0.02),
+                primary.withOpacity(0.12),
+                Colors.deepPurple.withOpacity(0.08),
+                Colors.black.withOpacity(0.25),
               ],
             ),
           ),
@@ -352,8 +367,13 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
               Row(
                 children: [
                   SegmentedButton<_Mode>(
+                    style: SegmentedButton.styleFrom(
+                      selectedForegroundColor: Colors.white,
+                      selectedBackgroundColor: primary,
+                      foregroundColor: Colors.white70,
+                    ),
                     segments: const [
-                      ButtonSegment(value: _Mode.part, label: Text('Part #')),
+                      ButtonSegment(value: _Mode.part, label: Text('Parte #')),
                       ButtonSegment(value: _Mode.wpl, label: Text('WPL')),
                     ],
                     selected: <_Mode>{_mode},
@@ -370,13 +390,23 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         labelText: _mode == _Mode.part
-                            ? 'Part Number'
-                            : 'WPL ID',
-                        prefixIcon: const Icon(Icons.search),
+                            ? 'Número de Parte'
+                            : 'ID de WPL',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: primary, width: 2),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.white30),
+                        ),
+                        prefixIcon: Icon(Icons.search, color: primary),
                         suffixIcon: IconButton(
-                          icon: const Icon(Icons.arrow_forward),
+                          icon: Icon(Icons.arrow_forward, color: primary),
                           onPressed: _loading ? null : _search,
                         ),
                       ),
@@ -386,14 +416,14 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Opacity(
-                opacity: 0.55,
+                opacity: 0.75,
                 child: Text(
                   _mode == _Mode.part
-                      ? 'Search by part number to view aggregated inventory and unit breakdown.'
-                      : 'Search by WPL (pallet) ID to view its parts and units.',
-                  style: const TextStyle(fontSize: 12.5),
+                      ? 'Busque por número de parte para ver el inventario agregado y el desglose de unidades.'
+                      : 'Busque por ID de WPL (pallet) para ver sus partes y unidades.',
+                  style: const TextStyle(fontSize: 12.5, color: Colors.white70),
                 ),
               ),
             ],
@@ -421,7 +451,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _SectionHeader('Parts Registry'),
+                          const _SectionHeader('Registro de Partes'),
                           const SizedBox(height: 8),
                           _buildRegistryPanel(
                             items: _partsRegistry,
@@ -436,7 +466,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _SectionHeader('WPLs Registry'),
+                          const _SectionHeader('Registro de WPLs'),
                           const SizedBox(height: 8),
                           _buildRegistryPanel(
                             items: _wplsRegistry,
@@ -452,7 +482,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _SectionHeader('Parts Registry'),
+                  const _SectionHeader('Registro de Partes'),
                   const SizedBox(height: 8),
                   _buildRegistryPanel(
                     items: _partsRegistry,
@@ -460,7 +490,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                     error: _partsRegistryError,
                   ),
                   const SizedBox(height: 18),
-                  const _SectionHeader('WPLs Registry'),
+                  const _SectionHeader('Registro de WPLs'),
                   const SizedBox(height: 8),
                   _buildRegistryPanel(
                     items: _wplsRegistry,
@@ -480,7 +510,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
         child: ScaleTransition(
           scale: _panelScale,
           child: _GlassPanel(
-            title: 'Part Inventory',
+            title: 'Inventario de Parte',
             child: _PartInventoryView(inv: _partInventory!),
           ),
         ),
@@ -492,7 +522,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
         child: ScaleTransition(
           scale: _panelScale,
           child: _GlassPanel(
-            title: 'WPL Inventory',
+            title: 'Inventario de WPL',
             child: _WplInventoryView(inv: _wplInventory!),
           ),
         ),
@@ -510,7 +540,7 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
     if (error != null) return _ErrorBanner(message: error);
     if (items.isEmpty) return const Padding(
       padding: EdgeInsets.all(12.0),
-      child: Text('No entries found.'),
+      child: Text('No entries found.', style: TextStyle(color: Colors.white70)),
     );
     // compute union of keys for columns (preserve insertion order roughly)
     final colsSet = <String>{};
@@ -519,13 +549,22 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
     }
     final columns = colsSet.toList();
 
+    final primary = Theme.of(context).colorScheme.primary;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.03),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.04)),
+          border: Border.all(color: primary.withOpacity(0.12), width: 1.2),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              primary.withOpacity(0.06),
+              Colors.deepPurple.withOpacity(0.03),
+              Colors.black.withOpacity(0.15),
+            ],
+          ),
         ),
         child: SizedBox(
           height: 420, // constrain height so long registries scroll instead of overflowing
@@ -538,13 +577,13 @@ class _InventoryControlScreenState extends State<InventoryControlScreen>
                 child: DataTable(
                   headingRowHeight: 40,
                   dataRowHeight: 46,
-                  columns: columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 13)))).toList(),
+                  columns: columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 13, color: Colors.white70)))).toList(),
                   rows: items.map((r) {
                     return DataRow(
                       cells: columns.map((c) {
                         final v = r[c];
                         final s = v == null ? '' : (v is String ? v : v.toString());
-                        return DataCell(SelectableText(s, style: const TextStyle(fontSize: 13)));
+                        return DataCell(SelectableText(s, style: const TextStyle(fontSize: 13, color: Colors.white)));
                       }).toList(),
                     );
                   }).toList(),
@@ -1110,13 +1149,14 @@ class _GlassPanel extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(30, 26, 30, 30),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+            border: Border.all(color: primary.withOpacity(0.18), width: 1.5),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.07),
-                Colors.white.withOpacity(0.015),
+                primary.withOpacity(0.12),
+                Colors.deepPurple.withOpacity(0.08),
+                Colors.black.withOpacity(0.25),
               ],
             ),
             boxShadow: [
@@ -1451,10 +1491,10 @@ class _ExportAllButtonState extends State<_ExportAllButton> {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: 'Export all inventory',
+      message: 'Exportar Inventario',
       child: _GlassIconButton(
         icon: _busy ? Icons.hourglass_bottom : Icons.download_for_offline,
-        tooltip: 'Export all inventory',
+        tooltip: 'Exportar Inventario',
         onTap: _busy
             ? () {}
             : () async {

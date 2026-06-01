@@ -1472,9 +1472,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                           icon: Icons.swap_horizontal_circle_rounded,
                           routes: const [
                             ('Registro Serial', '/serials/cambio'),
+                            ('Verificación', '/serials/verification'),
                             ('Cambio Serial', '/serials/change'),
                             ('Etiquetas', '/serials/labels'),
                             ('Máscaras', '/serials/masks'),
+                            ('Bartender Labels', '/serials/repository'),
                             ('Historial Cambios', '/serials/serial-changes'),
                           ],
                         ),

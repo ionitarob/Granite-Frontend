@@ -22,6 +22,11 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
   // ─── Formulario ────────────────────────────────────────────────────────
   final _imeiController = TextEditingController();
   final _bateriaController = TextEditingController();
+  final _simController = TextEditingController();
+  final _imeiQrController = TextEditingController();
+  final _simQrController = TextEditingController();
+  final _btController = TextEditingController();
+  final _imei2Controller = TextEditingController();
   Map<String, dynamic>? _opcionesRegistro;
   String? _registroSeleccionado;
   String? _tipoRegistroSeleccionado;
@@ -32,8 +37,11 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     "chequeo_abierta": null,
     "serigrafia": null,
     "tornilleria": null,
+    "wifi_activada": null,
+    "geolocalizacion_funcional": null,
   };
   bool _registrando = false;
+  bool _registrandoIrrecuperable = false;
   bool _lookupLoading = false;
   String? _lookupError;
   Map<String, dynamic>? _lookupResult;
@@ -44,6 +52,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
   Map<String, int>? stockReal;
   Map<String, int>? idimActivoVals;
   Map<String, int>? oystaActivoVals;
+  Map<String, int>? irrecuperablesVals;
   String? idimCodigo;
   String? oystaCodigo;
 
@@ -75,6 +84,11 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     _imeiController.removeListener(_onImeiChanged);
     _imeiController.dispose();
     _bateriaController.dispose();
+    _simController.dispose();
+    _imeiQrController.dispose();
+    _simQrController.dispose();
+    _btController.dispose();
+    _imei2Controller.dispose();
     super.dispose();
   }
 
@@ -154,6 +168,12 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
         oystaActivoVals = Map<String, int>.from(data['oysta_activo']);
         idimCodigo = data['idim'];
         oystaCodigo = data['oysta'];
+        if (data['irrecuperables'] != null) {
+          final raw = data['irrecuperables'] as Map;
+          irrecuperablesVals = raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+        } else {
+          irrecuperablesVals = {'sm': 0, 'pulseras': 0, 'botones': 0, 'powerbanks': 0};
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -241,6 +261,92 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     }
   }
 
+  Map<String, String> _parseImeiQr(String qrText) {
+    final result = <String, String>{};
+    final imei1Reg = RegExp(r'IMEI1:([^;]+)');
+    final imei2Reg = RegExp(r'IMEI2:([^;]+)');
+    final btReg = RegExp(r'BT:([^;]+)');
+
+    final m1 = imei1Reg.firstMatch(qrText);
+    if (m1 != null) result['imei1'] = m1.group(1)!.trim();
+
+    final m2 = imei2Reg.firstMatch(qrText);
+    if (m2 != null) result['imei2'] = m2.group(1)!.trim();
+
+    final m3 = btReg.firstMatch(qrText);
+    if (m3 != null) result['bt'] = m3.group(1)!.trim();
+
+    return result;
+  }
+
+  Future<void> _registrarPulseraIrrecuperable() async {
+    if (_registroSeleccionado == null || _tipoRegistroSeleccionado == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona IDIM u OYSTA correctamente.')),
+      );
+      return;
+    }
+    final qrParsed = _parseImeiQr(_imeiQrController.text);
+    final imei1Val = qrParsed['imei1'] ?? _lookupResult?['imei1'] ?? _imeiController.text.trim();
+    final imei2Val = _imei2Controller.text.trim().isNotEmpty
+        ? _imei2Controller.text.trim()
+        : (qrParsed['imei2'] ?? _lookupResult?['imei2']);
+    final btVal = _btController.text.trim().isNotEmpty
+        ? _btController.text.trim()
+        : (qrParsed['bt'] ?? (_lookupResult != null && _lookupResult!['imei'] != null && _lookupResult!['imei'].toString().contains('BT:')
+            ? _lookupResult!['imei'].toString().split('BT:')[1].split(';')[0]
+            : ''));
+    final simVal = _simController.text.trim().isNotEmpty
+        ? _simController.text.trim()
+        : (_simQrController.text.trim().isNotEmpty
+            ? _simQrController.text.trim()
+            : (_lookupResult?['sim']?.toString() ?? ''));
+
+    final payload = {
+      'imei': _imeiController.text.trim(),
+      'tipo_dispositivo': 'PULSERA',
+      'registro_id': int.parse(_registroSeleccionado!),
+      'registro_tipo': _tipoRegistroSeleccionado,
+      'sim': simVal,
+      'imei1': imei1Val,
+      'imei2': imei2Val,
+      'bt': btVal,
+    };
+    try {
+      setState(() => _registrandoIrrecuperable = true);
+      await IgualdadApi.registrarIrrecuperableDispositivo(payload);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pulsera registrada como irrecuperable')),
+      );
+      setState(() {
+        _lookupResult = null;
+        _lookupError = null;
+        _lastLookupImei = null;
+        _imeiController.clear();
+        _imei2Controller.clear();
+        _simController.clear();
+        _imeiQrController.clear();
+        _simQrController.clear();
+        _btController.clear();
+        _bateriaController.clear();
+        for (final k in _radioValues.keys) {
+          _radioValues[k] = null;
+        }
+      });
+      await _loadData();
+      setState(() => _paginaActual = 1);
+      await _loadPulseras(1, refreshAll: true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al registrar irrecuperable: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _registrandoIrrecuperable = false);
+    }
+  }
+
   Future<void> _registrarPulsera() async {
     if (_registroSeleccionado == null || _tipoRegistroSeleccionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -248,6 +354,22 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       );
       return;
     }
+    final qrParsed = _parseImeiQr(_imeiQrController.text);
+    final imei1Val = qrParsed['imei1'] ?? _lookupResult?['imei1'] ?? _imeiController.text.trim();
+    final imei2Val = _imei2Controller.text.trim().isNotEmpty
+        ? _imei2Controller.text.trim()
+        : (qrParsed['imei2'] ?? _lookupResult?['imei2']);
+    final btVal = _btController.text.trim().isNotEmpty
+        ? _btController.text.trim()
+        : (qrParsed['bt'] ?? (_lookupResult != null && _lookupResult!['imei'] != null && _lookupResult!['imei'].toString().contains('BT:')
+            ? _lookupResult!['imei'].toString().split('BT:')[1].split(';')[0]
+            : ''));
+    final simVal = _simController.text.trim().isNotEmpty
+        ? _simController.text.trim()
+        : (_simQrController.text.trim().isNotEmpty
+            ? _simQrController.text.trim()
+            : (_lookupResult?['sim']?.toString() ?? ''));
+
     final payload = {
       "imei": _imeiController.text.trim(),
       "registro_id": int.parse(_registroSeleccionado!),
@@ -259,6 +381,10 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       "chequeo_abierta": _radioValues['chequeo_abierta'],
       "serigrafia": _radioValues['serigrafia'],
       "tornilleria": _radioValues['tornilleria'],
+      'sim': simVal,
+      'imei1': imei1Val,
+      'imei2': imei2Val,
+      'bt': btVal,
     };
     try {
       setState(() => _registrando = true);
@@ -271,6 +397,16 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
         _lookupResult = null;
         _lookupError = null;
         _lastLookupImei = null;
+        _imeiController.clear();
+        _imei2Controller.clear();
+        _simController.clear();
+        _imeiQrController.clear();
+        _simQrController.clear();
+        _btController.clear();
+        _bateriaController.clear();
+        for (final k in _radioValues.keys) {
+          _radioValues[k] = null;
+        }
       });
       await _loadData();
       setState(() => _paginaActual = 1);
@@ -331,6 +467,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -339,74 +476,133 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
           const Positioned.fill(
             child: AnimatedBackgroundWidget(intensity: 0.2),
           ),
-
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Volver
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                          child: Material(
-                            color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.arrow_back,
-                                color: Theme.of(context).colorScheme.onSurface,
+                      // ── Header row ──────────────────────────────────────────
+                      Row(
+                        children: [
+                          Material(
+                            color: theme.colorScheme.surface.withValues(alpha: 0.25),
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Icon(
+                                  Icons.arrow_back_rounded,
+                                  color: theme.colorScheme.onSurface,
+                                  size: 22,
+                                ),
                               ),
-                              onPressed: () => Navigator.of(context).pop(),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 14),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6B2B8F).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.watch_rounded,
+                              color: Color(0xFF9C27B0),
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Registro de Pulseras',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              Text(
+                                'Control de estado y stock',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: () {
+                              _loadData();
+                              _loadPulseras(1, refreshAll: true);
+                            },
+                            tooltip: 'Actualizar',
+                            icon: const Icon(Icons.refresh_rounded),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
-                      // Panel glass
+                      // ── Main content ─────────────────────────────────────────
                       Expanded(
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(20),
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                             child: Container(
-                              padding: const EdgeInsets.all(16),
+                              padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surface.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Theme.of(context).dividerColor),
+                                color: theme.colorScheme.surface.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: theme.dividerColor.withValues(alpha: 0.5),
+                                ),
                               ),
                               child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final isDesktop = constraints.maxWidth > 900;
+                                builder: (context, inner) {
+                                  final isDesktop = inner.maxWidth > 900;
                                   if (isDesktop) {
                                     return Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
-                                          flex: 4,
-                                          child: SingleChildScrollView(
-                                            child: Column(
-                                              children: [
-                                                _buildFormulario(),
-                                                const SizedBox(height: 24),
+                                          flex: 7,
+                                          child: Column(
+                                            children: [
+                                              Expanded(
+                                                child: SingleChildScrollView(
+                                                  child: Center(
+                                                    child: ConstrainedBox(
+                                                      constraints: const BoxConstraints(maxWidth: 1000),
+                                                      child: _buildFormulario(),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              if (stockReal != null &&
+                                                  idimActivoVals != null &&
+                                                  oystaActivoVals != null) ...[
+                                                const SizedBox(height: 16),
                                                 ResumenStock(
                                                   stockReal: stockReal,
                                                   idimActivoVals: idimActivoVals,
                                                   oystaActivoVals: oystaActivoVals,
+                                                  irrecuperablesVals: irrecuperablesVals,
                                                   idimCodigo: idimCodigo,
                                                   oystaCodigo: oystaCodigo,
                                                 ),
                                               ],
-                                            ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(width: 32),
+                                        const SizedBox(width: 28),
                                         Expanded(
-                                          flex: 6,
+                                          flex: 3,
                                           child: _buildTabla(),
                                         ),
                                       ],
@@ -415,15 +611,24 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
                                     return SingleChildScrollView(
                                       child: Column(
                                         children: [
-                                          _buildFormulario(),
-                                          const SizedBox(height: 24),
-                                          ResumenStock(
-                                            stockReal: stockReal,
-                                            idimActivoVals: idimActivoVals,
-                                            oystaActivoVals: oystaActivoVals,
-                                            idimCodigo: idimCodigo,
-                                            oystaCodigo: oystaCodigo,
+                                          Center(
+                                            child: ConstrainedBox(
+                                              constraints: const BoxConstraints(maxWidth: 1000),
+                                              child: _buildFormulario(),
+                                            ),
                                           ),
+                                          const SizedBox(height: 24),
+                                          if (stockReal != null &&
+                                              idimActivoVals != null &&
+                                              oystaActivoVals != null)
+                                            ResumenStock(
+                                              stockReal: stockReal,
+                                              idimActivoVals: idimActivoVals,
+                                              oystaActivoVals: oystaActivoVals,
+                                              irrecuperablesVals: irrecuperablesVals,
+                                              idimCodigo: idimCodigo,
+                                              oystaCodigo: oystaCodigo,
+                                            ),
                                           const SizedBox(height: 24),
                                           SizedBox(height: 600, child: _buildTabla()),
                                         ],
@@ -442,15 +647,21 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
               },
             ),
           ),
-          Positioned(top: 12, left: 6, child: const EdgeNavHandle()),
+          const Positioned(top: 12, left: 6, child: EdgeNavHandle()),
         ],
       ),
     );
   }
+
   Widget _buildFormulario() {
     return FormularioPulseraNew(
       imeiController: _imeiController,
       bateriaController: _bateriaController,
+      simController: _simController,
+      imeiQrController: _imeiQrController,
+      simQrController: _simQrController,
+      btController: _btController,
+      imei2Controller: _imei2Controller,
       opcionesRegistro: _opcionesRegistro,
       tipoRegistroSeleccionado: _tipoRegistroSeleccionado,
       registroSeleccionado: _registroSeleccionado,
@@ -463,7 +674,9 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       },
       onChangeRadio: (k, v) => setState(() => _radioValues[k] = v),
       onRegistrar: _registrarPulsera,
+      onRegistrarIrrecuperable: _registrarPulseraIrrecuperable,
       isSubmitting: _registrando,
+      isSubmittingIrrecuperable: _registrandoIrrecuperable,
       isLookupInProgress: _lookupLoading,
       lookupResult: _lookupResult,
       lookupError: _lookupError,

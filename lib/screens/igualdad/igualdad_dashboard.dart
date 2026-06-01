@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../utils/formatters.dart';
 
@@ -12,6 +13,7 @@ import 'package:http/http.dart' as http;
 import 'package:configtool_granite_frontend/services/api_service.dart';
 
 import '../../widgets/main_sidebar.dart';
+import 'resumen_stock.dart';
 
 class _ManualEndpointConfig {
   final String id;
@@ -53,9 +55,22 @@ class IgualdadDashboard extends StatefulWidget {
 }
 
 class _IgualdadDashboardState extends State<IgualdadDashboard> {
-  List<Map<String, dynamic>> dailyStats = [];
+  Map<String, dynamic> summaryData = {};
   bool loadingStats = true;
   String? errorStats;
+
+  Map<String, int>? stockReal;
+  Map<String, int>? idimActivoVals;
+  Map<String, int>? oystaActivoVals;
+  Map<String, int>? irrecuperablesVals;
+  String? idimCodigo;
+  String? oystaCodigo;
+  bool loadingStock = true;
+  String? errorStock;
+
+  Map<String, dynamic>? deviceStatusData;
+  bool loadingDeviceStatus = true;
+  String? errorDeviceStatus;
 
   late final List<_ManualEndpointConfig> _manualConfigs;
   final Map<String, TextEditingController> _manualControllers = {};
@@ -71,7 +86,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
   String? _selectedWeekObservaciones;
   bool _updatingEnviado = false;
 
-  Future<void> _fetchDailyStats() async {
+  Future<void> _fetchSummaryData() async {
     setState(() {
       loadingStats = true;
       errorStats = null;
@@ -80,18 +95,12 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
       final svc = ApiService.instance;
       if (svc != null) {
         final res = await svc.client.get(
-          '/igualdad/estadisticas/entradas_diarias',
+          '/igualdad/estadisticas/tarjetas_resumen',
         );
         if (!mounted) return;
-        if (res.ok && res.body is List) {
-          final data = (res.body as List)
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+        if (res.ok && res.body is Map) {
           setState(() {
-            dailyStats = data
-                .map((e) => {"fecha": e["fecha"], "total": e["total"]})
-                .toList();
+            summaryData = Map<String, dynamic>.from(res.body as Map);
             loadingStats = false;
           });
         } else {
@@ -105,14 +114,12 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
       }
 
       final response = await http.get(
-        Uri.parse('$kBackendBaseUrl/igualdad/estadisticas/entradas_diarias'),
+        Uri.parse('$kBackendBaseUrl/igualdad/estadisticas/tarjetas_resumen'),
       );
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final data = json.decode(response.body) as Map<String, dynamic>;
         setState(() {
-          dailyStats = data
-              .map((e) => {"fecha": e["fecha"], "total": e["total"]})
-              .toList();
+          summaryData = data;
           loadingStats = false;
         });
       } else {
@@ -129,23 +136,242 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     }
   }
 
-  Widget _buildDailyStatsChart({bool compact = false}) {
-    final BorderRadius borderRadius = BorderRadius.circular(compact ? 22 : 26);
-    final EdgeInsets padding = EdgeInsets.fromLTRB(
-      compact ? 20 : 28,
-      compact ? 22 : 28,
-      compact ? 20 : 28,
-      compact ? 18 : 22,
-    );
-    final double chartHeight = compact ? 230 : 280;
-    final double titleFontSize = compact ? 18 : 20;
-    final double subtitleFontSize = compact ? 12 : 13;
-    final double axisFontSize = compact ? 11 : 12;
-    final double bottomFontSize = compact ? 10 : 11;
+  Future<void> _fetchStockData() async {
+    setState(() {
+      loadingStock = true;
+      errorStock = null;
+    });
+    try {
+      final data = await IgualdadApi.getStockResumen();
+      if (!mounted) return;
+      setState(() {
+        stockReal = Map<String, int>.from(data['stock_real']);
+        idimActivoVals = Map<String, int>.from(data['idim_activo']);
+        oystaActivoVals = Map<String, int>.from(data['oysta_activo']);
+        irrecuperablesVals = data['irrecuperables'] != null ? Map<String, int>.from(data['irrecuperables']) : null;
+        idimCodigo = data['idim'];
+        oystaCodigo = data['oysta'];
+        loadingStock = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        errorStock = e.toString();
+        loadingStock = false;
+      });
+    }
+  }
 
+  Future<void> _fetchDeviceStatusData() async {
+    setState(() {
+      loadingDeviceStatus = true;
+      errorDeviceStatus = null;
+    });
+    try {
+      final svc = ApiService.instance;
+      if (svc != null) {
+        final res = await svc.client.get('/igualdad/dispositivos_resumen_estado');
+        if (!mounted) return;
+        if (res.ok && res.body is Map) {
+          setState(() {
+            deviceStatusData = Map<String, dynamic>.from(res.body as Map);
+            loadingDeviceStatus = false;
+          });
+          return;
+        }
+      }
+      final response = await http.get(
+        Uri.parse('$kBackendBaseUrl/igualdad/dispositivos_resumen_estado'),
+      );
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        setState(() {
+          deviceStatusData = json.decode(response.body) as Map<String, dynamic>;
+          loadingDeviceStatus = false;
+        });
+      } else {
+        setState(() {
+          errorDeviceStatus = 'Error: ${response.statusCode}';
+          loadingDeviceStatus = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        errorDeviceStatus = e.toString();
+        loadingDeviceStatus = false;
+      });
+    }
+  }
+
+  double? _calculatePercentage(num current, num previous) {
+    if (previous <= 0) return null;
+    return ((current - previous) / previous) * 100;
+  }
+
+  Widget _buildStatCard({
+    required String title,
+    required num value,
+    required String comparisonText,
+    required double? percentage,
+    required Color baseColor,
+    required double height,
+    num? smVal,
+    num? pulserasVal,
+  }) {
+    final theme = Theme.of(context);
+    final formattedValue = NumberFormat.decimalPattern('es_ES').format(value);
+
+    Widget? percentageChip;
+    if (percentage != null) {
+      final isPositive = percentage >= 0;
+      final text = '${isPositive ? "+" : ""}${percentage.toStringAsFixed(0)}%';
+      final color = isPositive ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+      percentageChip = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isPositive ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+              color: color,
+              size: 12,
+            ),
+            const SizedBox(width: 2),
+            Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget? desglosePills;
+    if (smVal != null && pulserasVal != null) {
+      desglosePills = Row(
+        children: [
+          _buildDesglosePill(
+            icon: Icons.smartphone_rounded,
+            label: 'SM',
+            count: smVal,
+            color: baseColor,
+          ),
+          const SizedBox(width: 6),
+          _buildDesglosePill(
+            icon: Icons.watch_rounded,
+            label: 'Pulseras',
+            count: pulserasVal,
+            color: baseColor,
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      height: desglosePills != null ? height + 36 : height,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: baseColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: baseColor.withOpacity(0.25),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: baseColor.withOpacity(0.85),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              if (percentageChip != null) percentageChip,
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                formattedValue,
+                style: TextStyle(
+                  fontSize: height > 150 ? 32 : 28,
+                  fontWeight: FontWeight.w900,
+                  color: theme.textTheme.titleLarge?.color,
+                  height: 1.1,
+                ),
+              ),
+              if (desglosePills != null) ...[const SizedBox(height: 8), desglosePills],
+              const SizedBox(height: 4),
+              Text(
+                comparisonText,
+                style: TextStyle(
+                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesglosePill({
+    required IconData icon,
+    required String label,
+    required num count,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color.withOpacity(0.8)),
+          const SizedBox(width: 4),
+          Text(
+            '$label: $count',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color.withOpacity(0.9),
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCards({bool compact = false}) {
     final decoration = BoxDecoration(
       color: Theme.of(context).cardColor,
-      borderRadius: borderRadius,
+      borderRadius: BorderRadius.circular(compact ? 22 : 26),
       border: Border.all(
         color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
         width: 1.0,
@@ -189,288 +415,356 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         ),
       );
     }
-    if (dailyStats.isEmpty) {
-      return Container(
-        decoration: decoration,
-        padding: EdgeInsets.symmetric(
-          vertical: compact ? 28 : 40,
-          horizontal: compact ? 24 : 32,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'No hay datos de registros diarios.',
-          style: TextStyle(
-            fontSize: compact ? 14 : 16,
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).textTheme.bodyMedium?.color,
-          ),
-        ),
-      );
-    }
 
-    final spots = dailyStats.asMap().entries.map((entry) {
-      final index = entry.key;
-      final value = entry.value;
-      return FlSpot(index.toDouble(), (value['total'] as num).toDouble());
-    }).toList();
-    final labels = dailyStats.map((e) => e['fecha'] as String).toList();
-    final double highestY = spots.fold<double>(
-      0,
-      (max, spot) => spot.y > max ? spot.y : max,
-    );
-    final double topPadding = highestY == 0 ? 4 : highestY * 1.25;
-    final double average = spots.isEmpty
-        ? 0
-        : spots.map((spot) => spot.y).reduce((a, b) => a + b) / spots.length;
+    final double titleFontSize = compact ? 18 : 20;
 
     return Container(
       decoration: decoration,
-      padding: padding,
+      padding: EdgeInsets.fromLTRB(
+        compact ? 20 : 28,
+        compact ? 22 : 28,
+        compact ? 20 : 28,
+        compact ? 22 : 28,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Registros diarios (últimos 7 días)',
-                      style: TextStyle(
-                        fontSize: titleFontSize,
-                        fontWeight: FontWeight.w700,
-                        color: Theme.of(context).textTheme.titleLarge?.color,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${labels.first} a ${labels.last}',
-                      style: TextStyle(
-                        color: Theme.of(
-                          context,
-                        ).textTheme.bodyMedium?.color?.withOpacity(0.7),
-                        fontSize: subtitleFontSize,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: 36,
-                width: 36,
-                child: IconButton(
-                  onPressed: _fetchDailyStats,
-                  tooltip: 'Actualizar gráfico',
-                  padding: EdgeInsets.zero,
-                  icon: Icon(
-                    Icons.refresh_rounded,
-                    color: Theme.of(context).iconTheme.color,
+              Row(
+                children: [
+                  Icon(
+                    Icons.inventory_2_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: compact ? 22 : 26,
                   ),
-                  iconSize: compact ? 22 : 24,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: compact ? 14 : 18),
-          SizedBox(
-            height: chartHeight,
-            child: LineChart(
-              LineChartData(
-                lineTouchData: LineTouchData(
-                  handleBuiltInTouches: true,
-                  touchTooltipData: LineTouchTooltipData(
-                    // tooltipBgColor: Colors.black.withOpacity(0.75),
-                    fitInsideHorizontally: true,
-                    fitInsideVertically: true,
-                    getTooltipItems: (touchedSpots) {
-                      return touchedSpots.map((spot) {
-                        final dateLabel = labels[spot.spotIndex];
-                        final total = spot.y.formattedInt;
-                        return LineTooltipItem(
-                          '$dateLabel\n$total registros',
-                          const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        );
-                      }).toList();
-                    },
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: true,
-                  verticalInterval: 1,
-                  horizontalInterval: highestY <= 5 ? 1 : null,
-                  getDrawingHorizontalLine: (value) => FlLine(
-                    color: Theme.of(context).dividerColor.withOpacity(0.2),
-                    strokeWidth: 1,
-                  ),
-                  getDrawingVerticalLine: (value) => FlLine(
-                    color: Theme.of(context).dividerColor.withOpacity(0.1),
-                    strokeWidth: 1,
-                  ),
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: compact ? 36 : 42,
-                      getTitlesWidget: (value, meta) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Text(
-                          value.toInt().toString(),
-                          style: TextStyle(
-                            color: Theme.of(context).textTheme.bodySmall?.color,
-                            fontSize: axisFontSize,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 1,
-                      reservedSize: compact ? 36 : 44,
-                      getTitlesWidget: (value, meta) {
-                        final int index = value.toInt();
-                        if (index < 0 || index >= labels.length) {
-                          return const SizedBox.shrink();
-                        }
-                        final label = labels[index].substring(5);
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Transform.rotate(
-                            angle: compact ? -0.35 : -0.4,
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.color,
-                                fontSize: bottomFontSize,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  rightTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                minX: 0,
-                maxX: (spots.length - 1).toDouble(),
-                minY: 0,
-                maxY: topPadding,
-                extraLinesData: ExtraLinesData(
-                  horizontalLines: [
-                    if (average > 0)
-                      HorizontalLine(
-                        y: average,
-                        color: Theme.of(context).dividerColor.withOpacity(0.5),
-                        strokeWidth: 1.5,
-                        dashArray: const [6, 4],
-                        label: HorizontalLineLabel(
-                          show: true,
-                          padding: const EdgeInsets.only(left: 8),
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).textTheme.bodySmall?.color?.withOpacity(0.7),
-                            fontSize: compact ? 11 : 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          alignment: Alignment.topLeft,
-                          labelResolver: (_) => 'Promedio',
-                        ),
-                      ),
-                  ],
-                ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.secondary,
-                      ],
-                    ),
-                    barWidth: compact ? 3 : 4,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, p, barData, index) {
-                        return FlDotCirclePainter(
-                          radius: compact ? 3.4 : 4,
-                          color: Colors.white,
-                          strokeColor: Theme.of(context).colorScheme.primary,
-                          strokeWidth: compact ? 1.8 : 2,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.secondary,
-                        ].map((c) => c.withOpacity(0.14)).toList(),
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'TOTAL UNIDADES',
+                    style: TextStyle(
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                      color: Theme.of(context).textTheme.titleLarge?.color,
                     ),
                   ),
                 ],
               ),
-            ),
+              IconButton(
+                onPressed: () {
+                  _fetchSummaryData();
+                  _fetchStockData();
+                  _fetchDeviceStatusData();
+                },
+                tooltip: 'Actualizar estadísticas',
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
           ),
-          SizedBox(height: compact ? 12 : 18),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            alignment: compact ? WrapAlignment.center : WrapAlignment.start,
-            children: [
-              _buildLegendChip(
-                Theme.of(context).colorScheme.primary,
-                'Total de entradas',
-                compact: compact,
-              ),
-              Text(
-                'Promedio diario: ${average.formatted}',
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                  fontWeight: FontWeight.w600,
-                  fontSize: compact ? 12 : 14,
-                ),
-              ),
-              if (highestY > 0)
-                Text(
-                  'Pico máximo: ${highestY.formattedInt}',
-                  style: TextStyle(
-                    color: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.color?.withOpacity(0.7),
-                    fontWeight: FontWeight.w600,
-                    fontSize: compact ? 12 : 14,
+          const SizedBox(height: 20),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double cardHeight = compact ? 140 : 160;
+              final bool useVerticalLayout = constraints.maxWidth < 600;
+
+              final hoyVal = summaryData['hoy'] ?? 0;
+              final ayerVal = summaryData['ayer'] ?? 0;
+              final estaSemanaVal = summaryData['esta_semana'] ?? 0;
+              final semanaPasadaVal = summaryData['semana_pasada'] ?? 0;
+              final esteMesVal = summaryData['este_mes'] ?? 0;
+              final mesPasadoVal = summaryData['mes_pasado'] ?? 0;
+              final esteAnoVal = summaryData['este_ano'] ?? 0;
+              final anoPasadoVal = summaryData['ano_pasado'] ?? 0;
+
+              final hoySmVal = summaryData['hoy_sm'] ?? 0;
+              final hoyPulserasVal = summaryData['hoy_pulseras'] ?? 0;
+              final estaSemanaSmVal = summaryData['esta_semana_sm'] ?? 0;
+              final estaSemanaPulserasVal = summaryData['esta_semana_pulseras'] ?? 0;
+              final esteMesSmVal = summaryData['este_mes_sm'] ?? 0;
+              final esteMesPulserasVal = summaryData['este_mes_pulseras'] ?? 0;
+              final esteAnoSmVal = summaryData['este_ano_sm'] ?? 0;
+              final esteAnoPulserasVal = summaryData['este_ano_pulseras'] ?? 0;
+
+              final cardHoy = _buildStatCard(
+                title: 'HOY',
+                value: hoyVal,
+                comparisonText: 'vs $ayerVal (ayer)',
+                percentage: null,
+                baseColor: const Color(0xFF4E9F3D), // Green
+                height: cardHeight,
+                smVal: hoySmVal,
+                pulserasVal: hoyPulserasVal,
+              );
+
+              final cardSemana = _buildStatCard(
+                title: 'ESTA SEMANA',
+                value: estaSemanaVal,
+                comparisonText: 'vs $semanaPasadaVal (sem. pasada)',
+                percentage: _calculatePercentage(estaSemanaVal, semanaPasadaVal),
+                baseColor: const Color(0xFF2B5C8F), // Blue
+                height: cardHeight,
+                smVal: estaSemanaSmVal,
+                pulserasVal: estaSemanaPulserasVal,
+              );
+
+              final cardMes = _buildStatCard(
+                title: 'ESTE MES',
+                value: esteMesVal,
+                comparisonText: 'vs $mesPasadoVal (mes pasado)',
+                percentage: _calculatePercentage(esteMesVal, mesPasadoVal),
+                baseColor: const Color(0xFF6B2B8F), // Purple
+                height: cardHeight,
+                smVal: esteMesSmVal,
+                pulserasVal: esteMesPulserasVal,
+              );
+
+              final cardAno = _buildStatCard(
+                title: 'ESTE AÑO',
+                value: esteAnoVal,
+                comparisonText: 'vs $anoPasadoVal (año pasado)',
+                percentage: _calculatePercentage(esteAnoVal, anoPasadoVal),
+                baseColor: const Color(0xFF8F5C2B), // Bronze/Brown
+                height: cardHeight,
+                smVal: esteAnoSmVal,
+                pulserasVal: esteAnoPulserasVal,
+              );
+
+              if (useVerticalLayout) {
+                return Column(
+                  children: [
+                    cardHoy,
+                    const SizedBox(height: 12),
+                    cardSemana,
+                    const SizedBox(height: 12),
+                    cardMes,
+                    const SizedBox(height: 12),
+                    cardAno,
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: cardHoy),
+                      const SizedBox(width: 12),
+                      Expanded(child: cardSemana),
+                    ],
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: cardMes),
+                      const SizedBox(width: 12),
+                      Expanded(child: cardAno),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceStatusCard({bool compact = false}) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final decoration = BoxDecoration(
+      color: theme.cardColor,
+      borderRadius: BorderRadius.circular(compact ? 22 : 26),
+      border: Border.all(
+        color: theme.colorScheme.outline.withOpacity(0.1),
+        width: 1.0,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: theme.shadowColor.withOpacity(0.05),
+          blurRadius: 20,
+          offset: const Offset(0, 4),
+         )
+      ],
+    );
+
+    if (loadingDeviceStatus) {
+      return Container(
+        decoration: decoration,
+        padding: const EdgeInsets.all(28),
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(),
+      );
+    }
+
+    if (errorDeviceStatus != null) {
+      return Container(
+        decoration: decoration,
+        padding: const EdgeInsets.all(28),
+        alignment: Alignment.center,
+        child: Text(
+          'Error: $errorDeviceStatus',
+          style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+
+    final data = deviceStatusData ?? {'active': 0, 'oysta': 0, 'irrecuperable': 0, 'total': 0};
+    final active = int.tryParse(data['active'].toString()) ?? 0;
+    final oysta = int.tryParse(data['oysta'].toString()) ?? 0;
+    final irrecuperable = int.tryParse(data['irrecuperable'].toString()) ?? 0;
+    final total = int.tryParse(data['total'].toString()) ?? 0;
+
+    final List<PieChartSectionData> sections = [];
+    if (active > 0) {
+      sections.add(
+        PieChartSectionData(
+          color: const Color(0xFF4E9F3D),
+          value: active.toDouble(),
+          title: '$active',
+          radius: 35,
+          titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+      );
+    }
+    if (oysta > 0) {
+      sections.add(
+        PieChartSectionData(
+          color: const Color(0xFF2B5C8F),
+          value: oysta.toDouble(),
+          title: '$oysta',
+          radius: 35,
+          titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+      );
+    }
+    if (irrecuperable > 0) {
+      sections.add(
+        PieChartSectionData(
+          color: const Color(0xFFC62828),
+          value: irrecuperable.toDouble(),
+          title: '$irrecuperable',
+          radius: 35,
+          titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: decoration,
+      padding: EdgeInsets.all(compact ? 20 : 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.pie_chart_rounded,
+                color: theme.colorScheme.primary,
+                size: compact ? 22 : 26,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'ESTADO DE DISPOSITIVOS',
+                  style: TextStyle(
+                    fontSize: compact ? 18 : 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: theme.textTheme.titleLarge?.color,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              SizedBox(
+                width: 100,
+                height: 100,
+                child: sections.isEmpty
+                    ? const Center(child: Text('Sin datos', style: TextStyle(fontSize: 11)))
+                    : PieChart(
+                        PieChartData(
+                          sections: sections,
+                          centerSpaceRadius: 20,
+                          sectionsSpace: 2,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLegendItem(
+                      color: const Color(0xFF4E9F3D),
+                      label: 'Activos / IDIM',
+                      value: active,
+                      percentage: total > 0 ? (active / total * 100).toStringAsFixed(1) : '0',
+                    ),
+                    const SizedBox(height: 6),
+                    _buildLegendItem(
+                      color: const Color(0xFF2B5C8F),
+                      label: 'Enviados OYSTA',
+                      value: oysta,
+                      percentage: total > 0 ? (oysta / total * 100).toStringAsFixed(1) : '0',
+                    ),
+                    const SizedBox(height: 6),
+                    _buildLegendItem(
+                      color: const Color(0xFFC62828),
+                      label: 'Irrecuperables',
+                      value: irrecuperable,
+                      percentage: total > 0 ? (irrecuperable / total * 100).toStringAsFixed(1) : '0',
+                    ),
+                    const Divider(height: 12),
+                    Text(
+                      'Total único IMEIs: $total',
+                      style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLegendItem({
+    required Color color,
+    required String label,
+    required int value,
+    required String percentage,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        Text(
+          '$value ($percentage%)',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.8),
+          ),
+        ),
+      ],
     );
   }
 
@@ -491,7 +785,9 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
       _selectedManualId = _manualConfigs.first.id;
     }
     _fetchSemanas(refreshResumen: true);
-    _fetchDailyStats();
+    _fetchSummaryData();
+    _fetchStockData();
+    _fetchDeviceStatusData();
   }
 
   Future<void> _fetchSemanas({bool refreshResumen = false}) async {
@@ -1173,7 +1469,6 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         ),
       ],
     );
-
     final bool useHorizontalScroll = compact;
 
     return Container(
@@ -1261,6 +1556,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                           headerColors,
                           displayResumen,
                           compact,
+                          true,
                         ),
                       ),
                     )
@@ -1274,6 +1570,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                         headerColors,
                         displayResumen,
                         compact,
+                        false,
                       ),
                     ),
             ),
@@ -1317,18 +1614,30 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     List<Color> headerColors,
     List<dynamic> resumen,
     bool compact,
+    bool scrollable,
   ) {
     return Table(
-      columnWidths: const {
-        0: IntrinsicColumnWidth(),
-        1: IntrinsicColumnWidth(),
-        2: IntrinsicColumnWidth(),
-        3: IntrinsicColumnWidth(),
-        4: IntrinsicColumnWidth(),
-        5: IntrinsicColumnWidth(),
-        6: IntrinsicColumnWidth(),
-        7: IntrinsicColumnWidth(),
-      },
+      columnWidths: scrollable
+          ? const {
+              0: FixedColumnWidth(160),
+              1: FixedColumnWidth(60),
+              2: FixedColumnWidth(60),
+              3: FixedColumnWidth(75),
+              4: FixedColumnWidth(70),
+              5: FixedColumnWidth(95),
+              6: FixedColumnWidth(100),
+              7: FixedColumnWidth(90),
+            }
+          : const {
+              0: FlexColumnWidth(2.8),
+              1: FlexColumnWidth(1.0),
+              2: FlexColumnWidth(1.0),
+              3: FlexColumnWidth(1.1),
+              4: FlexColumnWidth(1.0),
+              5: FlexColumnWidth(1.2),
+              6: FlexColumnWidth(1.6),
+              7: FlexColumnWidth(1.3),
+            },
       border: const TableBorder(),
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
@@ -1412,13 +1721,42 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                     border: Border.all(color: Colors.white.withOpacity(0.18)),
                   ),
                   alignment: Alignment.center,
-                  child: Text(
-                    cells[idx] == null ? '' : cells[idx].toString(),
-                    style: TextStyle(
-                      color: idx == 0 ? Colors.black : Colors.black87,
-                      fontWeight: idx == 0 ? FontWeight.w700 : FontWeight.w500,
-                      fontSize: compact ? 13 : 14,
-                    ),
+                  child: Builder(
+                    builder: (context) {
+                      final textVal = cells[idx] == null ? '' : cells[idx].toString();
+                      if (idx == 0 && (textVal == 'Irrecuperables' || textVal == 'Enviado a Securitas Irrecuperables')) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              size: 15,
+                              color: Color(0xFFE53935),
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                textVal,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                      return Text(
+                        textVal,
+                        style: TextStyle(
+                          color: idx == 0 ? Colors.black : Colors.black87,
+                          fontWeight: idx == 0 ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: compact ? 13 : 14,
+                        ),
+                      );
+                    },
                   ),
                 ),
             ],
@@ -1896,18 +2234,15 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
         final double maxContentWidth = width;
 
         Widget dashboard;
-        final manualCard = _manualConfigs.isEmpty
-            ? const SizedBox.shrink()
-            : _buildManualOverrideCard(compact: compact || isMobile);
         if (isDesktop) {
           final double available = maxContentWidth - gap;
-          double chartWidth = available * 0.34;
-          if (chartWidth < 420) {
-            chartWidth = 420;
+          double chartWidth = available * 0.45;
+          if (chartWidth < 480) {
+            chartWidth = 480;
           }
           double tableWidth = available - chartWidth;
-          if (tableWidth < 820) {
-            tableWidth = 820;
+          if (tableWidth < 740) {
+            tableWidth = 740;
             chartWidth = available - tableWidth;
           }
           final double chartBoxWidth = chartWidth.clamp(360.0, available);
@@ -1920,29 +2255,58 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 children: [
                   SizedBox(
                     width: chartBoxWidth,
-                    child: _buildDailyStatsChart(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildSummaryCards(),
+                        const SizedBox(height: 24),
+                        _buildDeviceStatusCard(),
+                        if (!loadingStock && errorStock == null && stockReal != null) ...[
+                          const SizedBox(height: 24),
+                          ResumenStock(
+                            stockReal: stockReal,
+                            idimActivoVals: idimActivoVals,
+                            oystaActivoVals: oystaActivoVals,
+                            idimCodigo: idimCodigo,
+                            oystaCodigo: oystaCodigo,
+                            irrecuperablesVals: irrecuperablesVals,
+                          ),
+                        ] else if (loadingStock) ...[
+                          const SizedBox(height: 24),
+                          const Center(child: CircularProgressIndicator()),
+                        ],
+                      ],
+                    ),
                   ),
                   SizedBox(width: gap),
                   SizedBox(width: tableBoxWidth, child: _buildResumenTable()),
                 ],
               ),
-              if (_manualConfigs.isNotEmpty) ...[
-                SizedBox(height: gap),
-                _buildManualOverrideCard(compact: false),
-              ],
             ],
           );
         } else {
           dashboard = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildDailyStatsChart(compact: compact),
+              _buildSummaryCards(compact: compact),
               SizedBox(height: gap),
-              _buildResumenTable(compact: compact || isMobile),
-              if (_manualConfigs.isNotEmpty) ...[
+              _buildDeviceStatusCard(compact: compact),
+              SizedBox(height: gap),
+              if (!loadingStock && errorStock == null && stockReal != null) ...[
+                ResumenStock(
+                  stockReal: stockReal,
+                  idimActivoVals: idimActivoVals,
+                  oystaActivoVals: oystaActivoVals,
+                  idimCodigo: idimCodigo,
+                  oystaCodigo: oystaCodigo,
+                  irrecuperablesVals: irrecuperablesVals,
+                ),
                 SizedBox(height: gap),
-                manualCard,
+              ] else if (loadingStock) ...[
+                const Center(child: CircularProgressIndicator()),
+                SizedBox(height: gap),
               ],
+              _buildResumenTable(compact: compact || isMobile),
             ],
           );
         }

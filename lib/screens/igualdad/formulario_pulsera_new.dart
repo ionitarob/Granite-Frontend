@@ -3,12 +3,18 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:barcode_widget/barcode_widget.dart';
 
 import 'form_palette.dart';
 
 class FormularioPulseraNew extends StatefulWidget {
   final TextEditingController imeiController;
   final TextEditingController bateriaController;
+  final TextEditingController simController;
+  final TextEditingController imeiQrController;
+  final TextEditingController simQrController;
+  final TextEditingController btController;
+  final TextEditingController imei2Controller;
   final Map<String, dynamic>? opcionesRegistro;
   final String? tipoRegistroSeleccionado;
   final String? registroSeleccionado;
@@ -16,7 +22,9 @@ class FormularioPulseraNew extends StatefulWidget {
   final void Function(String tipo, String id) onChangeRegistro;
   final void Function(String key, String? value) onChangeRadio;
   final VoidCallback onRegistrar;
+  final VoidCallback? onRegistrarIrrecuperable;
   final bool isSubmitting;
+  final bool isSubmittingIrrecuperable;
   final bool isLookupInProgress;
   final Map<String, dynamic>? lookupResult;
   final String? lookupError;
@@ -26,6 +34,11 @@ class FormularioPulseraNew extends StatefulWidget {
     super.key,
     required this.imeiController,
     required this.bateriaController,
+    required this.simController,
+    required this.imeiQrController,
+    required this.simQrController,
+    required this.btController,
+    required this.imei2Controller,
     required this.opcionesRegistro,
     required this.tipoRegistroSeleccionado,
     required this.registroSeleccionado,
@@ -33,7 +46,9 @@ class FormularioPulseraNew extends StatefulWidget {
     required this.onChangeRegistro,
     required this.onChangeRadio,
     required this.onRegistrar,
+    this.onRegistrarIrrecuperable,
     this.isSubmitting = false,
+    this.isSubmittingIrrecuperable = false,
     this.isLookupInProgress = false,
     this.lookupResult,
     this.lookupError,
@@ -46,12 +61,69 @@ class FormularioPulseraNew extends StatefulWidget {
 
 class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final FocusNode _imeiFocus = FocusNode();
+  final FocusNode _simFocus = FocusNode();
+
   late Map<String, String?> _answers;
+  int _currentStep = 0; // index of the active step in _getSteps()
+  bool _overrideSimEditable = false;
+
+  List<String> _getSteps() {
+    return [
+      'Datos',
+      'Escáner QR',
+      'Checklist',
+      'Registro',
+    ];
+  }
 
   @override
   void initState() {
     super.initState();
     _answers = Map<String, String?>.from(widget.radioValues);
+    widget.imeiQrController.addListener(_onQrControllersChanged);
+    widget.simQrController.addListener(_onQrControllersChanged);
+    if (widget.lookupResult != null) {
+      final sim = widget.lookupResult!['sim']?.toString();
+      final imeiFull = widget.lookupResult!['imei']?.toString();
+      final imei2 = widget.lookupResult!['imei2']?.toString();
+      if (sim != null && sim.isNotEmpty) {
+        widget.simController.text = sim;
+        widget.simQrController.text = sim;
+        _overrideSimEditable = false;
+      }
+      if (imei2 != null && imei2.isNotEmpty) {
+        widget.imei2Controller.text = imei2;
+      }
+      if (imeiFull != null && imeiFull.isNotEmpty) {
+        widget.imeiQrController.text = imeiFull;
+        if (imeiFull.contains('BT:')) {
+          try {
+            widget.btController.text = imeiFull.split('BT:')[1].split(';')[0];
+          } catch (_) {}
+        }
+        if (imeiFull.contains('IMEI2:')) {
+          try {
+            widget.imei2Controller.text = imeiFull.split('IMEI2:')[1].split(';')[0];
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  void _onQrControllersChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.imeiQrController.removeListener(_onQrControllersChanged);
+    widget.simQrController.removeListener(_onQrControllersChanged);
+    _imeiFocus.dispose();
+    _simFocus.dispose();
+    super.dispose();
   }
 
   @override
@@ -59,6 +131,59 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
     super.didUpdateWidget(oldWidget);
     if (!mapEquals(oldWidget.radioValues, widget.radioValues)) {
       _answers = Map<String, String?>.from(widget.radioValues);
+    }
+    // Auto-populate SIM/QR/BT if we get a result from lookup
+    if (widget.lookupResult != oldWidget.lookupResult) {
+      if (widget.lookupResult != null) {
+        final sim = widget.lookupResult!['sim']?.toString();
+        final imeiFull = widget.lookupResult!['imei']?.toString();
+        final imei2 = widget.lookupResult!['imei2']?.toString();
+        setState(() {
+          if (sim != null && sim.isNotEmpty) {
+            widget.simController.text = sim;
+            widget.simQrController.text = sim;
+            _overrideSimEditable = false;
+          } else {
+            widget.simController.clear();
+            widget.simQrController.clear();
+            _overrideSimEditable = true;
+          }
+          if (imei2 != null && imei2.isNotEmpty) {
+            widget.imei2Controller.text = imei2;
+          } else {
+            widget.imei2Controller.clear();
+          }
+          if (imeiFull != null && imeiFull.isNotEmpty) {
+            widget.imeiQrController.text = imeiFull;
+            if (imeiFull.contains('BT:')) {
+              try {
+                widget.btController.text = imeiFull.split('BT:')[1].split(';')[0];
+              } catch (_) {}
+            }
+            if (imeiFull.contains('IMEI2:')) {
+              try {
+                widget.imei2Controller.text = imeiFull.split('IMEI2:')[1].split(';')[0];
+              } catch (_) {}
+            }
+          } else {
+            widget.imeiQrController.clear();
+            widget.btController.clear();
+          }
+        });
+      } else {
+        setState(() {
+          widget.simController.clear();
+          widget.simQrController.clear();
+          widget.imeiQrController.clear();
+          widget.btController.clear();
+          widget.imei2Controller.clear();
+          _overrideSimEditable = true;
+        });
+      }
+    }
+    final stepsCount = _getSteps().length;
+    if (_currentStep >= stepsCount) {
+      _currentStep = stepsCount - 1;
     }
   }
 
@@ -74,15 +199,6 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = FormPalette.fromTheme(theme);
-
-    final inspectionItems = <_InspectionItem>[
-      const _InspectionItem('danos_fisicos', '¿Daños físicos?'),
-      const _InspectionItem('empareja_pulsera_boton', '¿Empareja pulsera/botón?'),
-      const _InspectionItem('sin_alertas', '¿Sin alertas?'),
-      const _InspectionItem('chequeo_abierta', '¿Chequeo abierta?'),
-      const _InspectionItem('serigrafia', '¿Serigrafía?'),
-      const _InspectionItem('tornilleria', '¿Tornillería?'),
-    ];
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
@@ -106,173 +222,584 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
             borderRadius: BorderRadius.circular(28),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 32, 28, 36),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
             child: Form(
               key: _formKey,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _SectionHeader(
-                    title: 'Datos de la pulsera',
-                    subtitle: 'Completa la información básica antes de inspeccionar.',
-                    titleColor: palette.textPrimary,
-                    subtitleColor: palette.textMuted,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Introduce el IMEI y el nivel de batería. Recuerda verificar que los datos coinciden con la pulsera entregada.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: palette.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isWide = constraints.maxWidth > 640;
-                      final imeiField = TextFormField(
-                        controller: widget.imeiController,
-                        decoration: _inputDecoration(
-                          theme,
-                          palette,
-                          'IMEI de la pulsera',
-                          Icons.confirmation_number_outlined,
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Introduce el IMEI';
-                          }
-                          return null;
-                        },
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: palette.textPrimary,
-                        ),
-                        cursorColor: palette.textPrimary,
-                      );
-                      final bateriaField = TextFormField(
-                        controller: widget.bateriaController,
-                        decoration: _inputDecoration(
-                          theme,
-                          palette,
-                          '% batería',
-                          Icons.battery_charging_full,
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(3),
-                        ],
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return null;
-                          }
-                          final parsed = int.tryParse(value);
-                          if (parsed == null || parsed < 0 || parsed > 100) {
-                            return '0 a 100';
-                          }
-                          return null;
-                        },
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: palette.textPrimary,
-                        ),
-                        cursorColor: palette.textPrimary,
-                      );
-
-                      if (isWide) {
-                        return Row(
-                          children: [
-                            Expanded(child: imeiField),
-                            const SizedBox(width: 16),
-                            Expanded(child: bateriaField),
-                          ],
-                        );
-                      }
-
-                      return Column(
-                        children: [
-                          imeiField,
-                          const SizedBox(height: 16),
-                          bateriaField,
-                        ],
-                      );
-                    },
-                  ),
-                  ..._buildLookupSection(theme, palette),
-                  const SizedBox(height: 28),
-                  _SectionHeader(
-                    title: 'Registro asociado',
-                    subtitle: 'Selecciona el identificador disponible en stock.',
-                    titleColor: palette.textPrimary,
-                    subtitleColor: palette.textMuted,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildRegistroSelector(theme, palette),
-                  const SizedBox(height: 32),
-                  _SectionHeader(
-                    title: 'Inspección rápida',
-                    subtitle: 'Confirma el estado de la pulsera y sus accesorios.',
-                    titleColor: palette.textPrimary,
-                    subtitleColor: palette.textMuted,
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: [
-                      for (final item in inspectionItems)
-                        _inspectionCard(theme, palette, item),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  Divider(color: palette.divider),
+                  _buildStepperIndicator(theme, palette),
                   const SizedBox(height: 24),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.icon(
-                      onPressed: widget.isSubmitting ? null : _handleSubmit,
-                      icon: widget.isSubmitting
-                          ? SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  theme.colorScheme.primary,
-                                ),
-                              ),
-                            )
-                          : const Icon(Icons.save_alt_rounded),
-                      label: Text(
-                        widget.isSubmitting ? 'Registrando…' : 'Registrar pulsera',
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor:
-                            theme.colorScheme.primary.withValues(alpha: .9),
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 28,
-                          vertical: 16,
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                    ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child: _buildCurrentStepContent(theme, palette),
                   ),
+                  const SizedBox(height: 28),
+                  Divider(color: palette.divider),
+                  const SizedBox(height: 16),
+                  _buildNavigationButtons(theme, palette),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStepperIndicator(ThemeData theme, FormPalette palette) {
+    final activeColor = theme.colorScheme.primary;
+    final inactiveColor = palette.textMuted.withOpacity(0.3);
+    final steps = _getSteps();
+
+    final widgets = <Widget>[];
+    for (var i = 0; i < steps.length; i++) {
+      widgets.add(_stepIndicatorItem(i, '${i + 1}. ${steps[i]}', activeColor, inactiveColor, theme, palette));
+      if (i < steps.length - 1) {
+        widgets.add(_stepConnector(i, activeColor, inactiveColor));
+      }
+    }
+
+    return Row(
+      children: widgets,
+    );
+  }
+
+  Widget _stepIndicatorItem(int stepIndex, String title, Color activeColor, Color inactiveColor, ThemeData theme, FormPalette palette) {
+    final isActive = _currentStep == stepIndex;
+    final isDone = _currentStep > stepIndex;
+
+    return Expanded(
+      child: Column(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isActive ? activeColor : (isDone ? activeColor.withOpacity(0.2) : Colors.transparent),
+              border: Border.all(
+                color: (isActive || isDone) ? activeColor : inactiveColor,
+                width: 2,
+              ),
+            ),
+            child: Center(
+              child: isDone
+                  ? Icon(Icons.check, size: 16, color: activeColor)
+                  : Text(
+                      '${stepIndex + 1}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isActive ? theme.colorScheme.onPrimary : (isDone ? activeColor : palette.textMuted),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? theme.colorScheme.onSurface : palette.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepConnector(int stepIndex, Color activeColor, Color inactiveColor) {
+    final isPassed = _currentStep > stepIndex;
+    return Container(
+      width: 30,
+      height: 2,
+      margin: const EdgeInsets.only(bottom: 20),
+      color: isPassed ? activeColor : inactiveColor,
+    );
+  }
+
+  Widget _buildCurrentStepContent(ThemeData theme, FormPalette palette) {
+    final steps = _getSteps();
+    final stepLabel = steps[_currentStep];
+    switch (stepLabel) {
+      case 'Datos':
+        return _buildStepDatos(theme, palette);
+      case 'Escáner QR':
+        return _buildStepEscanerQr(theme, palette);
+      case 'Checklist':
+        return _buildStepChecklist(theme, palette);
+      case 'Registro':
+        return _buildStepRegistro(theme, palette);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildStepDatos(ThemeData theme, FormPalette palette) {
+    final hasSim = widget.simController.text.isNotEmpty;
+    final isSimReadOnly = hasSim && !_overrideSimEditable;
+    final dbSim = widget.lookupResult?['sim']?.toString();
+    final hasDbMapping = dbSim != null && dbSim.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          title: 'Datos de la pulsera',
+          subtitle: 'Identifica el terminal y su tarjeta SIM.',
+          titleColor: palette.textPrimary,
+          subtitleColor: palette.textMuted,
+        ),
+        const SizedBox(height: 20),
+        TextFormField(
+          controller: widget.imeiController,
+          focusNode: _imeiFocus,
+          decoration: _inputDecoration(
+            theme,
+            palette,
+            'IMEI de la pulsera (15 dígitos)',
+            Icons.confirmation_number_outlined,
+          ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: palette.textPrimary,
+          ),
+          cursorColor: palette.textPrimary,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(15),
+          ],
+          validator: (value) {
+            final trimmed = value?.trim() ?? '';
+            if (trimmed.isEmpty) return 'Introduce el IMEI';
+            if (trimmed.length != 15) return 'Deben ser 15 dígitos';
+            return null;
+          },
+        ),
+        ..._buildLookupSection(theme, palette),
+        const SizedBox(height: 16),
+        // SIM input field
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: widget.simController,
+                focusNode: _simFocus,
+                readOnly: isSimReadOnly,
+                decoration: _inputDecoration(
+                  theme,
+                  palette,
+                  'Tarjeta SIM (ICCID - 20 dígitos)',
+                  Icons.sim_card_outlined,
+                ).copyWith(
+                  filled: true,
+                  fillColor: isSimReadOnly ? palette.fieldFill.withOpacity(0.5) : palette.fieldFill,
+                  suffixIcon: isSimReadOnly
+                      ? const Icon(Icons.lock_outline, size: 18, color: Colors.green)
+                      : null,
+                ),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: palette.textPrimary,
+                ),
+                cursorColor: palette.textPrimary,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(20),
+                ],
+                validator: (value) {
+                  final trimmed = value?.trim() ?? '';
+                  if (trimmed.isEmpty) return 'Introduce la SIM';
+                  if (trimmed.length < 15) return 'Mínimo 15 dígitos';
+                  return null;
+                },
+              ),
+            ),
+            if (isSimReadOnly) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _overrideSimEditable = true;
+                  });
+                },
+                tooltip: 'Editar SIM manualmente',
+                icon: const Icon(Icons.edit_off_outlined),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (!hasDbMapping) ...[
+          TextFormField(
+            controller: widget.imei2Controller,
+            decoration: _inputDecoration(
+              theme,
+              palette,
+              'IMEI 2 (15 dígitos)',
+              Icons.confirmation_number_outlined,
+            ),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: palette.textPrimary,
+            ),
+            cursorColor: palette.textPrimary,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(15),
+            ],
+            validator: (value) {
+              if (hasDbMapping) return null;
+              final trimmed = value?.trim() ?? '';
+              if (trimmed.isEmpty) return 'Introduce el IMEI 2';
+              if (trimmed.length != 15) return 'Deben ser 15 dígitos';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: widget.btController,
+            decoration: _inputDecoration(
+              theme,
+              palette,
+              'Bluetooth MAC (BT)',
+              Icons.bluetooth_audio,
+            ),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: palette.textPrimary,
+            ),
+            cursorColor: palette.textPrimary,
+            validator: (value) {
+              if (hasDbMapping) return null;
+              final trimmed = value?.trim() ?? '';
+              if (trimmed.isEmpty) return 'Introduce el Bluetooth MAC';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+        TextFormField(
+          controller: widget.bateriaController,
+          decoration: _inputDecoration(
+            theme,
+            palette,
+            '% batería',
+            Icons.battery_charging_full,
+          ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: palette.textPrimary,
+          ),
+          cursorColor: palette.textPrimary,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(3),
+          ],
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return null;
+            }
+            final parsed = int.tryParse(value);
+            if (parsed == null || parsed < 0 || parsed > 100) {
+              return '0 a 100';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepEscanerQr(ThemeData theme, FormPalette palette) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          title: 'Escáner de Códigos QR',
+          subtitle: 'Escanee los códigos QR del terminal y de la SIM.',
+          titleColor: palette.textPrimary,
+          subtitleColor: palette.textMuted,
+        ),
+        const SizedBox(height: 20),
+        TextFormField(
+          controller: widget.imeiQrController,
+          decoration: _inputDecoration(
+            theme,
+            palette,
+            'Código QR del IMEI',
+            Icons.qr_code_scanner,
+          ).copyWith(
+            helperText: 'Escanee el código QR que contiene IMEI1, IMEI2 y BT.',
+            helperStyle: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: palette.textPrimary,
+          ),
+          cursorColor: palette.textPrimary,
+          onChanged: (val) {
+            final text = val.trim();
+            if (text.contains('IMEI1:')) {
+              final imei1Reg = RegExp(r'IMEI1:([^;]+)');
+              final imei2Reg = RegExp(r'IMEI2:([^;]+)');
+              final btReg = RegExp(r'BT:([^;]+)');
+
+              final m1 = imei1Reg.firstMatch(text);
+              if (m1 != null) {
+                final im1 = m1.group(1)!.trim();
+                if (im1.isNotEmpty && widget.imeiController.text != im1) {
+                  widget.imeiController.text = im1;
+                }
+              }
+              final m2 = imei2Reg.firstMatch(text);
+              if (m2 != null) {
+                final im2 = m2.group(1)!.trim();
+                if (im2.isNotEmpty && widget.imei2Controller.text != im2) {
+                  widget.imei2Controller.text = im2;
+                }
+              }
+              final m3 = btReg.firstMatch(text);
+              if (m3 != null) {
+                final btVal = m3.group(1)!.trim();
+                if (btVal.isNotEmpty && widget.btController.text != btVal) {
+                  widget.btController.text = btVal;
+                }
+              }
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: widget.simQrController,
+          decoration: _inputDecoration(
+            theme,
+            palette,
+            'Código QR del SIM',
+            Icons.qr_code_2,
+          ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: palette.textPrimary,
+          ),
+          cursorColor: palette.textPrimary,
+          onChanged: (val) {
+            final text = val.trim();
+            if (text.isNotEmpty && widget.simController.text != text) {
+              widget.simController.text = text;
+            }
+          },
+        ),
+        if (widget.imeiQrController.text.isNotEmpty || widget.simQrController.text.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (widget.imeiQrController.text.isNotEmpty)
+                Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: BarcodeWidget(
+                        barcode: Barcode.qrCode(),
+                        data: widget.imeiQrController.text,
+                        width: 140,
+                        height: 140,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'QR IMEI',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              if (widget.simQrController.text.isNotEmpty)
+                Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: BarcodeWidget(
+                        barcode: Barcode.qrCode(),
+                        data: widget.simQrController.text,
+                        width: 140,
+                        height: 140,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'QR SIM',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStepChecklist(ThemeData theme, FormPalette palette) {
+    final inspectionItems = <_InspectionItem>[
+      const _InspectionItem('danos_fisicos', '¿Daños físicos?'),
+      const _InspectionItem('empareja_pulsera_boton', '¿Empareja pulsera/botón?'),
+      const _InspectionItem('sin_alertas', '¿Sin alertas?'),
+      const _InspectionItem('chequeo_abierta', '¿Chequeo abierta?'),
+      const _InspectionItem('serigrafia', '¿Serigrafía?'),
+      const _InspectionItem('tornilleria', '¿Tornillería?'),
+      const _InspectionItem('wifi_activada', '¿Wi-fi Activada?'),
+      const _InspectionItem('geolocalizacion_funcional', '¿Geolocalización Funcional?'),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          title: 'Checklist de la pulsera',
+          subtitle: 'Evalúa rápidamente el estado del kit.',
+          titleColor: palette.textPrimary,
+          subtitleColor: palette.textMuted,
+        ),
+        const SizedBox(height: 20),
+        Center(
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final item in inspectionItems)
+                _inspectionCard(theme, palette, item),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepRegistro(ThemeData theme, FormPalette palette) {
+    final isDanosFisicos = _answers['danos_fisicos'] == 'SI';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          title: 'Registro asociado',
+          subtitle: 'Selecciona el destino que corresponde al terminal.',
+          titleColor: palette.textPrimary,
+          subtitleColor: palette.textMuted,
+        ),
+        const SizedBox(height: 20),
+        _buildRegistroSelector(theme, palette),
+        if (isDanosFisicos)
+          ..._buildIrrecuperableBanner(theme, palette),
+      ],
+    );
+  }
+
+  Widget _buildNavigationButtons(ThemeData theme, FormPalette palette) {
+    final steps = _getSteps();
+    final isFirstStep = _currentStep == 0;
+    final isLastStep = _currentStep == steps.length - 1;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        if (!isFirstStep)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('Anterior'),
+            onPressed: () {
+              setState(() {
+                _currentStep--;
+              });
+            },
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          )
+        else
+          const SizedBox.shrink(),
+        
+        if (!isLastStep)
+          FilledButton.icon(
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('Siguiente'),
+            onPressed: () {
+              final form = _formKey.currentState;
+              if (form != null && form.validate()) {
+                setState(() {
+                  _currentStep++;
+                });
+              }
+            },
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          )
+        else
+          FilledButton.icon(
+            icon: widget.isSubmitting || widget.isSubmittingIrrecuperable
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(_answers['danos_fisicos'] == 'SI' ? Icons.delete_forever : Icons.save_alt_rounded),
+            label: Text(
+              _answers['danos_fisicos'] == 'SI'
+                  ? (widget.isSubmittingIrrecuperable ? 'Registrando…' : 'Registrar como Irrecuperable')
+                  : (widget.isSubmitting ? 'Registrando…' : 'Registrar Pulsera'),
+            ),
+            onPressed: (widget.isSubmitting || widget.isSubmittingIrrecuperable)
+                ? null
+                : () {
+                    if (_answers['danos_fisicos'] == 'SI') {
+                      if (widget.onRegistrarIrrecuperable != null) {
+                        widget.onRegistrarIrrecuperable!();
+                      }
+                    } else {
+                      _handleSubmit();
+                    }
+                  },
+            style: FilledButton.styleFrom(
+              backgroundColor: _answers['danos_fisicos'] == 'SI' ? theme.colorScheme.error : theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -285,9 +812,12 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
     final borderRadius = BorderRadius.circular(16);
     return InputDecoration(
       labelText: label,
-      labelStyle: theme.textTheme.bodyMedium?.copyWith(color: palette.fieldLabel),
-      floatingLabelStyle:
-          theme.textTheme.bodyMedium?.copyWith(color: palette.fieldLabel),
+      labelStyle: theme.textTheme.bodyMedium?.copyWith(
+        color: palette.fieldLabel,
+      ),
+      floatingLabelStyle: theme.textTheme.bodyMedium?.copyWith(
+        color: palette.fieldLabel,
+      ),
       prefixIcon: Icon(icon, size: 20, color: palette.fieldIcon),
       filled: true,
       fillColor: palette.fieldFill,
@@ -303,7 +833,7 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
       errorBorder: OutlineInputBorder(
         borderRadius: borderRadius,
         borderSide: BorderSide(
-          color: theme.colorScheme.error.withValues(alpha: .9),
+          color: theme.colorScheme.error.withOpacity(.9),
           width: 1.5,
         ),
       ),
@@ -312,6 +842,91 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
         borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
       ),
     );
+  }
+
+  List<Widget> _buildLookupSection(ThemeData theme, FormPalette palette) {
+    final feedback = _buildLookupFeedback(theme, palette);
+    if (feedback == null) return const <Widget>[];
+    return <Widget>[const SizedBox(height: 12), feedback];
+  }
+
+  Widget? _buildLookupFeedback(ThemeData theme, FormPalette palette) {
+    if (widget.isLookupInProgress) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: palette.neutralCardBackground,
+          border: Border.all(color: palette.neutralCardBorder),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.secondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Consultando el IMEI en el histórico…',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: palette.textPrimary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final error = widget.lookupError;
+    if (error != null && error.isNotEmpty) {
+      return _InfoBanner(
+        icon: Icons.error_outline,
+        message: 'No se pudo consultar el IMEI: $error',
+        palette: palette,
+      );
+    }
+
+    final result = widget.lookupResult;
+    final searched = widget.lookupImeiSearched;
+    if (result != null && searched != null) {
+      final referencia = result['REFERENCIA']?.toString();
+      final origen = result['ORIGEN']?.toString();
+      final numeroPedido = result['NUMERO_PEDIDO']?.toString();
+      final observacionesRaw = result['OBSERVACIONES']?.toString().trim();
+      final observaciones =
+          (observacionesRaw != null && observacionesRaw.isNotEmpty)
+          ? observacionesRaw
+          : null;
+
+      return _LookupResultCard(
+        imei: searched,
+        referencia: referencia,
+        origen: origen,
+        numeroPedido: numeroPedido,
+        observaciones: observaciones,
+        palette: palette,
+      );
+    }
+
+    if (searched != null && searched.isNotEmpty) {
+      return _InfoBanner(
+        icon: Icons.search_off_outlined,
+        message:
+            'No se encontraron coincidencias previas para el IMEI $searched.',
+        palette: palette,
+      );
+    }
+
+    return null;
   }
 
   Widget _buildRegistroSelector(ThemeData theme, FormPalette palette) {
@@ -331,11 +946,11 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
     final entries = opciones.entries.toList();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SegmentedButton<String>(
           style: ButtonStyle(
-            visualDensity: VisualDensity.standard,
+            visualDensity: VisualDensity.compact,
             backgroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
                 return palette.segmentedSelectedBackground;
@@ -352,14 +967,14 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
               BorderSide(color: palette.segmentedBorder),
             ),
             shape: WidgetStateProperty.all(
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
           segments: entries
               .map(
                 (entry) => ButtonSegment<String>(
                   value: entry.key,
-                  icon: const Icon(Icons.storage_rounded),
+                  icon: const Icon(Icons.storage_rounded, size: 18),
                   label: Text(
                     entry.key,
                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -414,7 +1029,7 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
   ) {
     final value = _answers[item.key];
     return Container(
-      width: 240,
+      width: 280,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
@@ -486,88 +1101,48 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
     );
   }
 
-  List<Widget> _buildLookupSection(ThemeData theme, FormPalette palette) {
-    final feedback = _buildLookupFeedback(theme, palette);
-    if (feedback == null) return const <Widget>[];
-    return <Widget>[const SizedBox(height: 12), feedback];
-  }
-
-  Widget? _buildLookupFeedback(ThemeData theme, FormPalette palette) {
-    if (widget.isLookupInProgress) {
-      return Container(
+  List<Widget> _buildIrrecuperableBanner(ThemeData theme, FormPalette palette) {
+    return [
+      Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: palette.neutralCardBackground,
-          border: Border.all(color: palette.neutralCardBorder),
+          color: theme.colorScheme.error.withOpacity(0.1),
+          border: Border.all(color: theme.colorScheme.error.withOpacity(0.6), width: 1.5),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  theme.colorScheme.secondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
+            Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error, size: 26),
+            const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                'Consultando el IMEI de la pulsera…',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: palette.textPrimary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '¡Esta unidad es irrecuperable!',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'La pulsera presenta daños físicos y no puede ser enviada a IDIM. '
+                    'Regístrala como irrecuperable para que quede constancia en el resumen semanal.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error.withOpacity(0.85),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-      );
-    }
-
-    final error = widget.lookupError;
-    if (error != null && error.isNotEmpty) {
-      return _InfoBanner(
-        icon: Icons.error_outline,
-        message: 'No se pudo consultar el IMEI: $error',
-        palette: palette,
-      );
-    }
-
-    final result = widget.lookupResult;
-    final searched = widget.lookupImeiSearched;
-    if (result != null && searched != null) {
-      final referencia = result['REFERENCIA']?.toString();
-      final origen = result['ORIGEN']?.toString();
-      final numeroPedido = result['NUMERO_PEDIDO']?.toString();
-      final observacionesRaw = result['OBSERVACIONES']?.toString().trim();
-      final observaciones =
-          (observacionesRaw != null && observacionesRaw.isNotEmpty)
-              ? observacionesRaw
-              : null;
-
-      return _LookupResultCard(
-        imei: searched,
-        referencia: referencia,
-        origen: origen,
-        numeroPedido: numeroPedido,
-        observaciones: observaciones,
-        palette: palette,
-      );
-    }
-
-    if (searched != null && searched.isNotEmpty) {
-      return _InfoBanner(
-        icon: Icons.search_off_outlined,
-        message:
-            'No se encontraron coincidencias previas para el IMEI $searched.',
-        palette: palette,
-      );
-    }
-
-    return null;
+      ),
+      const SizedBox(height: 12),
+    ];
   }
 }
 
@@ -588,10 +1163,11 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           title,
+          textAlign: TextAlign.center,
           style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: titleColor ?? theme.colorScheme.onSurface,
@@ -601,6 +1177,7 @@ class _SectionHeader extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle!,
+            textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: subtitleColor ?? theme.colorScheme.onSurfaceVariant,
             ),
@@ -712,25 +1289,12 @@ class _RegistroSummary extends StatelessWidget {
                   color: palette.textMuted,
                 ),
               ),
-              Text(
-                'ID: $id',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: palette.textMuted.withValues(alpha: .8),
-                ),
-              ),
             ],
           ),
         ],
       ),
     );
   }
-}
-
-class _InspectionItem {
-  final String key;
-  final String label;
-
-  const _InspectionItem(this.key, this.label);
 }
 
 class _LookupResultCard extends StatelessWidget {
@@ -743,19 +1307,16 @@ class _LookupResultCard extends StatelessWidget {
 
   const _LookupResultCard({
     required this.imei,
-    this.referencia,
-    this.origen,
-    this.numeroPedido,
-    this.observaciones,
+    required this.referencia,
+    required this.origen,
+    required this.numeroPedido,
+    required this.observaciones,
     required this.palette,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasObservaciones =
-        observaciones != null && observaciones!.trim().isNotEmpty;
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -768,77 +1329,60 @@ class _LookupResultCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.manage_search_outlined,
-                color: theme.colorScheme.secondary.withValues(alpha: .9),
-              ),
+              const Icon(Icons.history_toggle_off_rounded, color: Colors.green),
               const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Resultado para IMEI $imei',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: palette.textPrimary,
-                  ),
+              Text(
+                'Histórico: Coincidencia encontrada',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: palette.textPrimary,
                 ),
               ),
             ],
           ),
-          if (referencia != null && referencia!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _infoRow('Referencia', referencia ?? '--', palette, theme),
+          _infoRow('Origen', origen ?? '--', palette, theme),
+          _infoRow('Número Pedido', numeroPedido ?? '--', palette, theme),
+          if (observaciones != null) ...[
             const SizedBox(height: 8),
             Text(
-              'Referencia: $referencia',
+              'Observaciones:',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: palette.textMuted,
+                fontWeight: FontWeight.bold,
+                color: palette.textPrimary,
               ),
             ),
-          ],
-          if (origen != null && origen!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
-              'Origen: $origen',
+              observaciones!,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: palette.textMuted,
               ),
             ),
           ],
-          if (numeroPedido != null && numeroPedido!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Pedido: $numeroPedido',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: palette.textMuted,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                hasObservaciones
-                    ? Icons.report_problem_outlined
-                    : Icons.check_circle_outline,
-                color: hasObservaciones
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  hasObservaciones
-                      ? 'Observaciones: $observaciones'
-                      : 'Sin observaciones registradas para este IMEI.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: palette.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value, FormPalette palette, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted)),
+          Text(value, style: theme.textTheme.bodySmall?.copyWith(color: palette.textPrimary, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 }
 
+class _InspectionItem {
+  final String key;
+  final String label;
+
+  const _InspectionItem(this.key, this.label);
+}

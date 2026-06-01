@@ -31,6 +31,11 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   final TextEditingController _imeiController = TextEditingController();
   final TextEditingController _bateriaController = TextEditingController();
   final TextEditingController _cometaController = TextEditingController();
+  final TextEditingController _simController = TextEditingController();
+  final TextEditingController _imeiQrController = TextEditingController();
+  final TextEditingController _simQrController = TextEditingController();
+  final TextEditingController _btController = TextEditingController();
+  final TextEditingController _imei2Controller = TextEditingController();
 
   Map<String, dynamic>? _opcionesRegistro;
   String? _registroSeleccionado;
@@ -42,8 +47,11 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
     'empareja_pulsera_boton': null,
     'solapa_cargador': null,
     'sonido': null,
+    'wifi_activada': null,
+    'geolocalizacion_funcional': null,
   };
   bool _registrando = false;
+  bool _registrandoIrrecuperable = false;
   bool _lookupLoading = false;
   String? _lookupError;
   Map<String, dynamic>? _lookupResult;
@@ -56,6 +64,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   Map<String, int>? stockReal;
   Map<String, int>? idimActivoVals;
   Map<String, int>? oystaActivoVals;
+  Map<String, int>? irrecuperablesVals;
   String? idimCodigo;
   String? oystaCodigo;
 
@@ -79,6 +88,11 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
     _imeiController.dispose();
     _bateriaController.dispose();
     _cometaController.dispose();
+    _simController.dispose();
+    _imeiQrController.dispose();
+    _simQrController.dispose();
+    _btController.dispose();
+    _imei2Controller.dispose();
     super.dispose();
   }
 
@@ -179,6 +193,12 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         oystaActivoVals = Map<String, int>.from(data['oysta_activo']);
         idimCodigo = data['idim'];
         oystaCodigo = data['oysta'];
+        if (data['irrecuperables'] != null) {
+          final raw = data['irrecuperables'] as Map;
+          irrecuperablesVals = raw.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+        } else {
+          irrecuperablesVals = {'sm': 0, 'pulseras': 0, 'botones': 0, 'powerbanks': 0};
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -224,6 +244,91 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
     _cargarUltimosRegistros();
   }
 
+  Map<String, String> _parseImeiQr(String qrText) {
+    final result = <String, String>{};
+    final imei1Reg = RegExp(r'IMEI1:([^;]+)');
+    final imei2Reg = RegExp(r'IMEI2:([^;]+)');
+    final btReg = RegExp(r'BT:([^;]+)');
+
+    final m1 = imei1Reg.firstMatch(qrText);
+    if (m1 != null) result['imei1'] = m1.group(1)!.trim();
+
+    final m2 = imei2Reg.firstMatch(qrText);
+    if (m2 != null) result['imei2'] = m2.group(1)!.trim();
+
+    final m3 = btReg.firstMatch(qrText);
+    if (m3 != null) result['bt'] = m3.group(1)!.trim();
+
+    return result;
+  }
+
+  Future<void> _registrarSmartphoneIrrecuperable() async {
+    if (_registroSeleccionado == null || _tipoRegistroSeleccionado == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona IDIM u OYSTA correctamente.')),
+      );
+      return;
+    }
+    final qrParsed = _parseImeiQr(_imeiQrController.text);
+    final imei1Val = qrParsed['imei1'] ?? _lookupResult?['imei1'] ?? _imeiController.text.trim();
+    final imei2Val = qrParsed['imei2'] ?? _lookupResult?['imei2'];
+    final btVal = _btController.text.trim().isNotEmpty
+        ? _btController.text.trim()
+        : (qrParsed['bt'] ?? (_lookupResult != null && _lookupResult!['imei'] != null && _lookupResult!['imei'].toString().contains('BT:')
+            ? _lookupResult!['imei'].toString().split('BT:')[1].split(';')[0]
+            : ''));
+    final simVal = _simController.text.trim().isNotEmpty
+        ? _simController.text.trim()
+        : (_simQrController.text.trim().isNotEmpty
+            ? _simQrController.text.trim()
+            : (_lookupResult?['sim']?.toString() ?? ''));
+
+    final payload = {
+      'imei': _imeiController.text.trim(),
+      'tipo_dispositivo': 'SM',
+      'registro_id': int.parse(_registroSeleccionado!),
+      'registro_tipo': _tipoRegistroSeleccionado,
+      'sim': simVal,
+      'imei1': imei1Val,
+      'imei2': imei2Val,
+      'bt': btVal,
+    };
+    try {
+      setState(() => _registrandoIrrecuperable = true);
+      await IgualdadApi.registrarIrrecuperableDispositivo(payload);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Smartphone registrado como irrecuperable')),
+      );
+      setState(() {
+        _lookupResult = null;
+        _lookupError = null;
+        _lastLookupImei = null;
+        _imeiController.clear();
+        _imei2Controller.clear();
+        _bateriaController.clear();
+        _cometaController.clear();
+        _simController.clear();
+        _imeiQrController.clear();
+        _simQrController.clear();
+        _btController.clear();
+        for (final k in _radioValues.keys) {
+          _radioValues[k] = null;
+        }
+      });
+      await _cargarRegistroActivo();
+      setState(() => _paginaActual = 1);
+      await _cargarUltimosRegistros();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al registrar irrecuperable: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _registrandoIrrecuperable = false);
+    }
+  }
+
   Future<void> _registrarSmartphone() async {
     if (_registroSeleccionado == null || _tipoRegistroSeleccionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -231,6 +336,22 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       );
       return;
     }
+    final qrParsed = _parseImeiQr(_imeiQrController.text);
+    final imei1Val = qrParsed['imei1'] ?? _lookupResult?['imei1'] ?? _imeiController.text.trim();
+    final imei2Val = _imei2Controller.text.trim().isNotEmpty
+        ? _imei2Controller.text.trim()
+        : (qrParsed['imei2'] ?? _lookupResult?['imei2']);
+    final btVal = _btController.text.trim().isNotEmpty
+        ? _btController.text.trim()
+        : (qrParsed['bt'] ?? (_lookupResult != null && _lookupResult!['imei'] != null && _lookupResult!['imei'].toString().contains('BT:')
+            ? _lookupResult!['imei'].toString().split('BT:')[1].split(';')[0]
+            : ''));
+    final simVal = _simController.text.trim().isNotEmpty
+        ? _simController.text.trim()
+        : (_simQrController.text.trim().isNotEmpty
+            ? _simQrController.text.trim()
+            : (_lookupResult?['sim']?.toString() ?? ''));
+
     final payload = {
       'imei': _imeiController.text.trim(),
       'registro_id': int.parse(_registroSeleccionado!),
@@ -243,6 +364,12 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       'empareja_pulsera_boton': _radioValues['empareja_pulsera_boton'],
       'solapa_cargador': _radioValues['solapa_cargador'],
       'sonido': _radioValues['sonido'],
+      'wifi_activada': _radioValues['wifi_activada'],
+      'geolocalizacion_funcional': _radioValues['geolocalizacion_funcional'],
+      'sim': simVal,
+      'imei1': imei1Val,
+      'imei2': imei2Val,
+      'bt': btVal,
     };
     try {
       setState(() => _registrando = true);
@@ -317,6 +444,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -325,72 +453,134 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
           const Positioned.fill(
             child: AnimatedBackgroundWidget(intensity: 0.2),
           ),
-
-          // Contenido glass
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                      child: Container(
-                        width: double.infinity,
-                        height: double.infinity,
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Theme.of(context).dividerColor),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Flecha atrás
-                            Align(
-                              alignment: Alignment.topLeft,
-                              child: IconButton(
-                                icon: Icon(
-                                  Icons.arrow_back,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Header row ──────────────────────────────
+                      Row(
+                        children: [
+                          Material(
+                            color: theme.colorScheme.surface.withValues(alpha: 0.25),
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Icon(
+                                  Icons.arrow_back_rounded,
+                                  color: theme.colorScheme.onSurface,
+                                  size: 22,
                                 ),
-                                onPressed: () => Navigator.of(context).pop(),
-                                tooltip: 'Volver',
                               ),
                             ),
-                            const SizedBox(height: 16),
-
-                            Expanded(
+                          ),
+                          const SizedBox(width: 14),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.smartphone_rounded,
+                              color: theme.colorScheme.primary,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Registro de Smartphones',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              Text(
+                                'Agresores y víctimas',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: () {
+                              _loadData();
+                              _cargarUltimosRegistros();
+                            },
+                            tooltip: 'Actualizar',
+                            icon: const Icon(Icons.refresh_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // ── Main content ─────────────────────────────
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                            child: Container(
+                              width: double.infinity,
+                              height: double.infinity,
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: theme.dividerColor.withValues(alpha: 0.5),
+                                ),
+                              ),
                               child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final isDesktop = constraints.maxWidth > 900;
+                                builder: (context, inner) {
+                                  final isDesktop = inner.maxWidth > 900;
                                   if (isDesktop) {
                                     return Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
-                                          flex: 4,
-                                          child: SingleChildScrollView(
-                                            child: Column(
-                                              children: [
-                                                _buildFormulario(),
-                                                const SizedBox(height: 24),
+                                          flex: 7,
+                                          child: Column(
+                                            children: [
+                                              Expanded(
+                                                child: SingleChildScrollView(
+                                                  child: Center(
+                                                    child: ConstrainedBox(
+                                                      constraints: const BoxConstraints(maxWidth: 1000),
+                                                      child: _buildFormulario(),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              if (stockReal != null &&
+                                                  idimActivoVals != null &&
+                                                  oystaActivoVals != null) ...[
+                                                const SizedBox(height: 16),
                                                 ResumenStock(
                                                   stockReal: stockReal,
                                                   idimActivoVals: idimActivoVals,
                                                   oystaActivoVals: oystaActivoVals,
+                                                  irrecuperablesVals: irrecuperablesVals,
                                                   idimCodigo: idimCodigo,
                                                   oystaCodigo: oystaCodigo,
                                                 ),
                                               ],
-                                            ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(width: 32),
+                                        const SizedBox(width: 28),
                                         Expanded(
-                                          flex: 6,
+                                          flex: 3,
                                           child: _buildTabla(),
                                         ),
                                       ],
@@ -399,15 +589,24 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
                                     return SingleChildScrollView(
                                       child: Column(
                                         children: [
-                                          _buildFormulario(),
-                                          const SizedBox(height: 24),
-                                          ResumenStock(
-                                            stockReal: stockReal,
-                                            idimActivoVals: idimActivoVals,
-                                            oystaActivoVals: oystaActivoVals,
-                                            idimCodigo: idimCodigo,
-                                            oystaCodigo: oystaCodigo,
+                                          Center(
+                                            child: ConstrainedBox(
+                                              constraints: const BoxConstraints(maxWidth: 1000),
+                                              child: _buildFormulario(),
+                                            ),
                                           ),
+                                          const SizedBox(height: 24),
+                                          if (stockReal != null &&
+                                              idimActivoVals != null &&
+                                              oystaActivoVals != null)
+                                            ResumenStock(
+                                              stockReal: stockReal,
+                                              idimActivoVals: idimActivoVals,
+                                              oystaActivoVals: oystaActivoVals,
+                                              irrecuperablesVals: irrecuperablesVals,
+                                              idimCodigo: idimCodigo,
+                                              oystaCodigo: oystaCodigo,
+                                            ),
                                           const SizedBox(height: 24),
                                           SizedBox(height: 600, child: _buildTabla()),
                                         ],
@@ -417,16 +616,15 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
                                 },
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 );
               },
             ),
           ),
-          // Sidebar handle (left edge) — placed on top so it's always reachable
           const Positioned(top: 12, left: 6, child: EdgeNavHandle()),
         ],
       ),
@@ -438,6 +636,11 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       imeiController: _imeiController,
       bateriaController: _bateriaController,
       cometaController: _cometaController,
+      simController: _simController,
+      imeiQrController: _imeiQrController,
+      simQrController: _simQrController,
+      btController: _btController,
+      imei2Controller: _imei2Controller,
       opcionesRegistro: _opcionesRegistro,
       tipoRegistroSeleccionado: _tipoRegistroSeleccionado,
       registroSeleccionado: _registroSeleccionado,
@@ -450,7 +653,9 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       onChangeTipoSmartphone: (t) =>
           setState(() => _tipoSmartphone = t),
       onRegistrar: () => _registrarSmartphone(),
+      onRegistrarIrrecuperable: _registrarSmartphoneIrrecuperable,
       isSubmitting: _registrando,
+      isSubmittingIrrecuperable: _registrandoIrrecuperable,
       isLookupInProgress: _lookupLoading,
       lookupResult: _lookupResult,
       lookupError: _lookupError,
