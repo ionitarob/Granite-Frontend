@@ -789,6 +789,25 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             onPressed: () {
               final form = _formKey.currentState;
               if (form != null && form.validate()) {
+                // When moving from "Datos" step to "Escáner QR" step,
+                // auto-build the QR format string if:
+                //  - no DB lookup result (user typed IMEI2 & BT manually), AND
+                //  - imeiQrController is empty or only has the raw IMEI
+                final steps = _getSteps();
+                final isOnDatosStep = steps[_currentStep] == 'Datos';
+                if (isOnDatosStep && widget.lookupResult == null) {
+                  final imei1 = widget.imeiController.text.trim();
+                  final imei2 = widget.imei2Controller.text.trim();
+                  final bt = widget.btController.text.trim();
+                  final currentQr = widget.imeiQrController.text.trim();
+                  // Only auto-build if we have IMEI2 and BT, and the QR
+                  // field doesn't already contain the full format.
+                  if (imei1.isNotEmpty && imei2.isNotEmpty && bt.isNotEmpty &&
+                      !currentQr.contains('IMEI1:')) {
+                    widget.imeiQrController.text =
+                        'IMEI1:$imei1;IMEI2:$imei2;BT:$bt;';
+                  }
+                }
                 setState(() {
                   _currentStep++;
                 });
