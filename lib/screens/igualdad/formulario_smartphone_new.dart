@@ -790,9 +790,8 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
               final form = _formKey.currentState;
               if (form != null && form.validate()) {
                 // When moving from "Datos" step to "Escáner QR" step,
-                // auto-build the QR format string if:
-                //  - no DB lookup result (user typed IMEI2 & BT manually), AND
-                //  - imeiQrController is empty or only has the raw IMEI
+                // auto-build the QR format strings if there is no DB lookup
+                // result (user filled IMEI2, BT and SIM manually).
                 final steps = _getSteps();
                 final isOnDatosStep = steps[_currentStep] == 'Datos';
                 if (isOnDatosStep && widget.lookupResult == null) {
@@ -800,12 +799,16 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                   final imei2 = widget.imei2Controller.text.trim();
                   final bt = widget.btController.text.trim();
                   final currentQr = widget.imeiQrController.text.trim();
-                  // Only auto-build if we have IMEI2 and BT, and the QR
-                  // field doesn't already contain the full format.
+                  // Auto-build IMEI QR string if not already formatted.
                   if (imei1.isNotEmpty && imei2.isNotEmpty && bt.isNotEmpty &&
                       !currentQr.contains('IMEI1:')) {
                     widget.imeiQrController.text =
                         'IMEI1:$imei1;IMEI2:$imei2;BT:$bt;';
+                  }
+                  // Auto-populate SIM QR field from SIM controller.
+                  final sim = widget.simController.text.trim();
+                  if (sim.isNotEmpty && widget.simQrController.text.trim().isEmpty) {
+                    widget.simQrController.text = sim;
                   }
                 }
                 setState(() {
