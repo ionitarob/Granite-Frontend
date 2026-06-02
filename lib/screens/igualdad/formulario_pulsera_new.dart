@@ -457,8 +457,10 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
             validator: (value) {
               if (hasDbMapping) return null;
               final trimmed = value?.trim() ?? '';
-              if (trimmed.isEmpty) return 'Introduce el IMEI 2';
-              if (trimmed.length != 15) return 'Deben ser 15 dígitos';
+              // IMEI2 is optional — some devices only have IMEI1 + BT
+              if (trimmed.isNotEmpty && trimmed.length != 15) {
+                return 'Deben ser 15 dígitos';
+              }
               return null;
             },
           ),
@@ -759,11 +761,14 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
                   final imei2 = widget.imei2Controller.text.trim();
                   final bt = widget.btController.text.trim();
                   final currentQr = widget.imeiQrController.text.trim();
-                  // Auto-build IMEI QR string if not already formatted.
-                  if (imei1.isNotEmpty && imei2.isNotEmpty && bt.isNotEmpty &&
+                  // Auto-build IMEI QR string if IMEI1 + BT are filled
+                  // and the field doesn't already have the formatted string.
+                  // IMEI2 is optional — include it only when provided.
+                  if (imei1.isNotEmpty && bt.isNotEmpty &&
                       !currentQr.contains('IMEI1:')) {
+                    final imei2Part = imei2.isNotEmpty ? 'IMEI2:$imei2;' : '';
                     widget.imeiQrController.text =
-                        'IMEI1:$imei1;IMEI2:$imei2;BT:$bt;';
+                        'IMEI1:$imei1;${imei2Part}BT:$bt;';
                   }
                   // Auto-populate SIM QR field from SIM controller.
                   final sim = widget.simController.text.trim();
