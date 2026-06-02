@@ -532,7 +532,7 @@ class SentinelService {
       if (e is Map) {
         return {
           'name': e['name']?.toString() ?? '',
-          'type': e['type']?.toString() ?? 'wim', // 'wim' | 'dualboot'
+          'type': e['type']?.toString() ?? 'wim', // 'wim' | 'dualboot' | 'sentinel' | 'script'
         };
       }
       return {'name': e.toString(), 'type': 'wim'};

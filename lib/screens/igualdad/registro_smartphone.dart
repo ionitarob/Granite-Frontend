@@ -257,7 +257,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
     if (m2 != null) result['imei2'] = m2.group(1)!.trim();
 
     final m3 = btReg.firstMatch(qrText);
-    if (m3 != null) result['bt'] = m3.group(1)!.trim();
+    if (m3 != null) result['bt'] = m3.group(1)!.trim().replaceAll(':', '');
 
     return result;
   }

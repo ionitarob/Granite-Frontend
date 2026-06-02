@@ -103,11 +103,18 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
         widget.imei2Controller.text = imei2;
       }
       if (imeiFull != null && imeiFull.isNotEmpty) {
-        widget.imeiQrController.text = imeiFull;
         if (imeiFull.contains('BT:')) {
           try {
-            widget.btController.text = imeiFull.split('BT:')[1].split(';')[0];
-          } catch (_) {}
+            final btRaw = imeiFull.split('BT:')[1].split(';')[0];
+            final btCleaned = btRaw.replaceAll(':', '');
+            widget.btController.text = btCleaned;
+            final parts = imeiFull.split('BT:');
+            widget.imeiQrController.text = '${parts[0]}BT:$btCleaned;';
+          } catch (_) {
+            widget.imeiQrController.text = imeiFull;
+          }
+        } else {
+          widget.imeiQrController.text = imeiFull;
         }
         if (imeiFull.contains('IMEI2:')) {
           try {
@@ -164,11 +171,18 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             widget.imei2Controller.clear();
           }
           if (imeiFull != null && imeiFull.isNotEmpty) {
-            widget.imeiQrController.text = imeiFull;
             if (imeiFull.contains('BT:')) {
               try {
-                widget.btController.text = imeiFull.split('BT:')[1].split(';')[0];
-              } catch (_) {}
+                final btRaw = imeiFull.split('BT:')[1].split(';')[0];
+                final btCleaned = btRaw.replaceAll(':', '');
+                widget.btController.text = btCleaned;
+                final parts = imeiFull.split('BT:');
+                widget.imeiQrController.text = '${parts[0]}BT:$btCleaned;';
+              } catch (_) {
+                widget.imeiQrController.text = imeiFull;
+              }
+            } else {
+              widget.imeiQrController.text = imeiFull;
             }
             if (imeiFull.contains('IMEI2:')) {
               try {
@@ -598,24 +612,35 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
               final btReg = RegExp(r'BT:([^;]+)');
 
               final m1 = imei1Reg.firstMatch(text);
+              String im1 = '';
               if (m1 != null) {
-                final im1 = m1.group(1)!.trim();
+                im1 = m1.group(1)!.trim();
                 if (im1.isNotEmpty && widget.imeiController.text != im1) {
                   widget.imeiController.text = im1;
                 }
               }
               final m2 = imei2Reg.firstMatch(text);
+              String im2 = '';
               if (m2 != null) {
-                final im2 = m2.group(1)!.trim();
+                im2 = m2.group(1)!.trim();
                 if (im2.isNotEmpty && widget.imei2Controller.text != im2) {
                   widget.imei2Controller.text = im2;
                 }
               }
               final m3 = btReg.firstMatch(text);
+              String btVal = '';
               if (m3 != null) {
-                final btVal = m3.group(1)!.trim();
+                btVal = m3.group(1)!.trim().replaceAll(':', '');
                 if (btVal.isNotEmpty && widget.btController.text != btVal) {
                   widget.btController.text = btVal;
+                }
+              }
+
+              if (im1.isNotEmpty && btVal.isNotEmpty) {
+                final imei2Part = im2.isNotEmpty ? 'IMEI2:$im2;' : '';
+                final cleanQrText = 'IMEI1:$im1;${imei2Part}BT:$btVal;';
+                if (text != cleanQrText) {
+                  widget.imeiQrController.text = cleanQrText;
                 }
               }
             }
@@ -801,6 +826,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                   final imei2 = widget.imei2Controller.text.trim();
                   final bt = widget.btController.text.trim();
                   final currentQr = widget.imeiQrController.text.trim();
+                  final btClean = bt.replaceAll(':', '');
                   // Auto-build IMEI QR string if IMEI1 + BT are filled
                   // and the field doesn't already have the formatted string.
                   // IMEI2 is optional — include it only when provided.
@@ -808,7 +834,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                       !currentQr.contains('IMEI1:')) {
                     final imei2Part = imei2.isNotEmpty ? 'IMEI2:$imei2;' : '';
                     widget.imeiQrController.text =
-                        'IMEI1:$imei1;${imei2Part}BT:$bt;';
+                        'IMEI1:$imei1;${imei2Part}BT:$btClean;';
                   }
                   // Auto-populate SIM QR field from SIM controller.
                   final sim = widget.simController.text.trim();

@@ -935,9 +935,11 @@ class _Seat extends StatelessWidget {
       textColor = Colors.white10;
     }
 
+    final isScript = port.selectedImage?.toUpperCase().startsWith('SCRIPT:') ?? false;
+
     return Tooltip(
       message:
-          'Puerto: ${port.label}\nEstado: ${port.status}\nRol: ${port.role}${port.imageEnabled ? '\nImagen: ${port.selectedImage ?? "N/A"}' : ''}${liveDevice != null ? '\nHost: ${liveDevice.hostname}\nIP: ${liveDevice.ip}' : ''}',
+          'Puerto: ${port.label}\nEstado: ${port.status}\nRol: ${port.role}${port.imageEnabled ? (isScript ? '\nScript: ${port.selectedImage!.substring(7)}' : '\nImagen: ${port.selectedImage ?? "N/A"}') : ''}${liveDevice != null ? '\nHost: ${liveDevice.hostname}\nIP: ${liveDevice.ip}' : ''}',
       child: InkWell(
         onTap: () {
           // Use the passed sentinelSwitch as the parent switch
@@ -978,18 +980,18 @@ class _Seat extends StatelessWidget {
                 child: Text(
                   '$portNum',
                   style: SentinelTheme.mono.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    shadows: isGlowing
-                        ? [
-                            BoxShadow(
-                              color: glowColor,
-                              blurRadius: 4,
-                              spreadRadius: 1,
-                            ),
-                          ]
-                        : null,
+                     fontSize: 16,
+                     fontWeight: FontWeight.bold,
+                     color: textColor,
+                     shadows: isGlowing
+                         ? [
+                             BoxShadow(
+                               color: glowColor,
+                               blurRadius: 4,
+                               spreadRadius: 1,
+                             ),
+                           ]
+                         : null,
                   ),
                 ),
               ),
@@ -1017,8 +1019,8 @@ class _Seat extends StatelessWidget {
                   bottom: 2,
                   right: 2,
                   child: Icon(
-                    Icons.download_for_offline,
-                    color: SentinelTheme.secondary,
+                    isScript ? Icons.terminal : Icons.download_for_offline,
+                    color: isScript ? Colors.greenAccent : SentinelTheme.secondary,
                     size: 8,
                   ),
                 ),
@@ -1103,7 +1105,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
           SwitchListTile(
             title: const Text('Habilitar Maquetado', style: SentinelTheme.body),
             subtitle: Text(
-              'Permitir despliegue de imágenes',
+              'Permitir despliegue de imágenes o scripts',
               style: SentinelTheme.label.copyWith(
                 color: SentinelTheme.textSecondary,
                 fontWeight: FontWeight.normal,
@@ -1115,7 +1117,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Seleccionar Imagen:',
+            'Seleccionar Imagen o Script:',
             style: SentinelTheme.subHeader.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 8),
@@ -1152,7 +1154,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
               child: DropdownButton<String>(
                 value: _selectedImage,
                 hint: Text(
-                  'Selecc. Imagen (WIM/ESD/Dual-Boot/Sentinel)',
+                  'Selecc. Objetivo (WIM/ESD/Dual-Boot/Sentinel/Script)',
                   style: SentinelTheme.body.copyWith(
                     color: SentinelTheme.textDisabled,
                   ),
@@ -1170,20 +1172,27 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                     final isDualBoot = img['type']?.toString() == 'dualboot';
                     final isSentinel = img['type']?.toString() == 'sentinel' ||
                         name.toLowerCase().endsWith('.sentinel');
+                    final isScript = img['type']?.toString() == 'script' ||
+                        name.toUpperCase().startsWith('SCRIPT:');
+                    final displayName = isScript && name.startsWith('SCRIPT:')
+                        ? name.substring(7)
+                        : name;
                     return DropdownMenuItem<String>(
                       value: name,
                       child: Row(
                         children: [
                           Expanded(
                             child: Text(
-                              name,
+                              displayName,
                               overflow: TextOverflow.ellipsis,
                               style: SentinelTheme.body.copyWith(
                                 color: isDualBoot
                                     ? Colors.purple[200]
                                     : (isSentinel
                                         ? Colors.amber[200]
-                                        : Colors.white),
+                                        : (isScript
+                                            ? Colors.greenAccent
+                                            : Colors.white)),
                               ),
                             ),
                           ),
@@ -1195,25 +1204,37 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                                   ? Colors.purple.withOpacity(0.25)
                                   : (isSentinel
                                       ? Colors.amber.withOpacity(0.25)
-                                      : Colors.cyan.withOpacity(0.15)),
+                                      : (isScript
+                                          ? Colors.green.withOpacity(0.2)
+                                          : Colors.cyan.withOpacity(0.15))),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
                                 color: isDualBoot
                                     ? Colors.purple
-                                    : (isSentinel ? Colors.amber : Colors.cyan),
+                                    : (isSentinel
+                                        ? Colors.amber
+                                        : (isScript
+                                            ? Colors.greenAccent
+                                            : Colors.cyan)),
                                 width: 0.8,
                               ),
                             ),
                             child: Text(
                               isDualBoot
                                   ? 'DUAL-BOOT'
-                                  : (isSentinel ? 'SENTINEL' : 'WIM'),
+                                  : (isSentinel
+                                      ? 'SENTINEL'
+                                      : (isScript ? 'SCRIPT' : 'WIM')),
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.bold,
                                 color: isDualBoot
                                     ? Colors.purple[100]
-                                    : (isSentinel ? Colors.amber[100] : Colors.cyan[200]),
+                                    : (isSentinel
+                                        ? Colors.amber[100]
+                                        : (isScript
+                                            ? Colors.greenAccent
+                                            : Colors.cyan[200])),
                                 letterSpacing: 0.5,
                               ),
                             ),
@@ -1260,7 +1281,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
-                    'Debe seleccionar una imagen para habilitar el maquetado',
+                    'Debe seleccionar una imagen o script para habilitar la tarea',
                   ),
                   backgroundColor: SentinelTheme.error,
                 ),
@@ -1418,7 +1439,7 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                 child: DropdownButton<String>(
                   value: _selectedImage,
                   hint: Text(
-                    'Seleccionar Imagen (WIM/ESD/Dual-Boot/Sentinel)',
+                    'Seleccionar Objetivo (WIM/ESD/Dual-Boot/Sentinel/Script)',
                     style: SentinelTheme.body.copyWith(
                       color: SentinelTheme.textDisabled,
                     ),
@@ -1436,20 +1457,27 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                       final isDualBoot = img['type']?.toString() == 'dualboot';
                       final isSentinel = img['type']?.toString() == 'sentinel' ||
                           name.toLowerCase().endsWith('.sentinel');
+                      final isScript = img['type']?.toString() == 'script' ||
+                          name.toUpperCase().startsWith('SCRIPT:');
+                      final displayName = isScript && name.startsWith('SCRIPT:')
+                          ? name.substring(7)
+                          : name;
                       return DropdownMenuItem<String>(
                         value: name,
                         child: Row(
                           children: [
                             Expanded(
                               child: Text(
-                                name,
+                                displayName,
                                 overflow: TextOverflow.ellipsis,
                                 style: SentinelTheme.body.copyWith(
                                   color: isDualBoot
                                       ? Colors.purple[200]
                                       : (isSentinel
                                           ? Colors.amber[200]
-                                          : Colors.white),
+                                          : (isScript
+                                              ? Colors.greenAccent
+                                              : Colors.white)),
                                 ),
                               ),
                             ),
@@ -1461,25 +1489,37 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
                                     ? Colors.purple.withOpacity(0.25)
                                     : (isSentinel
                                         ? Colors.amber.withOpacity(0.25)
-                                        : Colors.cyan.withOpacity(0.15)),
+                                        : (isScript
+                                            ? Colors.green.withOpacity(0.2)
+                                            : Colors.cyan.withOpacity(0.15))),
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
                                   color: isDualBoot
                                       ? Colors.purple
-                                      : (isSentinel ? Colors.amber : Colors.cyan),
+                                      : (isSentinel
+                                          ? Colors.amber
+                                          : (isScript
+                                              ? Colors.greenAccent
+                                              : Colors.cyan)),
                                   width: 0.8,
                                 ),
                               ),
                               child: Text(
                                 isDualBoot
                                     ? 'DUAL-BOOT'
-                                    : (isSentinel ? 'SENTINEL' : 'WIM'),
+                                    : (isSentinel
+                                        ? 'SENTINEL'
+                                        : (isScript ? 'SCRIPT' : 'WIM')),
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
                                   color: isDualBoot
                                       ? Colors.purple[100]
-                                      : (isSentinel ? Colors.amber[100] : Colors.cyan[200]),
+                                      : (isSentinel
+                                          ? Colors.amber[100]
+                                          : (isScript
+                                              ? Colors.greenAccent
+                                              : Colors.cyan[200])),
                                   letterSpacing: 0.5,
                                 ),
                               ),
@@ -1526,7 +1566,7 @@ class _PortDetailDialogState extends State<_PortDetailDialog> {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
-                    'Debe seleccionar una imagen para habilitar el maquetado',
+                    'Debe seleccionar una imagen o script para habilitar la tarea',
                   ),
                   backgroundColor: SentinelTheme.error,
                 ),

@@ -40,6 +40,17 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
   Map<String, dynamic>? _session;
   final List<Map<String, dynamic>> _pendingScans = [];
 
+  bool _boxModeEnabled = false;
+  final TextEditingController _boxCtrl = TextEditingController();
+  final TextEditingController _boxCapacityCtrl = TextEditingController();
+  final TextEditingController _boxSearchCtrl = TextEditingController();
+  int get _boxCapacity => int.tryParse(_boxCapacityCtrl.text) ?? 180;
+  final List<String> _currentBoxGoodSerials = [];
+  final List<String> _currentBoxBadSerials = [];
+  List<Map<String, dynamic>> _pastBoxes = [];
+  bool _loadingBoxes = false;
+  int _boxCtrlVersion = 0;
+
   bool _previewLoading = false;
   bool _starting = false;
   bool _scanning = false;
@@ -149,6 +160,7 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
   @override
   void initState() {
     super.initState();
+    _boxCtrl.addListener(_onBoxIdChanged);
     if (widget.initialOrderNumber != null) {
       _orderCtrl.text = widget.initialOrderNumber!.trim();
     }
@@ -161,8 +173,12 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
 
   @override
   void dispose() {
+    _boxCtrl.removeListener(_onBoxIdChanged);
     _orderCtrl.dispose();
     _scanCtrl.dispose();
+    _boxCtrl.dispose();
+    _boxCapacityCtrl.dispose();
+    _boxSearchCtrl.dispose();
     _scanFocus.dispose();
     super.dispose();
   }
@@ -312,6 +328,235 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
     }
   }
 
+  Future<void> _loadActiveBoxState() async {
+    final client = _clientOrNull();
+    final session = _sessionMap();
+    final boxId = _boxCtrl.text.trim();
+    debugPrint('[BoxResumer] _loadActiveBoxState for Box: "$boxId", Session: ${session?['id']}');
+    if (client == null || session == null || boxId.isEmpty) return;
+    
+    try {
+      final res = await client.get('/serials/verification/items?session_id=${session['id']}&box_id=$boxId&page_size=1000');
+      debugPrint('[BoxResumer] API Status: ${res.statusCode}, Body: ${res.body}');
+      if (res.ok && res.body is Map) {
+        final body = Map<String, dynamic>.from(res.body as Map);
+        final list = body['items'] as List? ?? [];
+        final items = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        debugPrint('[BoxResumer] Found ${items.length} items for Box "$boxId"');
+        
+        final goods = <String>[];
+        final bads = <String>[];
+        int? loadedCapacity;
+        for (final item in items) {
+          if (item['source_type'] != 'scan') continue; // Only count scans
+          final status = item['status']?.toString() ?? '';
+          final serial = item['serial']?.toString() ?? '';
+          final cap = item['box_capacity'];
+          if (cap != null && loadedCapacity == null) {
+            loadedCapacity = int.tryParse(cap.toString());
+          }
+          if (serial.isNotEmpty) {
+            if (status == 'verified') {
+              goods.add(serial);
+            } else {
+              bads.add(serial);
+            }
+          }
+        }
+        setState(() {
+          _currentBoxGoodSerials.clear();
+          _currentBoxGoodSerials.addAll(goods);
+          _currentBoxBadSerials.clear();
+          _currentBoxBadSerials.addAll(bads);
+          if (loadedCapacity != null) {
+            _boxCapacityCtrl.text = loadedCapacity.toString();
+          }
+        });
+        debugPrint('[BoxResumer] State updated. Good: ${goods.length}, Bad: ${bads.length}, Capacity: $loadedCapacity');
+      }
+    } catch (e) {
+      debugPrint('[BoxResumer] Error loading box state: $e');
+    }
+  }
+
+  void _onBoxIdChanged() {
+    final currentVersion = ++_boxCtrlVersion;
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (currentVersion == _boxCtrlVersion && mounted) {
+        _loadActiveBoxState();
+      }
+    });
+  }
+
+  Future<void> _fetchPastBoxes() async {
+    final client = _clientOrNull();
+    final session = _sessionMap();
+    if (client == null || session == null) return;
+    setState(() => _loadingBoxes = true);
+    try {
+      final res = await client.get('/serials/verification/boxes?session_id=${session['id']}');
+      if (res.ok && res.body is List) {
+        final list = res.body as List;
+        setState(() {
+          _pastBoxes = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        });
+      }
+    } catch (_) {}
+    finally {
+      if (mounted) setState(() => _loadingBoxes = false);
+    }
+  }
+
+  Future<void> _finishBox() async {
+    final boxId = _boxCtrl.text.trim();
+    final total = _currentBoxGoodSerials.length + _currentBoxBadSerials.length;
+    final badCount = _currentBoxBadSerials.length;
+    final goodList = List<String>.from(_currentBoxGoodSerials);
+
+    if (total == 0) {
+      _showSnack('No hay seriales escaneados en esta caja.');
+      return;
+    }
+
+    setState(() {
+      _currentBoxGoodSerials.clear();
+      _currentBoxBadSerials.clear();
+      
+      final match = RegExp(r'^(.*?)(\d+)$').firstMatch(boxId);
+      if (match != null) {
+        final prefix = match.group(1) ?? '';
+        final numStr = match.group(2) ?? '1';
+        final nextNum = int.parse(numStr) + 1;
+        _boxCtrl.text = '$prefix$nextNum';
+      } else {
+        _boxCtrl.text = '$boxId 2';
+      }
+    });
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.inventory_2_rounded, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            Text('Resumen de Caja: $boxId'),
+          ],
+        ),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tienes $badCount duplicados/malos de un total de $total escaneados.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text('Listado de Seriales Buenos:'),
+              const SizedBox(height: 8),
+              if (goodList.isEmpty)
+                const Text('No hay seriales buenos en esta caja.')
+              else
+                Container(
+                  height: 200,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListView.builder(
+                    itemCount: goodList.length,
+                    itemBuilder: (context, idx) => ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.check_circle_outline_rounded, color: Colors.green),
+                      title: Text(goodList[idx]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+
+    await _fetchPastBoxes();
+  }
+
+  Future<void> _showBoxDetailsDialog(String boxId) async {
+    final client = _clientOrNull();
+    final session = _sessionMap();
+    if (client == null || session == null) return;
+
+    bool loading = true;
+    List<Map<String, dynamic>> items = [];
+
+    Future<void> loadItems() async {
+      final res = await client.get('/serials/verification/items?session_id=${session['id']}&box_id=$boxId&page_size=1000');
+      if (res.ok && res.body is Map) {
+        final body = Map<String, dynamic>.from(res.body as Map);
+        final list = body['items'] as List? ?? [];
+        items = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      loading = false;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setState) {
+          if (loading) {
+            loadItems().then((_) => setState(() {}));
+          }
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text('Detalle de Caja: $boxId'),
+            content: SizedBox(
+              width: 600,
+              height: 400,
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : items.isEmpty
+                      ? const Center(child: Text('No hay seriales en esta caja'))
+                      : ListView.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, idx) {
+                            final item = items[idx];
+                            final status = item['status']?.toString() ?? '';
+                            final isGood = status == 'verified';
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(
+                                isGood ? Icons.check_circle_outline : Icons.error_outline,
+                                color: isGood ? Colors.green : Colors.red,
+                              ),
+                              title: Text(item['serial']?.toString() ?? ''),
+                              subtitle: Text('Estado: ${_statusLabel(status)}'),
+                            );
+                          },
+                        ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
   Map<String, dynamic>? _sessionMap() {
     final session = _session;
     if (session == null) return null;
@@ -384,6 +629,8 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
       final imported = body['imported_rows'] ?? 0;
       _showSnack('Verificación iniciada. Cargados: $imported, duplicados en archivo: $dup');
       await _promoteScannerFocus();
+      await _fetchPastBoxes();
+      await _loadActiveBoxState();
     } catch (e) {
       _showSnack('Error iniciando verificación: $e');
     } finally {
@@ -411,6 +658,8 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
         setState(() => _session = Map<String, dynamic>.from(session));
         _showSnack('Sesión reabierta');
         await _promoteScannerFocus();
+        await _fetchPastBoxes();
+        await _loadActiveBoxState();
       }
     } catch (_) {}
     finally {
@@ -493,7 +742,27 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
       _showSnack('Primero inicia o reanuda una sesión');
       return;
     }
+    if (_boxModeEnabled) {
+      if (_boxCtrl.text.trim().isEmpty) {
+        _showSnack('Por favor ingresa un identificador de caja');
+        return;
+      }
+      if (_boxCapacityCtrl.text.trim().isEmpty) {
+        _showSnack('Por favor ingresa la capacidad de la caja');
+        return;
+      }
+    }
     if (serial.isEmpty) return;
+
+    if (_boxModeEnabled) {
+      if (_currentBoxGoodSerials.contains(serial) || _currentBoxBadSerials.contains(serial)) {
+        SoundPlayer.playError();
+        _showSnack('Serial "$serial" ya escaneado en esta caja. Ignorado.');
+        _scanCtrl.clear();
+        _scanFocus.requestFocus();
+        return;
+      }
+    }
 
     // Instant reset & refocus (Optimistic UI)
     _scanCtrl.clear();
@@ -517,6 +786,10 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
           'session_id': session['id'],
           'serial': serial,
           'confirm_duplicate': false,
+          if (_boxModeEnabled) ...{
+            'box_id': _boxCtrl.text.trim(),
+            'box_capacity': _boxCapacity,
+          },
         },
       );
 
@@ -527,53 +800,109 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
         _syncSessionFromResponse(body);
         final resName = body['result']?.toString() ?? 'verified';
         
-        if (resName == 'verified') {
-          SoundPlayer.playSuccess();
-          _showSnack('Serial verificado');
-        } else if (resName == 'duplicate_bad') {
+        if (resName == 'ignored_duplicate') {
           SoundPlayer.playError();
-          await showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Row(
-                children: [
-                  Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 28),
-                  SizedBox(width: 8),
-                  Text('Duplicado Malo Detectado'),
+          _showSnack('Serial "$serial" ya fue escaneado en esta sesión. Ignorado.');
+          return;
+        }
+        
+        if (_boxModeEnabled) {
+          if (resName == 'verified') {
+            SoundPlayer.playSuccess();
+            _showSnack('Serial verificado en caja');
+            setState(() {
+              _currentBoxGoodSerials.add(serial);
+            });
+          } else {
+            SoundPlayer.playError();
+            _showSnack('Serial incorrecto/duplicado registrado en caja');
+            setState(() {
+              _currentBoxBadSerials.add(serial);
+            });
+          }
+          
+          if (_currentBoxGoodSerials.length + _currentBoxBadSerials.length >= _boxCapacity) {
+            await _finishBox();
+          }
+        } else {
+          if (resName == 'verified') {
+            SoundPlayer.playSuccess();
+            _showSnack('Serial verificado');
+          } else if (resName == 'duplicate_bad') {
+            SoundPlayer.playError();
+            await showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 28),
+                    SizedBox(width: 8),
+                    Text('Duplicado Malo Detectado'),
+                  ],
+                ),
+                content: Text(
+                  'El serial "$serial" ya existe en el archivo original cargado.\n\n'
+                  'Se ha registrado automáticamente en la base de datos como un DUPLICADO MALO.\n\n'
+                  'Por favor, verifique el serial físico antes de continuar.'
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                    child: const Text('Entendido'),
+                  ),
                 ],
               ),
-              content: Text(
-                'El serial "$serial" ya existe en el archivo original cargado.\n\n'
-                'Se ha registrado automáticamente en la base de datos como un DUPLICADO MALO.\n\n'
-                'Por favor, verifique el serial físico antes de continuar.'
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-                  child: const Text('Entendido'),
-                ),
-              ],
-            ),
-          );
-        } else {
-          SoundPlayer.playError();
-          _showSnack('Serial marcado como duplicado malo');
+            );
+          } else {
+            SoundPlayer.playError();
+            _showSnack('Serial marcado como duplicado malo');
+          }
         }
       } else if (res.statusCode == 409 && res.body is Map) {
         final body = Map<String, dynamic>.from(res.body as Map);
         final duplicateKind = body['duplicate_kind']?.toString() ?? 'already_scanned';
         SoundPlayer.playError();
-        await _confirmDuplicate(serial, duplicateKind);
+        if (_boxModeEnabled) {
+          _showSnack('Serial incorrecto/duplicado registrado en caja');
+          setState(() {
+            _currentBoxBadSerials.add(serial);
+          });
+          if (_currentBoxGoodSerials.length + _currentBoxBadSerials.length >= _boxCapacity) {
+            await _finishBox();
+          }
+        } else {
+          await _confirmDuplicate(serial, duplicateKind);
+        }
       } else {
         SoundPlayer.playError();
-        _showSnack('No se pudo escanear (${res.statusCode})');
+        if (_boxModeEnabled) {
+          _showSnack('Error escaneando serial: registrado como malo en caja');
+          setState(() {
+            _currentBoxBadSerials.add(serial);
+          });
+          if (_currentBoxGoodSerials.length + _currentBoxBadSerials.length >= _boxCapacity) {
+            await _finishBox();
+          }
+        } else {
+          _showSnack('No se pudo escanear (${res.statusCode})');
+        }
       }
     } catch (e) {
       SoundPlayer.playError();
-      _showSnack('Error escaneando: $e');
+      if (_boxModeEnabled) {
+        _showSnack('Error de conexión: registrado como malo en caja');
+        setState(() {
+          _currentBoxBadSerials.add(serial);
+        });
+        if (_currentBoxGoodSerials.length + _currentBoxBadSerials.length >= _boxCapacity) {
+          await _finishBox();
+        }
+      } else {
+        _showSnack('Error escaneando: $e');
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -1086,6 +1415,124 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
                                         ],
                                       ),
                                     const SizedBox(height: 20),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary.withOpacity(0.04),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: borderColor),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Icon(Icons.inventory_2_rounded, color: theme.colorScheme.primary, size: 20),
+                                                  const SizedBox(width: 8),
+                                                  const Text(
+                                                    'Modo Cajas',
+                                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+                                              Switch.adaptive(
+                                                value: _boxModeEnabled,
+                                                onChanged: (val) {
+                                                  setState(() => _boxModeEnabled = val);
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                          if (_boxModeEnabled) ...[
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  flex: 3,
+                                                  child: TextField(
+                                                    controller: _boxCtrl,
+                                                    decoration: InputDecoration(
+                                                      labelText: 'Identificador de Caja',
+                                                      prefixIcon: const Icon(Icons.label_outline_rounded),
+                                                      isDense: true,
+                                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  flex: 2,
+                                                  child: TextField(
+                                                    controller: _boxCapacityCtrl,
+                                                    keyboardType: TextInputType.number,
+                                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                                    decoration: InputDecoration(
+                                                      labelText: 'Capacidad',
+                                                      prefixIcon: const Icon(Icons.tag_rounded),
+                                                      isDense: true,
+                                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                                    ),
+                                                    onChanged: (_) {
+                                                      setState(() {});
+                                                    },
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Builder(
+                                              builder: (context) {
+                                                final currentTotal = _currentBoxGoodSerials.length + _currentBoxBadSerials.length;
+                                                final percent = currentTotal / _boxCapacity;
+                                                return Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Text(
+                                                          'Progreso Caja: $currentTotal / $_boxCapacity',
+                                                          style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                                                        ),
+                                                        Text(
+                                                          'Correctos: ${_currentBoxGoodSerials.length} · Malos: ${_currentBoxBadSerials.length}',
+                                                          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    ClipRRect(
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      child: LinearProgressIndicator(
+                                                        value: percent.clamp(0.0, 1.0),
+                                                        minHeight: 8,
+                                                        backgroundColor: theme.dividerColor.withOpacity(0.5),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Align(
+                                                      alignment: Alignment.centerRight,
+                                                      child: TextButton.icon(
+                                                        onPressed: currentTotal > 0 ? _finishBox : null,
+                                                        icon: const Icon(Icons.check_box_outlined, size: 18),
+                                                        label: const Text('Cerrar Caja Manual'),
+                                                        style: TextButton.styleFrom(
+                                                          visualDensity: VisualDensity.compact,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
                                     TextField(
                                       controller: _scanCtrl,
                                       focusNode: _scanFocus,
@@ -1260,6 +1707,104 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
                                           );
                                         },
                                       ),
+                                    if (_boxModeEnabled || _pastBoxes.isNotEmpty) ...[
+                                      const SizedBox(height: 24),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Historial de Cajas', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                                          if (_loadingBoxes)
+                                            const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      TextField(
+                                        controller: _boxSearchCtrl,
+                                        decoration: InputDecoration(
+                                          labelText: 'Buscar caja...',
+                                          prefixIcon: const Icon(Icons.search_rounded),
+                                          isDense: true,
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                        onChanged: (_) {
+                                          setState(() {});
+                                        },
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Builder(
+                                        builder: (context) {
+                                          final query = _boxSearchCtrl.text.trim().toLowerCase();
+                                          final filteredBoxes = _pastBoxes.where((box) {
+                                            final bid = box['box_id']?.toString().toLowerCase() ?? '';
+                                            return bid.contains(query);
+                                          }).toList();
+
+                                          if (filteredBoxes.isEmpty) {
+                                            return Container(
+                                              width: double.infinity,
+                                              padding: const EdgeInsets.all(20),
+                                              alignment: Alignment.center,
+                                              child: Text(
+                                                _pastBoxes.isEmpty 
+                                                    ? 'No hay cajas cerradas en esta sesión.' 
+                                                    : 'No se encontraron cajas con ese nombre.', 
+                                                style: theme.textTheme.bodySmall,
+                                              ),
+                                            );
+                                          }
+
+                                          return ListView.separated(
+                                            shrinkWrap: true,
+                                            physics: const NeverScrollableScrollPhysics(),
+                                            itemCount: filteredBoxes.length,
+                                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                            itemBuilder: (_, index) {
+                                              final box = filteredBoxes[index];
+                                              final boxId = box['box_id']?.toString() ?? '';
+                                              final total = box['total_items'] ?? 0;
+                                              final good = box['good_items'] ?? 0;
+                                              final bad = box['bad_items'] ?? 0;
+                                              return Container(
+                                                decoration: BoxDecoration(
+                                                  color: theme.colorScheme.primary.withOpacity(0.03),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                                                ),
+                                                child: ListTile(
+                                                  dense: true,
+                                                  leading: Container(
+                                                    padding: const EdgeInsets.all(8),
+                                                    decoration: BoxDecoration(
+                                                      color: theme.colorScheme.primary.withOpacity(0.1),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: Icon(
+                                                      Icons.inventory_2_rounded,
+                                                      color: theme.colorScheme.primary,
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                  title: Text(
+                                                    boxId,
+                                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                                  ),
+                                                  subtitle: Text(
+                                                    'Total: $total · Buenos: $good · Malos: $bad',
+                                                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                                                  ),
+                                                  trailing: const Icon(Icons.chevron_right_rounded),
+                                                  onTap: () => _showBoxDetailsDialog(boxId),
+                                                ),
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

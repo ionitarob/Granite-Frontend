@@ -1133,12 +1133,14 @@ class ServiceStat {
   final double units;
   final double pvd;
   final double totalPrice;
+  final double palets;
 
   ServiceStat({
     required this.name,
     required this.units,
     required this.pvd,
     required this.totalPrice,
+    required this.palets,
   });
 }
 
@@ -1223,10 +1225,13 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
     }).toList();
 
     final Map<String, double> serviceUnits = {};
+    final Map<String, double> servicePalets = {};
     for (final t in filtered) {
       final sName = t.servicio ?? 'Sin servicio';
       final units = _parseUnits(t.unit);
+      final palets = _parseUnits(t.palets);
       serviceUnits[sName] = (serviceUnits[sName] ?? 0.0) + units;
+      servicePalets[sName] = (servicePalets[sName] ?? 0.0) + palets;
     }
 
     final List<ServiceStat> stats = [];
@@ -1237,8 +1242,15 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
       );
       final pvd = master.pvd ?? 0.0;
       final totalPrice = units * pvd;
+      final palets = servicePalets[name] ?? 0.0;
       stats.add(
-        ServiceStat(name: name, units: units, pvd: pvd, totalPrice: totalPrice),
+        ServiceStat(
+          name: name,
+          units: units,
+          pvd: pvd,
+          totalPrice: totalPrice,
+          palets: palets,
+        ),
       );
     });
 
@@ -1418,7 +1430,7 @@ class _DashboardServiceStatsState extends State<_DashboardServiceStats> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '${stat.units.toStringAsFixed(0)} unds. x ${stat.pvd.formatted} €',
+                                          '${stat.units.toStringAsFixed(0)} unds. x ${stat.pvd.formatted} € · ${stat.palets.formatted} palets',
                                           style: TextStyle(
                                             fontSize: 10,
                                             color: theme
