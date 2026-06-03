@@ -15,12 +15,14 @@ class SerigrafiaPanel extends StatefulWidget {
   final AgentOrder order;
   final OrderOpsDetail? detail;
   final OrderOpsService? service;
+  final VoidCallback? onRefresh;
 
   const SerigrafiaPanel({
     super.key,
     required this.order,
     this.detail,
     this.service,
+    this.onRefresh,
   });
 
   @override
@@ -217,6 +219,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         if (!silent && mounted) {
            if (res.ok) {
              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel sincronizado y guardado en Archivos'), backgroundColor: Colors.green));
+             widget.onRefresh?.call();
            } else {
              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar Excel: ${res.error}'), backgroundColor: Colors.red));
            }
@@ -1392,6 +1395,110 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
+  Future<void> _createExcelFromRegistries() async {
+    setState(() => _loadingExcel = true);
+    try {
+      final registries = await _serigrafiaService.getRegistries(widget.order.idnbr, labelName: _selectedStandard?.name, includeProject: true);
+      if (registries.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No hay coincidencias registradas en la base de datos para esta orden/estándar.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() => _loadingExcel = false);
+        return;
+      }
+
+      final headers = _allVariables;
+      if (headers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('El estándar seleccionado no tiene variables. Configura las variables del estándar primero.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() => _loadingExcel = false);
+        return;
+      }
+
+      final excel = excel_pkg.Excel.createExcel();
+      final sheetName = excel.sheets.keys.first;
+      final sheet = excel[sheetName];
+
+      sheet.appendRow(headers.map((h) => excel_pkg.TextCellValue(h)).toList());
+
+      for (final r in registries) {
+        final data = r['data'] as Map?;
+        final List<excel_pkg.CellValue?> rowValues = [];
+        for (final h in headers) {
+          String? val;
+          if (data != null) {
+            data.forEach((k, v) {
+              if (k.toString().toUpperCase() == h.toUpperCase()) {
+                val = v.toString();
+              }
+            });
+            if (val == null) {
+              if (h.toUpperCase() == 'CI' || h.toUpperCase() == 'CI_CODE') val = r['ci']?.toString();
+              else if (h.toUpperCase() == 'SERIAL') val = r['serial']?.toString();
+            }
+          }
+          rowValues.add(excel_pkg.TextCellValue(val ?? ''));
+        }
+        sheet.appendRow(rowValues);
+      }
+
+      final bytes = excel.encode();
+      if (bytes == null) {
+        throw Exception('Error al codificar el archivo Excel.');
+      }
+
+      final cleanOrderNbr = widget.order.orderNbr?.replaceAll(RegExp(r'[^\w\-]'), '_') ?? widget.order.idnbr.toString();
+      final fileName = 'Serigrafia_Manual_${cleanOrderNbr}.xlsx';
+      final res = await _serigrafiaService.uploadExcel(
+        widget.order.idnbr,
+        Uint8List.fromList(bytes),
+        fileName,
+      );
+
+      if (res.ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Archivo Excel creado de las coincidencias y guardado en archivos.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        widget.onRefresh?.call();
+        
+        setState(() {
+          _excel = excel;
+          _excelHeaders = headers;
+          if (_currentStep < 4) {
+            _currentStep = 3;
+          }
+          _currentCiCode = null;
+        });
+      } else {
+        throw Exception(res.error ?? 'Error desconocido al subir el archivo.');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al crear Excel: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+    setState(() => _loadingExcel = false);
+  }
+
   Widget _buildExcelTile(AgentOrderPhoto p) {
     // If idnbr is different or null, it's likely a project file
     final isProjectFile = p.idnbr != widget.order.idnbr;
@@ -1564,6 +1671,17 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                   label: const Text('FORZAR SINCRONIZACIÓN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
                   style: TextButton.styleFrom(
                     backgroundColor: Colors.orange.withOpacity(0.05),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _loadingExcel ? null : _createExcelFromRegistries,
+                  icon: const Icon(Icons.download_for_offline_outlined, size: 16, color: Colors.green),
+                  label: const Text('EXPORTAR RELACIÓN A EXCEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.green.withOpacity(0.05),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
@@ -2308,6 +2426,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
               );
               if (res.ok && !silent) {
                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel actualizado y subido exitosamente'), backgroundColor: Colors.green));
+                 widget.onRefresh?.call();
               }
            }
         }
@@ -2332,7 +2451,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             if (loading && registries == null && errorMessage == null) {
-              _serigrafiaService.getRegistries(widget.order.idnbr).then((results) {
+              _serigrafiaService.getRegistries(widget.order.idnbr, labelName: _selectedStandard?.name, includeProject: true).then((results) {
                 setDialogState(() {
                   registries = results;
                   loading = false;

@@ -218,6 +218,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     required double height,
     num? smVal,
     num? pulserasVal,
+    String? dateRange,
   }) {
     final theme = Theme.of(context);
     final formattedValue = NumberFormat.decimalPattern('es_ES').format(value);
@@ -277,8 +278,10 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
       );
     }
 
+    final double extraHeight = (desglosePills != null ? 36.0 : 0.0) + (dateRange != null ? 14.0 : 0.0);
+
     return Container(
-      height: desglosePills != null ? height + 36 : height,
+      height: height + extraHeight,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: baseColor.withOpacity(0.08),
@@ -295,14 +298,30 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: baseColor.withOpacity(0.85),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: baseColor.withOpacity(0.85),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  if (dateRange != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      dateRange,
+                      style: TextStyle(
+                        color: baseColor.withOpacity(0.65),
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               if (percentageChip != null) percentageChip,
             ],
@@ -495,6 +514,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 height: cardHeight,
                 smVal: hoySmVal,
                 pulserasVal: hoyPulserasVal,
+                dateRange: summaryData['hoy_rango'],
               );
 
               final cardSemana = _buildStatCard(
@@ -506,6 +526,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 height: cardHeight,
                 smVal: estaSemanaSmVal,
                 pulserasVal: estaSemanaPulserasVal,
+                dateRange: summaryData['esta_semana_rango'],
               );
 
               final cardMes = _buildStatCard(
@@ -517,6 +538,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 height: cardHeight,
                 smVal: esteMesSmVal,
                 pulserasVal: esteMesPulserasVal,
+                dateRange: summaryData['este_mes_rango'],
               );
 
               final cardAno = _buildStatCard(
@@ -528,6 +550,7 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 height: cardHeight,
                 smVal: esteAnoSmVal,
                 pulserasVal: esteAnoPulserasVal,
+                dateRange: summaryData['este_ano_rango'],
               );
 
               if (useVerticalLayout) {
@@ -564,6 +587,197 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 ],
               );
             },
+          ),
+          _buildHistorySection(compact: compact),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistorySection({required bool compact}) {
+    final theme = Theme.of(context);
+    final days = List<Map<String, dynamic>>.from(summaryData['historial_dias'] ?? []);
+    final weeks = List<Map<String, dynamic>>.from(summaryData['historial_semanas'] ?? []);
+    final months = List<Map<String, dynamic>>.from(summaryData['historial_meses'] ?? []);
+
+    if (days.isEmpty && weeks.isEmpty && months.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    Widget buildHistoryList(String title, IconData icon, Color color, List<Map<String, dynamic>> items, String type) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.cardColor.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.08),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 16, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...items.map((item) {
+              final label = item['label'] ?? '';
+              final sm = item['sm'] ?? 0;
+              final pul = item['pulseras'] ?? 0;
+              
+              String dateText = '';
+              String itemTitle = label;
+              
+              if (type == 'day') {
+                if (label != 'Hoy' && label != 'Ayer') {
+                  itemTitle = label;
+                } else if (label == 'Ayer') {
+                  itemTitle = 'Ayer (${item['fecha']})';
+                } else {
+                  itemTitle = 'Hoy';
+                }
+              } else {
+                dateText = ' (${item['fecha_inicio']} - ${item['fecha_fin']})';
+              }
+
+              final isLast = items.indexOf(item) == items.length - 1;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$itemTitle$dateText',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: theme.textTheme.bodyMedium?.color?.withOpacity(0.85),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _buildDesgloseMiniPill(
+                          icon: Icons.smartphone_rounded,
+                          label: '$sm SM',
+                          color: color,
+                        ),
+                        const SizedBox(width: 6),
+                        _buildDesgloseMiniPill(
+                          icon: Icons.watch_rounded,
+                          label: '$pul Pulseras',
+                          color: color,
+                        ),
+                      ],
+                    ),
+                    if (!isLast) ...[
+                      const SizedBox(height: 8),
+                      Divider(color: theme.colorScheme.outline.withOpacity(0.05), height: 1),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      );
+    }
+
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 12),
+          Text(
+            'HISTORIAL DE DISPOSITIVOS',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 12),
+          buildHistoryList('ÚLTIMOS DÍAS', Icons.calendar_today_rounded, const Color(0xFF4E9F3D), days, 'day'),
+          const SizedBox(height: 12),
+          buildHistoryList('ÚLTIMAS SEMANAS', Icons.view_week_rounded, const Color(0xFF2B5C8F), weeks, 'week'),
+          const SizedBox(height: 12),
+          buildHistoryList('ÚLTIMOS MESES', Icons.calendar_month_rounded, const Color(0xFF6B2B8F), months, 'month'),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 12),
+        Text(
+          'HISTORIAL DE DISPOSITIVOS',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: buildHistoryList('ÚLTIMOS DÍAS', Icons.calendar_today_rounded, const Color(0xFF4E9F3D), days, 'day')),
+            const SizedBox(width: 12),
+            Expanded(child: buildHistoryList('ÚLTIMAS SEMANAS', Icons.view_week_rounded, const Color(0xFF2B5C8F), weeks, 'week')),
+            const SizedBox(width: 12),
+            Expanded(child: buildHistoryList('ÚLTIMOS MESES', Icons.calendar_month_rounded, const Color(0xFF6B2B8F), months, 'month')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesgloseMiniPill({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 9, color: color.withOpacity(0.8)),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: color.withOpacity(0.9),
+            ),
           ),
         ],
       ),
@@ -2259,8 +2473,6 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _buildSummaryCards(),
-                        const SizedBox(height: 24),
-                        _buildDeviceStatusCard(),
                         if (!loadingStock && errorStock == null && stockReal != null) ...[
                           const SizedBox(height: 24),
                           ResumenStock(
@@ -2279,7 +2491,17 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                     ),
                   ),
                   SizedBox(width: gap),
-                  SizedBox(width: tableBoxWidth, child: _buildResumenTable()),
+                  SizedBox(
+                    width: tableBoxWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildResumenTable(),
+                        const SizedBox(height: 24),
+                        _buildDeviceStatusCard(),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -2289,8 +2511,6 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildSummaryCards(compact: compact),
-              SizedBox(height: gap),
-              _buildDeviceStatusCard(compact: compact),
               SizedBox(height: gap),
               if (!loadingStock && errorStock == null && stockReal != null) ...[
                 ResumenStock(
@@ -2307,6 +2527,8 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
                 SizedBox(height: gap),
               ],
               _buildResumenTable(compact: compact || isMobile),
+              SizedBox(height: gap),
+              _buildDeviceStatusCard(compact: compact),
             ],
           );
         }

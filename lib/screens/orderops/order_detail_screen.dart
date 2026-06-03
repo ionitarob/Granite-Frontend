@@ -2948,6 +2948,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           order: order,
           detail: _detail,
           service: _orderOpsService,
+          onRefresh: _loadData,
         ),
       );
     }

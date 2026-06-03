@@ -57,7 +57,7 @@ class SerigrafiaService {
   /// Upload an Excel file (bytes) to the order's attachments
   Future<ApiResult> uploadExcel(int idnbr, Uint8List bytes, String fileName) async {
     return await client.postMultipart(
-      '/orderops/serigrafia/upload-excel',
+      '/orderops/agent-orders/$idnbr/photos',
       files: [
         MultipartAttachment(
           fieldName: 'file',
@@ -66,7 +66,7 @@ class SerigrafiaService {
         ),
       ],
       fields: {
-        'idnbr': idnbr.toString(),
+        'overwrite': 'true',
       },
     );
   }

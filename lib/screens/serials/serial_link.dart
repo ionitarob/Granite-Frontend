@@ -47,7 +47,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
   late final TabController _tabs;
   late final List<_SerialPanel> _activePanels;
-  OverlayEntry? _edgeOverlay;
 
   final TextEditingController _serialCtrl = TextEditingController();
   final FocusNode _serialFocus = FocusNode();
@@ -122,34 +121,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       if (_serialFocus.hasFocus) _fetchNextInventory();
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.isEmbedded || widget.matchOnly) return;
-      if (!mounted) return;
-      final routeName = ModalRoute.of(context)?.settings.name;
-      final overlay = Overlay.of(context, rootOverlay: true);
-
-      _edgeOverlay = OverlayEntry(
-        builder: (ctx) {
-          return Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: EdgeNavHandle(
-                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
-                  width: 32,
-                  currentRoute: routeName,
-                  showIndicator: true,
-                ),
-              ),
-            ),
-          );
-        },
-      );
-      overlay.insert(_edgeOverlay!);
-    });
   }
 
   Future<void> _handleQuickScan(String value) async {
@@ -210,8 +181,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
 
   @override
   void dispose() {
-    _edgeOverlay?.remove();
-    _edgeOverlay = null;
     _tabs.dispose();
     _serialCtrl.dispose();
     _serialFocus.dispose();
@@ -2936,7 +2905,6 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
       length: tabs.length,
       child: Scaffold(
         appBar: AppBar(
-          leading: const EdgeNavHandle(),
           title: const Text('VINCULAR SERIAL (MATCH)'),
           actions: [
             if (_sequenceQueue.isNotEmpty)
@@ -2962,7 +2930,20 @@ class _SerialLinkScreenState extends State<SerialLinkScreen>
           ],
           bottom: TabBar(controller: _tabs, tabs: tabs, isScrollable: true),
         ),
-        body: TabBarView(controller: _tabs, children: views),
+        body: Stack(
+          children: [
+            TabBarView(controller: _tabs, children: views),
+            const Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

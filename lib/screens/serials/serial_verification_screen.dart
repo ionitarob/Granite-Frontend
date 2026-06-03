@@ -1106,7 +1106,6 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: const EdgeNavHandle(),
         title: Text(
           isMobile ? 'VERIFICAR' : 'VERIFICACIÓN DE SERIALS',
           style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
@@ -1130,7 +1129,9 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           padding: EdgeInsets.all(isMobile ? 12 : 24),
@@ -1819,6 +1820,17 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
             ),
           ),
         ),
+      ),
+          const Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: EdgeNavHandle(),
+            ),
+          ),
+        ],
       ),
     );
   }

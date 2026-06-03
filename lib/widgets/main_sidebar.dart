@@ -1995,8 +1995,8 @@ Future<void> showAppSidebar(
   User? user,
   String? currentRoute,
 }) {
-  if (_AppNavState._isOpen) return Future.value();
-  _AppNavState._isOpen = true;
+  if (_AppNavState.isOpen.value) return Future.value();
+  _AppNavState.isOpen.value = true;
   final currentRouteName =
       currentRoute ??
       (AppRouteTracker.currentRoute.value != null &&
@@ -2059,12 +2059,12 @@ Future<void> showAppSidebar(
       );
     },
   ).then((_) {
-    _AppNavState._isOpen = false;
+    _AppNavState.isOpen.value = false;
   });
 }
 
 class _AppNavState {
-  static bool _isOpen = false;
+  static final ValueNotifier<bool> isOpen = ValueNotifier<bool>(false);
 }
 
 class SidebarExpansionTile extends StatefulWidget {
@@ -2220,62 +2220,79 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return ValueListenableBuilder<String?>(
-      valueListenable: AppRouteTracker.currentRoute,
-      builder: (context, trackedRoute, _) {
-        final actualRoute = (trackedRoute != null && trackedRoute.isNotEmpty)
-            ? trackedRoute
-            : (widget.currentRoute ??
-                  (ModalRoute.of(context)?.settings.name != '/' &&
-                          ModalRoute.of(context)?.settings.name != null &&
-                          ModalRoute.of(context)!.settings.name!.isNotEmpty
-                      ? ModalRoute.of(context)!.settings.name
-                      : null));
+    return ValueListenableBuilder<bool>(
+      valueListenable: _AppNavState.isOpen,
+      builder: (context, isOpen, _) {
+        if (isOpen) return const SizedBox.shrink();
 
-        return MouseRegion(
-          onEnter: (_) {
-            _hovering = true;
-            if (widget.openOnHover) {
-              _scheduleOpen(context, actualRoute);
+        return ValueListenableBuilder<String?>(
+          valueListenable: AppRouteTracker.currentRoute,
+          builder: (context, trackedRoute, _) {
+            final actualRoute = (trackedRoute != null && trackedRoute.isNotEmpty)
+                ? trackedRoute
+                : (widget.currentRoute ??
+                      (ModalRoute.of(context)?.settings.name != '/' &&
+                              ModalRoute.of(context)?.settings.name != null &&
+                              ModalRoute.of(context)!.settings.name!.isNotEmpty
+                          ? ModalRoute.of(context)!.settings.name
+                          : null));
+
+            // If we are on a route where the sidebar is already permanently shown on desktop,
+            // don't show the hover indicator handle.
+            final isDashboardRoute = actualRoute == '/dashboard' ||
+                actualRoute == '/dashboard/redesigned' ||
+                actualRoute == '/' ||
+                actualRoute == '';
+            if (isDashboardRoute) {
+              return const SizedBox.shrink();
             }
-          },
-          onExit: (_) {
-            _hovering = false;
-          },
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => showAppSidebar(
-              context,
-              user: widget.user,
-              currentRoute: actualRoute,
-            ),
-            child: Container(
-              width: widget.width,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.1),
-                borderRadius: const BorderRadius.only(
-                  topRight: Radius.circular(12),
-                  bottomRight: Radius.circular(12),
+
+            return MouseRegion(
+              onEnter: (_) {
+                _hovering = true;
+                if (widget.openOnHover) {
+                  _scheduleOpen(context, actualRoute);
+                }
+              },
+              onExit: (_) {
+                _hovering = false;
+              },
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => showAppSidebar(
+                  context,
+                  user: widget.user,
+                  currentRoute: actualRoute,
                 ),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.black.withOpacity(0.1),
-                  width: 1,
+                child: Container(
+                  width: widget.width,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.black.withOpacity(0.1),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.2)
+                          : Colors.black.withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: isDark
+                        ? Colors.white.withOpacity(0.7)
+                        : Colors.black.withOpacity(0.6),
+                    size: 20,
+                  ),
                 ),
               ),
-              child: Icon(
-                Icons.chevron_right_rounded,
-                color: isDark
-                    ? Colors.white.withOpacity(0.7)
-                    : Colors.black.withOpacity(0.6),
-                size: 20,
-              ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
