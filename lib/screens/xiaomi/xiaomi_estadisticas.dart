@@ -13,7 +13,6 @@ class XiaomiEstadisticasPage extends StatefulWidget {
 }
 
 class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
-  OverlayEntry? _edgeOverlay;
   double _effectiveHours = 7.5;
   double _customUph = 100.0;
   int _simulatedPersonnel = 4; // New: Personnel for simulation
@@ -23,7 +22,7 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
 
   @override
   void initState() {
-    _setupSidebar();
+    super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<XiaomiProvider>().fetchSummary();
       _fetchTrend();
@@ -78,38 +77,8 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
     context.read<XiaomiProvider>().fetchTeamPerformance(start, end);
   }
 
-  void _setupSidebar() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final routeName = ModalRoute.of(context)?.settings.name;
-      final overlay = Overlay.of(context, rootOverlay: true);
-      _edgeOverlay = OverlayEntry(
-        builder: (ctx) {
-          return Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: EdgeNavHandle(
-                  user: context.read<XiaomiProvider>().apiService.currentUser,
-                  width: 32,
-                  currentRoute: routeName,
-                  showIndicator: true,
-                ),
-              ),
-            ),
-          );
-        },
-      );
-      overlay.insert(_edgeOverlay!);
-    });
-  }
-
   @override
   void dispose() {
-    _edgeOverlay?.remove();
     super.dispose();
   }
 
@@ -217,6 +186,23 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
                       );
                     }
                   },
+                ),
+              ),
+            ),
+          if (MediaQuery.of(context).size.width >= 900)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: SafeArea(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: EdgeNavHandle(
+                    user: context.read<XiaomiProvider>().apiService.currentUser,
+                    width: 32,
+                    currentRoute: ModalRoute.of(context)?.settings.name,
+                    showIndicator: true,
+                  ),
                 ),
               ),
             ),

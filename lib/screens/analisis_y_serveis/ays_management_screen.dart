@@ -24,8 +24,6 @@ class AysManagementScreen extends StatefulWidget {
 
 class _AysManagementScreenState extends State<AysManagementScreen> {
   final _analisisService = const AnalisisService();
-  OverlayEntry? _edgeOverlay;
-
   // Data
   List<ProjectFund> _funds = [];
   List<Transaction> _history = [];
@@ -46,35 +44,6 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
   void initState() {
     super.initState();
     _loadAllData();
-    _setupSidebar();
-  }
-
-  void _setupSidebar() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final isMobile = MediaQuery.of(context).size.width < 980;
-      if (isMobile) return;
-      final overlay = Overlay.of(context, rootOverlay: true);
-      _edgeOverlay = OverlayEntry(
-        builder: (ctx) => Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          child: SafeArea(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: EdgeNavHandle(
-                user: Provider.of<ApiService>(ctx, listen: false).currentUser,
-                width: 32,
-                currentRoute: AysManagementScreen.routeName,
-                showIndicator: true,
-              ),
-            ),
-          ),
-        ),
-      );
-      overlay.insert(_edgeOverlay!);
-    });
   }
 
   Future<void> _loadAllData({bool showLoader = true}) async {
@@ -167,7 +136,6 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
   @override
   void dispose() {
-    _edgeOverlay?.remove();
     super.dispose();
   }
 
@@ -295,11 +263,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
         children: [
           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
-              ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

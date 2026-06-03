@@ -369,22 +369,6 @@ class _CerrarIdimOystaScreenState extends State<CerrarIdimOystaScreen> {
               ),
             ),
           ),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: EdgeNavHandle(
-                  user: Provider.of<ApiService>(context, listen: false).currentUser,
-                  width: 32,
-                  currentRoute: '/igualdad/cerrar',
-                  showIndicator: true,
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

@@ -647,7 +647,6 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
               },
             ),
           ),
-          const Positioned(left: 0, top: 0, bottom: 0, child: Align(alignment: Alignment.centerLeft, child: EdgeNavHandle())),
         ],
       ),
     );

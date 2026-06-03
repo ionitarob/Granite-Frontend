@@ -17,15 +17,15 @@ import '../../services/api_service.dart';
 
 const String baseUrl = kBackendBaseUrl;
 
-// ─────────── Glassmorphism palette ───────────
-const Color kGlassStroke = Color(0x33FFFFFF);
-const Color kGlassFill = Color(0x66FFFFFF);
-const Color kPrimary = Color(0xFF1976D2); // used for accents and hovers
-const Color kPrimaryDark = Color(0xFF0D47A1);
-const Color kTextOnGlass = Color(0xDD000000);
-// Status colors (as originally requested):
-const Color kActivo = Color(0xFF2E7D32); // green
-const Color kAusente = Color(0xFFEF6C00); // orange
+// ─────────── Dark Glassmorphism palette ───────────
+const Color kGlassStroke = Color(0x1AFFFFFF);
+const Color kGlassFill = Color(0x0EFFFFFF);
+const Color kPrimary = Color(0xFF90CAF9); // sleek light blue accent
+const Color kPrimaryDark = Color(0xFF42A5F5);
+const Color kTextOnGlass = Color(0xFFF5F5F7);
+const Color kTextSecondary = Color(0xFF8E8E93);
+const Color kActivo = Color(0xFF34C759); // vibrant iOS-style green
+const Color kAusente = Color(0xFFFF9500); // vibrant iOS-style amber
 
 class JobSelectorScreen extends StatefulWidget {
   const JobSelectorScreen({super.key});
@@ -484,10 +484,13 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final mq = MediaQuery.maybeOf(context);
+    final isDesktop = (mq?.size.width ?? 1000) >= 900;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
+        automaticallyImplyLeading: !isDesktop,
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -574,11 +577,11 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
           decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: .78),
-            border: Border.all(color: Colors.white.withValues(alpha: .25)),
+            color: theme.cardColor.withOpacity(0.45),
+            border: Border.all(color: kGlassStroke),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: .08),
+                color: Colors.black.withOpacity(0.2),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -602,7 +605,7 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
                       horizontal: 16,
                       vertical: 10,
                     ),
-                    backgroundColor: Colors.white.withValues(alpha: .65),
+                    backgroundColor: Colors.white.withOpacity(0.05),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -611,7 +614,7 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
                   label: Text(
                     _fechaStr,
                     style: TextStyle(
-                      color: accent,
+                      color: kTextOnGlass,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -641,30 +644,35 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
                     initialValue: _empresaId,
                     isExpanded: true,
                     dropdownColor: theme.cardColor,
+                    style: const TextStyle(color: kTextOnGlass),
                     items: _empresas
                         .map(
                           (e) => DropdownMenuItem<int>(
                             value: (e['id'] as num).toInt(),
-                            child: Text(e['nombre'].toString()),
+                            child: Text(
+                              e['nombre'].toString(),
+                              style: const TextStyle(color: kTextOnGlass),
+                            ),
                           ),
                         )
                         .toList(),
                     onChanged: (v) => unawaited(_updateEmpresaFilter(v)),
                     decoration: InputDecoration(
                       labelText: 'Empresa (filtra empleados)',
+                      labelStyle: TextStyle(color: kTextSecondary),
                       isDense: true,
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: .7),
+                      fillColor: Colors.white.withOpacity(0.03),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
-                          color: accent.withValues(alpha: .4),
+                          color: kGlassStroke,
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
-                          color: accent.withValues(alpha: .35),
+                          color: kGlassStroke,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -691,8 +699,8 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
           decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: .85),
-            border: Border.all(color: Colors.white.withValues(alpha: .25)),
+            color: theme.cardColor.withOpacity(0.35),
+            border: Border.all(color: kGlassStroke),
           ),
           child: _buildBoard(),
         ),
@@ -983,7 +991,8 @@ class _JobColumnState extends State<_JobColumn> {
                                 child: Text(
                                   'Arrastra aquí',
                                   style: TextStyle(
-                                    color: Colors.black.withValues(alpha: .45),
+                                    color: kTextSecondary.withOpacity(0.55),
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -1079,11 +1088,12 @@ class _JobColumnState extends State<_JobColumn> {
                             duration: const Duration(milliseconds: 120),
                             decoration: BoxDecoration(
                               color: hovering
-                                  ? kPrimary.withValues(alpha: 0.08)
+                                  ? kPrimary.withOpacity(0.12)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: hovering ? kPrimary : Colors.transparent,
+                                width: 2,
                               ),
                             ),
                           );
@@ -1118,8 +1128,8 @@ class _EmployeeTile extends StatelessWidget {
     final String apellido = emp['apellido']?.toString() ?? '';
     final bool activo = (emp['activo'] == true || emp['activo'] == 1);
     final Color color = activo ? kActivo : kAusente;
+    final int? minutes = emp['minutes_active'] != null ? (emp['minutes_active'] as num).toInt() : null;
 
-    // Access nearest dragging notifier if provided by parent columns
     final draggingNotifier = context
         .findAncestorWidgetOfExactType<_JobColumn>()
         ?.dragging;
@@ -1142,14 +1152,15 @@ class _EmployeeTile extends StatelessWidget {
             color,
             dragging: true,
             feedbackMode: true,
+            minutes: minutes,
           ),
         ),
       ),
       childWhenDragging: Opacity(
         opacity: 0.35,
-        child: _chip(nombre, apellido, color),
+        child: _chip(nombre, apellido, color, minutes: minutes),
       ),
-      child: _chip(nombre, apellido, color),
+      child: _chip(nombre, apellido, color, minutes: minutes),
       onDragStarted: () => draggingNotifier?.value = true,
       onDragEnd: (_) => draggingNotifier?.value = false,
     );
@@ -1161,23 +1172,29 @@ class _EmployeeTile extends StatelessWidget {
     Color color, {
     bool dragging = false,
     bool feedbackMode = false,
+    int? minutes,
   }) {
     final inic =
         ((nombre.isNotEmpty ? nombre[0] : '') +
                 (apellido.isNotEmpty ? apellido[0] : ''))
             .toUpperCase();
+    
+    final String minsStr = (minutes != null && minutes > 0) 
+        ? "${minutes ~/ 60}h ${minutes % 60}m" 
+        : "";
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: dragging ? Colors.white : Colors.white,
+        color: dragging ? Colors.white.withOpacity(0.08) : Colors.white.withOpacity(0.04),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: .35), width: 1),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
         boxShadow: [
           if (!dragging)
             BoxShadow(
-              color: Colors.blue.withValues(alpha: .08),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
             ),
         ],
       ),
@@ -1185,33 +1202,57 @@ class _EmployeeTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 12,
-            backgroundColor: color,
+            backgroundColor: color.withOpacity(0.85),
             child: Text(
               inic,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
           const SizedBox(width: 8),
-          if (!feedbackMode)
-            Expanded(
-              child: Text(
-                '$nombre $apellido',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontWeight: FontWeight.w700, color: color),
-              ),
-            )
-          else
-            Text(
-              '$nombre $apellido',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w700, color: color),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$nombre $apellido',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600, 
+                    color: kTextOnGlass,
+                    fontSize: 13.5,
+                  ),
+                ),
+                if (minsStr.isNotEmpty && !feedbackMode)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(
+                      'Tiempo activo: $minsStr',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: kTextSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
+          if (minsStr.isNotEmpty && feedbackMode) ...[
+            const SizedBox(width: 6),
+            Text(
+              minsStr,
+              style: TextStyle(
+                fontSize: 11,
+                color: kTextSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1245,7 +1286,14 @@ class _LegendDot extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(label),
+        Text(
+          label,
+          style: const TextStyle(
+            color: kTextOnGlass,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }

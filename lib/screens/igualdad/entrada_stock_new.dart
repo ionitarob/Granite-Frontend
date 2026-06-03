@@ -492,7 +492,6 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 								),
 							),
 						),
-						const Positioned(left: 0, top: 0, bottom: 0, child: EdgeNavHandle()),
 					],
 				),
 			),

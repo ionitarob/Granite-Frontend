@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 
 import 'form_palette.dart';
+import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
 
 class FormularioSmartphoneNew extends StatefulWidget {
   final TextEditingController imeiController;
@@ -31,6 +32,10 @@ class FormularioSmartphoneNew extends StatefulWidget {
   final Map<String, dynamic>? lookupResult;
   final String? lookupError;
   final String? lookupImeiSearched;
+  final List<Map<String, dynamic>> usuarios;
+  final int? selectedUsuarioId;
+  final void Function(int? usuarioId) onChangeUsuario;
+  final Future<void> Function() onRefreshUsuarios;
 
   const FormularioSmartphoneNew({
     super.key,
@@ -50,6 +55,10 @@ class FormularioSmartphoneNew extends StatefulWidget {
     required this.onChangeRegistro,
     required this.onChangeTipoSmartphone,
     required this.onRegistrar,
+    required this.usuarios,
+    required this.selectedUsuarioId,
+    required this.onChangeUsuario,
+    required this.onRefreshUsuarios,
     this.onRegistrarIrrecuperable,
     this.isSubmitting = false,
     this.isSubmittingIrrecuperable = false,
@@ -68,19 +77,14 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final FocusNode _imeiFocus = FocusNode();
   final FocusNode _simFocus = FocusNode();
-  
+
   late Map<String, String?> _checks;
   late bool _imeiLegible;
   int _currentStep = 0; // index of the active step in _getSteps()
   bool _overrideSimEditable = false;
 
   List<String> _getSteps() {
-    return [
-      'Datos',
-      'Escáner QR',
-      'Checklist',
-      'Registro',
-    ];
+    return ['Datos', 'Escáner QR', 'Checklist', 'Registro'];
   }
 
   @override
@@ -118,7 +122,9 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
         }
         if (imeiFull.contains('IMEI2:')) {
           try {
-            widget.imei2Controller.text = imeiFull.split('IMEI2:')[1].split(';')[0];
+            widget.imei2Controller.text = imeiFull
+                .split('IMEI2:')[1]
+                .split(';')[0];
           } catch (_) {}
         }
       }
@@ -148,6 +154,9 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
     }
     if (oldWidget.imeiController.text != widget.imeiController.text) {
       _imeiLegible = !_isNoLegibleValue(widget.imeiController.text);
+      if (widget.imeiController.text.isEmpty && oldWidget.imeiController.text.isNotEmpty) {
+        _currentStep = 0;
+      }
     }
     // Auto-populate SIM/QR/BT if we get a result from lookup
     if (widget.lookupResult != oldWidget.lookupResult) {
@@ -186,7 +195,9 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             }
             if (imeiFull.contains('IMEI2:')) {
               try {
-                widget.imei2Controller.text = imeiFull.split('IMEI2:')[1].split(';')[0];
+                widget.imei2Controller.text = imeiFull
+                    .split('IMEI2:')[1]
+                    .split(';')[0];
               } catch (_) {}
             }
           } else {
@@ -300,18 +311,32 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
 
     final widgets = <Widget>[];
     for (var i = 0; i < steps.length; i++) {
-      widgets.add(_stepIndicatorItem(i, '${i + 1}. ${steps[i]}', activeColor, inactiveColor, theme, palette));
+      widgets.add(
+        _stepIndicatorItem(
+          i,
+          '${i + 1}. ${steps[i]}',
+          activeColor,
+          inactiveColor,
+          theme,
+          palette,
+        ),
+      );
       if (i < steps.length - 1) {
         widgets.add(_stepConnector(i, activeColor, inactiveColor));
       }
     }
 
-    return Row(
-      children: widgets,
-    );
+    return Row(children: widgets);
   }
 
-  Widget _stepIndicatorItem(int stepIndex, String title, Color activeColor, Color inactiveColor, ThemeData theme, FormPalette palette) {
+  Widget _stepIndicatorItem(
+    int stepIndex,
+    String title,
+    Color activeColor,
+    Color inactiveColor,
+    ThemeData theme,
+    FormPalette palette,
+  ) {
     final isActive = _currentStep == stepIndex;
     final isDone = _currentStep > stepIndex;
 
@@ -324,7 +349,11 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isActive ? activeColor : (isDone ? activeColor.withOpacity(0.2) : Colors.transparent),
+              color: isActive
+                  ? activeColor
+                  : (isDone
+                        ? activeColor.withOpacity(0.2)
+                        : Colors.transparent),
               border: Border.all(
                 color: (isActive || isDone) ? activeColor : inactiveColor,
                 width: 2,
@@ -337,7 +366,9 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                       '${stepIndex + 1}',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: isActive ? theme.colorScheme.onPrimary : (isDone ? activeColor : palette.textMuted),
+                        color: isActive
+                            ? theme.colorScheme.onPrimary
+                            : (isDone ? activeColor : palette.textMuted),
                       ),
                     ),
             ),
@@ -401,6 +432,8 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
         ),
         const SizedBox(height: 20),
         _buildImeiAndTipoRow(theme, palette),
+        const SizedBox(height: 16),
+        _buildUsuarioSelectionRow(theme, palette),
         ..._buildLookupSection(theme, palette),
         const SizedBox(height: 16),
         // SIM input field
@@ -413,18 +446,25 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                   controller: widget.simController,
                   focusNode: _simFocus,
                   readOnly: isSimReadOnly,
-                  decoration: _inputDecoration(
-                    theme,
-                    palette,
-                    'Tarjeta SIM (ICCID - 20 dígitos)',
-                    Icons.sim_card_outlined,
-                  ).copyWith(
-                    filled: true,
-                    fillColor: isSimReadOnly ? palette.fieldFill.withOpacity(0.5) : palette.fieldFill,
-                    suffixIcon: isSimReadOnly
-                        ? const Icon(Icons.lock_outline, size: 18, color: Colors.green)
-                        : null,
-                  ),
+                  decoration:
+                      _inputDecoration(
+                        theme,
+                        palette,
+                        'Tarjeta SIM (ICCID - 20 dígitos)',
+                        Icons.sim_card_outlined,
+                      ).copyWith(
+                        filled: true,
+                        fillColor: isSimReadOnly
+                            ? palette.fieldFill.withOpacity(0.5)
+                            : palette.fieldFill,
+                        suffixIcon: isSimReadOnly
+                            ? const Icon(
+                                Icons.lock_outline,
+                                size: 18,
+                                color: Colors.green,
+                              )
+                            : null,
+                      ),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: palette.textPrimary,
                   ),
@@ -566,11 +606,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
               );
             }
             return Column(
-              children: [
-                batteryField,
-                const SizedBox(height: 16),
-                cometaField,
-              ],
+              children: [batteryField, const SizedBox(height: 16), cometaField],
             );
           },
         ),
@@ -591,15 +627,19 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
         const SizedBox(height: 20),
         TextFormField(
           controller: widget.imeiQrController,
-          decoration: _inputDecoration(
-            theme,
-            palette,
-            'Código QR del IMEI',
-            Icons.qr_code_scanner,
-          ).copyWith(
-            helperText: 'Escanee el código QR que contiene IMEI1, IMEI2 y BT.',
-            helperStyle: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
-          ),
+          decoration:
+              _inputDecoration(
+                theme,
+                palette,
+                'Código QR del IMEI',
+                Icons.qr_code_scanner,
+              ).copyWith(
+                helperText:
+                    'Escanee el código QR que contiene IMEI1, IMEI2 y BT.',
+                helperStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
           style: theme.textTheme.bodyMedium?.copyWith(
             color: palette.textPrimary,
           ),
@@ -666,7 +706,8 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             }
           },
         ),
-        if (widget.imeiQrController.text.isNotEmpty || widget.simQrController.text.isNotEmpty) ...[
+        if (widget.imeiQrController.text.isNotEmpty ||
+            widget.simQrController.text.isNotEmpty) ...[
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -751,11 +792,31 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             children: [
               _qualityChip(theme, palette, 'remaquetado', '¿Remaquetado?'),
               _qualityChip(theme, palette, 'danos_fisicos', '¿Daños físicos?'),
-              _qualityChip(theme, palette, 'empareja_pulsera_boton', '¿Empareja pulsera/botón?'),
-              _qualityChip(theme, palette, 'solapa_cargador', '¿Tiene solapa de cargador?'),
+              _qualityChip(
+                theme,
+                palette,
+                'empareja_pulsera_boton',
+                '¿Empareja pulsera/botón?',
+              ),
+              _qualityChip(
+                theme,
+                palette,
+                'solapa_cargador',
+                '¿Tiene solapa de cargador?',
+              ),
               _qualityChip(theme, palette, 'sonido', '¿Emite sonido?'),
-              _qualityChip(theme, palette, 'wifi_activada', '¿Wi-fi Activada?'),
-              _qualityChip(theme, palette, 'geolocalizacion_funcional', '¿Geolocalización Funcional?'),
+              _qualityChip(
+                theme,
+                palette,
+                'wifi_activada',
+                '¿Wi-fi Desctivada?',
+              ),
+              _qualityChip(
+                theme,
+                palette,
+                'geolocalizacion_funcional',
+                '¿Geolocalización Funcional?',
+              ),
             ],
           ),
         ),
@@ -776,8 +837,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
         ),
         const SizedBox(height: 20),
         _buildRegistroSelector(theme, palette),
-        if (isDanosFisicos)
-          ..._buildIrrecuperableBanner(theme, palette),
+        if (isDanosFisicos) ..._buildIrrecuperableBanner(theme, palette),
       ],
     );
   }
@@ -808,7 +868,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
           )
         else
           const SizedBox.shrink(),
-        
+
         if (!isLastStep)
           FilledButton.icon(
             icon: const Icon(Icons.arrow_forward),
@@ -830,7 +890,8 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                   // Auto-build IMEI QR string if IMEI1 + BT are filled
                   // and the field doesn't already have the formatted string.
                   // IMEI2 is optional — include it only when provided.
-                  if (imei1.isNotEmpty && bt.isNotEmpty &&
+                  if (imei1.isNotEmpty &&
+                      bt.isNotEmpty &&
                       !currentQr.contains('IMEI1:')) {
                     final imei2Part = imei2.isNotEmpty ? 'IMEI2:$imei2;' : '';
                     widget.imeiQrController.text =
@@ -838,7 +899,8 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                   }
                   // Auto-populate SIM QR field from SIM controller.
                   final sim = widget.simController.text.trim();
-                  if (sim.isNotEmpty && widget.simQrController.text.trim().isEmpty) {
+                  if (sim.isNotEmpty &&
+                      widget.simQrController.text.trim().isEmpty) {
                     widget.simQrController.text = sim;
                   }
                 }
@@ -865,11 +927,19 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                       color: Colors.white,
                     ),
                   )
-                : Icon(_checks['danos_fisicos'] == 'NO OK' ? Icons.delete_forever : Icons.save_alt_rounded),
+                : Icon(
+                    _checks['danos_fisicos'] == 'NO OK'
+                        ? Icons.delete_forever
+                        : Icons.save_alt_rounded,
+                  ),
             label: Text(
               _checks['danos_fisicos'] == 'NO OK'
-                  ? (widget.isSubmittingIrrecuperable ? 'Registrando…' : 'Registrar como Irrecuperable')
-                  : (widget.isSubmitting ? 'Registrando…' : 'Registrar Smartphone'),
+                  ? (widget.isSubmittingIrrecuperable
+                        ? 'Registrando…'
+                        : 'Registrar como Irrecuperable')
+                  : (widget.isSubmitting
+                        ? 'Registrando…'
+                        : 'Registrar Smartphone'),
             ),
             onPressed: (widget.isSubmitting || widget.isSubmittingIrrecuperable)
                 ? null
@@ -883,10 +953,14 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
                     }
                   },
             style: FilledButton.styleFrom(
-              backgroundColor: _checks['danos_fisicos'] == 'NO OK' ? theme.colorScheme.error : theme.colorScheme.primary,
+              backgroundColor: _checks['danos_fisicos'] == 'NO OK'
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              textStyle: const TextStyle(fontWeight: FontWeight.w600),
+              textStyle: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1053,6 +1127,100 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
             const SizedBox(height: 16),
             tipoDropdown,
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildUsuarioSelectionRow(ThemeData theme, FormPalette palette) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<int>(
+            value: widget.selectedUsuarioId,
+            decoration:
+                _inputDecoration(
+                  theme,
+                  palette,
+                  'Usuario del smartphone (Asociar kit)',
+                  Icons.person_pin_circle_outlined,
+                ).copyWith(
+                  suffixIcon: widget.selectedUsuarioId != null
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          onPressed: () => widget.onChangeUsuario(null),
+                        )
+                      : null,
+                ),
+            items: [
+              ...widget.usuarios.map((u) {
+                final int id = u['id'] as int;
+                final String name = u['nombre'] as String;
+                final String tipoUser = u['tipo'] == 'AGRESOR'
+                    ? 'Agresor'
+                    : 'Víctima';
+                return DropdownMenuItem<int>(
+                  value: id,
+                  child: Text(
+                    '$name ($tipoUser)',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: palette.textPrimary,
+                    ),
+                  ),
+                );
+              }),
+            ],
+            dropdownColor: palette.dropdownBackground,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: palette.textPrimary,
+            ),
+            iconEnabledColor: palette.textPrimary,
+            iconDisabledColor: palette.textMuted,
+            onChanged: (val) {
+              widget.onChangeUsuario(val);
+              if (val != null) {
+                // Auto-fill smartphone type based on user type
+                final user = widget.usuarios.firstWhere((u) => u['id'] == val);
+                final String userTipo = user['tipo'] as String;
+                widget.onChangeTipoSmartphone(userTipo);
+              }
+            },
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          height: 56,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text('Gestionar'),
+            onPressed: () => _showManageUsuariosDialog(context, theme, palette),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              side: BorderSide(color: palette.toggleBorder),
+              foregroundColor: palette.textPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showManageUsuariosDialog(
+    BuildContext context,
+    ThemeData theme,
+    FormPalette palette,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return _ManageUsuariosDialog(
+          theme: theme,
+          palette: palette,
+          onRefresh: widget.onRefreshUsuarios,
         );
       },
     );
@@ -1323,7 +1491,7 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
     String label,
   ) {
     return Container(
-      width: 300,
+      width: 325,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
@@ -1365,7 +1533,11 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
     final isSelected = _checks[field] == value;
     return ChoiceChip(
       selected: isSelected,
-      label: Text(label, style: const TextStyle(fontSize: 11)),
+      label: Text(label),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       avatar: value == null
           ? Icon(
               Icons.remove_circle_outline,
@@ -1387,7 +1559,9 @@ class _FormularioSmartphoneNewState extends State<FormularioSmartphoneNew> {
       },
       selectedColor: palette.chipSelectedBackground,
       backgroundColor: palette.chipBackground,
-      labelStyle: theme.textTheme.bodySmall?.copyWith(
+      labelStyle: TextStyle(
+        inherit: true,
+        fontSize: 11,
         fontWeight: FontWeight.w600,
         color: isSelected
             ? palette.chipSelectedForeground
@@ -1465,7 +1639,11 @@ class _RegistroSummary extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.assignment_ind_outlined, color: palette.textPrimary, size: 20),
+          Icon(
+            Icons.assignment_ind_outlined,
+            color: palette.textPrimary,
+            size: 20,
+          ),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1575,7 +1753,11 @@ class _NoLegibleNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.report_problem_outlined, color: theme.colorScheme.error, size: 20),
+          Icon(
+            Icons.report_problem_outlined,
+            color: theme.colorScheme.error,
+            size: 20,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -1737,6 +1919,255 @@ class _LookupResultCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ManageUsuariosDialog extends StatefulWidget {
+  final ThemeData theme;
+  final FormPalette palette;
+  final Future<void> Function() onRefresh;
+
+  const _ManageUsuariosDialog({
+    required this.theme,
+    required this.palette,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_ManageUsuariosDialog> createState() => _ManageUsuariosDialogState();
+}
+
+class _ManageUsuariosDialogState extends State<_ManageUsuariosDialog> {
+  final TextEditingController _nameController = TextEditingController();
+  String _selectedTipo = 'AGRESOR';
+  List<Map<String, dynamic>> _usuarios = [];
+  bool _loading = true;
+  bool _creating = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsuarios();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUsuarios() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await IgualdadApi.getUsuarios();
+      setState(() {
+        _usuarios = list;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _crearUsuario() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+    setState(() => _creating = true);
+    try {
+      await IgualdadApi.crearUsuario(name, _selectedTipo);
+      _nameController.clear();
+      await _loadUsuarios();
+      await widget.onRefresh();
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al crear usuario: $e')));
+    } finally {
+      setState(() => _creating = false);
+    }
+  }
+
+  Future<void> _eliminarUsuario(int id) async {
+    try {
+      await IgualdadApi.deleteUsuario(id);
+      await _loadUsuarios();
+      await widget.onRefresh();
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al eliminar usuario: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final palette = widget.palette;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: palette.dropdownBackground,
+      title: Text(
+        'Gestionar Usuarios de Smartphones',
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: palette.textPrimary,
+        ),
+      ),
+      content: SizedBox(
+        width: 480,
+        height: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Create user form
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _nameController,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: palette.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Nombre completo',
+                      labelStyle: TextStyle(color: palette.fieldLabel),
+                      filled: true,
+                      fillColor: palette.fieldFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: palette.fieldBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: palette.fieldFocusedBorder,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _selectedTipo,
+                  dropdownColor: palette.dropdownBackground,
+                  items: [
+                    DropdownMenuItem(
+                      value: 'AGRESOR',
+                      child: Text(
+                        'Agresor',
+                        style: TextStyle(color: palette.textPrimary),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'VICTIMA',
+                      child: Text(
+                        'Víctima',
+                        style: TextStyle(color: palette.textPrimary),
+                      ),
+                    ),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _selectedTipo = val);
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: _creating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_circle_outline),
+                  color: theme.colorScheme.primary,
+                  onPressed: _creating ? null : _crearUsuario,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Divider(color: palette.divider),
+            const SizedBox(height: 8),
+            Text(
+              'Usuarios creados:',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: palette.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // List of users
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(
+                      child: Text(
+                        'Error: $_error',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    )
+                  : _usuarios.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No hay usuarios. Crea uno arriba.',
+                        style: TextStyle(color: palette.textMuted),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _usuarios.length,
+                      itemBuilder: (ctx, index) {
+                        final u = _usuarios[index];
+                        final int id = u['id'] as int;
+                        final String name = u['nombre'] as String;
+                        final String tipoUser = u['tipo'] == 'AGRESOR'
+                            ? 'Agresor'
+                            : 'Víctima';
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            name,
+                            style: TextStyle(color: palette.textPrimary),
+                          ),
+                          subtitle: Text(
+                            tipoUser,
+                            style: TextStyle(color: palette.textMuted),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                            ),
+                            onPressed: () => _eliminarUsuario(id),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cerrar'),
+        ),
+      ],
     );
   }
 }

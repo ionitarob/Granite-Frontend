@@ -575,4 +575,22 @@ class IgualdadApi {
     if (resp.statusCode >= 200 && resp.statusCode < 300) return;
     throw Exception('Error ${resp.statusCode}: ${resp.body}');
   }
+
+  // GET /igualdad/usuarios
+  static Future<List<Map<String, dynamic>>> getUsuarios() async {
+    final body = await _doGet('/igualdad/usuarios');
+    return List<Map<String, dynamic>>.from(
+      (body as List).map((e) => Map<String, dynamic>.from(e as Map)),
+    );
+  }
+
+  // POST /igualdad/usuarios/crear
+  static Future<void> crearUsuario(String nombre, String tipo) async {
+    await _doPost('/igualdad/usuarios/crear', jsonBody: {'nombre': nombre, 'tipo': tipo});
+  }
+
+  // DELETE /igualdad/usuarios/:id
+  static Future<void> deleteUsuario(int id) async {
+    await _doDelete('/igualdad/usuarios/$id');
+  }
 }

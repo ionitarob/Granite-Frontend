@@ -10,7 +10,6 @@ import 'formulario_smartphone_new.dart';
 import 'resumen_stock.dart';
 import 'tabla_registros.dart';
 import 'dialogo_editar_smartphone.dart';
-import '../../widgets/main_sidebar.dart';
 import '../../widgets/animated_background.dart';
 
 class RegistroSmartphoneScreen extends StatefulWidget {
@@ -41,6 +40,8 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   String? _registroSeleccionado;
   String? _tipoRegistroSeleccionado;
   String? _tipoSmartphone = 'AGRESOR';
+  List<Map<String, dynamic>> _usuarios = [];
+  int? _selectedUsuarioId;
   final Map<String, String?> _radioValues = {
     'remaquetado': null,
     'danos_fisicos': null,
@@ -57,6 +58,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   Map<String, dynamic>? _lookupResult;
   String? _lastLookupImei;
   int _lookupRequestId = 0;
+  int _formularioResetToken = 0;
 
   List<Map<String, dynamic>> ultimosRegistros = [];
   bool _cargandoRegistros = false;
@@ -98,6 +100,18 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
 
   Future<void> _loadData() async {
     await _cargarRegistroActivo();
+    await _cargarUsuarios();
+  }
+
+  Future<void> _cargarUsuarios() async {
+    try {
+      final list = await IgualdadApi.getUsuarios();
+      if (!mounted) return;
+      setState(() => _usuarios = list);
+    } catch (e) {
+      if (!mounted) return;
+      print("[WARN _cargarUsuarios] error: $e");
+    }
   }
 
   void _onImeiChanged() {
@@ -292,6 +306,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       'imei1': imei1Val,
       'imei2': imei2Val,
       'bt': btVal,
+      'usuario_id': _selectedUsuarioId,
     };
     try {
       setState(() => _registrandoIrrecuperable = true);
@@ -304,6 +319,8 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         _lookupResult = null;
         _lookupError = null;
         _lastLookupImei = null;
+        _selectedUsuarioId = null;
+        _formularioResetToken++;
         _imeiController.clear();
         _imei2Controller.clear();
         _bateriaController.clear();
@@ -370,6 +387,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       'imei1': imei1Val,
       'imei2': imei2Val,
       'bt': btVal,
+      'usuario_id': _selectedUsuarioId,
     };
     try {
       setState(() => _registrando = true);
@@ -382,6 +400,19 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         _lookupResult = null;
         _lookupError = null;
         _lastLookupImei = null;
+        _selectedUsuarioId = null;
+        _formularioResetToken++;
+        _imeiController.clear();
+        _imei2Controller.clear();
+        _bateriaController.clear();
+        _cometaController.clear();
+        _simController.clear();
+        _imeiQrController.clear();
+        _simQrController.clear();
+        _btController.clear();
+        for (final k in _radioValues.keys) {
+          _radioValues[k] = null;
+        }
       });
       await _cargarRegistroActivo();
       setState(() => _paginaActual = 1);
@@ -421,7 +452,10 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   ) async {
     final Map<String, dynamic>? nuevosDatos = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => DialogoEditarSmartphone(datos: antiguosDatos),
+      builder: (ctx) => DialogoEditarSmartphone(
+        datos: antiguosDatos,
+        usuarios: _usuarios,
+      ),
     );
 
     if (nuevosDatos == null) return;
@@ -625,7 +659,6 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
               },
             ),
           ),
-          const Positioned(left: 0, top: 0, bottom: 0, child: Align(alignment: Alignment.centerLeft, child: EdgeNavHandle())),
         ],
       ),
     );
@@ -633,6 +666,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
 
   Widget _buildFormulario() {
     return FormularioSmartphoneNew(
+      key: ValueKey(_formularioResetToken),
       imeiController: _imeiController,
       bateriaController: _bateriaController,
       cometaController: _cometaController,
@@ -653,6 +687,10 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       onChangeTipoSmartphone: (t) =>
           setState(() => _tipoSmartphone = t),
       onRegistrar: () => _registrarSmartphone(),
+      usuarios: _usuarios,
+      selectedUsuarioId: _selectedUsuarioId,
+      onChangeUsuario: (uId) => setState(() => _selectedUsuarioId = uId),
+      onRefreshUsuarios: () => _cargarUsuarios(),
       onRegistrarIrrecuperable: _registrarSmartphoneIrrecuperable,
       isSubmitting: _registrando,
       isSubmittingIrrecuperable: _registrandoIrrecuperable,

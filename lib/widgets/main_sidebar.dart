@@ -60,7 +60,7 @@ class _MainSidebarState extends State<MainSidebar> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildLogo(context, logoAsset, textPrimary, isDark),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
 
           // Optional search (highly recommended)
           AppleSidebarSearch(
@@ -71,7 +71,7 @@ class _MainSidebarState extends State<MainSidebar> {
             },
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
 
           Expanded(
             child: SingleChildScrollView(
@@ -105,15 +105,15 @@ class _MainSidebarState extends State<MainSidebar> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Divider(
                       thickness: 0.6,
                       height: 1,
                       color: textMuted.withOpacity(0.12),
                     ),
                   ),
-                  const SidebarSectionHeader(title: 'ADMIN'),
-                  const SizedBox(height: 8),
+                  const SidebarSectionHeader(title: 'RRHH'),
+                  const SizedBox(height: 4),
                   SidebarExpansionTile(
                     title: 'Recursos Humanos',
                     icon: Icons.people_alt_rounded,
@@ -194,15 +194,15 @@ class _MainSidebarState extends State<MainSidebar> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
           ],
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           Divider(height: 1, thickness: .6, color: textMuted.withOpacity(0.18)),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           _buildFooter(context, isDark, textPrimary, textMuted, logoAsset),
         ],
       ),
@@ -306,9 +306,9 @@ class _MainSidebarState extends State<MainSidebar> {
             activeColor: Theme.of(context).colorScheme.primary,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 6),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: isDark
                 ? Colors.white.withOpacity(0.03)
@@ -1704,12 +1704,12 @@ class _SidebarTileState extends State<_SidebarTile>
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
             margin: EdgeInsets.symmetric(
-              vertical: 3,
+              vertical: 1.5,
               horizontal: widget.nested ? 2 : 6,
             ),
             padding: EdgeInsets.symmetric(
               horizontal: widget.nested ? 14 : 14,
-              vertical: 10,
+              vertical: 7,
             ),
             decoration: BoxDecoration(
               color: widget.selected
@@ -1798,7 +1798,7 @@ class AppleSidebarSurface extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(26),
@@ -2182,6 +2182,12 @@ class EdgeNavHandle extends StatefulWidget {
     this.openOnHover = false,
   });
 
+  /// Global guard: tracks how many EdgeNavHandle instances are currently
+  /// mounted and trying to display. Only the most-recently mounted instance
+  /// (the one with the highest ID) renders; all others collapse.
+  static int _nextId = 0;
+  static final ValueNotifier<int> _topId = ValueNotifier<int>(0);
+
   @override
   State<EdgeNavHandle> createState() => _EdgeNavHandleState();
 }
@@ -2189,6 +2195,23 @@ class EdgeNavHandle extends StatefulWidget {
 class _EdgeNavHandleState extends State<EdgeNavHandle> {
   bool _hovering = false;
   Future<void>? _pending;
+  int _myId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _myId = ++EdgeNavHandle._nextId;
+    EdgeNavHandle._topId.value = _myId;
+  }
+
+  @override
+  void dispose() {
+    // When this instance is removed, if it was the top, step back
+    if (EdgeNavHandle._topId.value == _myId) {
+      EdgeNavHandle._topId.value = _myId - 1;
+    }
+    super.dispose();
+  }
 
   void _scheduleOpen(BuildContext context, String? route) {
     if (_pending != null) return;
@@ -2217,8 +2240,26 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
       return const SizedBox.shrink();
     }
 
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      return const SizedBox.shrink();
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    // Global singleton guard: only the most-recently mounted instance renders.
+    // All older stacked instances collapse to avoid showing multiple arrows.
+    return ValueListenableBuilder<int>(
+      valueListenable: EdgeNavHandle._topId,
+      builder: (context, topId, _) {
+        if (_myId != topId) return const SizedBox.shrink();
+        return _buildHandle(context, isDark);
+      },
+    );
+  }
+
+  Widget _buildHandle(BuildContext context, bool isDark) {
 
     return ValueListenableBuilder<bool>(
       valueListenable: _AppNavState.isOpen,
@@ -2228,7 +2269,8 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
         return ValueListenableBuilder<String?>(
           valueListenable: AppRouteTracker.currentRoute,
           builder: (context, trackedRoute, _) {
-            final actualRoute = (trackedRoute != null && trackedRoute.isNotEmpty)
+            final actualRoute =
+                (trackedRoute != null && trackedRoute.isNotEmpty)
                 ? trackedRoute
                 : (widget.currentRoute ??
                       (ModalRoute.of(context)?.settings.name != '/' &&
@@ -2239,7 +2281,8 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
 
             // If we are on a route where the sidebar is already permanently shown on desktop,
             // don't show the hover indicator handle.
-            final isDashboardRoute = actualRoute == '/dashboard' ||
+            final isDashboardRoute =
+                actualRoute == '/dashboard' ||
                 actualRoute == '/dashboard/redesigned' ||
                 actualRoute == '/' ||
                 actualRoute == '';

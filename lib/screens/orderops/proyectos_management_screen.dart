@@ -153,6 +153,7 @@ class _ProyectosManagementScreenState extends State<ProyectosManagementScreen> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Gestión de Proyectos'),
+        automaticallyImplyLeading: !isDesktop,
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [

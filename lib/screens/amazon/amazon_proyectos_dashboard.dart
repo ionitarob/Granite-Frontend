@@ -119,30 +119,6 @@ class _AmazonProyectosDashboardState extends State<AmazonProyectosDashboard> {
         body: Stack(
           children: [
             const Positioned.fill(child: AnimatedBackgroundWidget(intensity: 0.4)),
-            SafeArea(
-              child: Row(
-                children: [
-                  const EdgeNavHandle(width: 32),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildHeader(),
-                          const SizedBox(height: 24),
-                          Expanded(
-                            child: isMobile 
-                              ? _buildMobileLayout() 
-                              : _buildDesktopLayout(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),

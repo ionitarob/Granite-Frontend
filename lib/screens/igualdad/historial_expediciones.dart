@@ -333,8 +333,7 @@ class _HistorialExpedicionesScreenState
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        leading: const EdgeNavHandle(),
-        backgroundColor: Colors.transparent,
+                backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
           'Historial Expediciones',

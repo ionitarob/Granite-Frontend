@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 class DialogoEditarSmartphone extends StatefulWidget {
   final Map<String, dynamic> datos;
+  final List<Map<String, dynamic>> usuarios;
 
-  const DialogoEditarSmartphone({super.key, required this.datos});
+  const DialogoEditarSmartphone({
+    super.key,
+    required this.datos,
+    required this.usuarios,
+  });
 
   @override
   State<DialogoEditarSmartphone> createState() => _DialogoEditarSmartphoneState();
@@ -14,6 +19,7 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
   late TextEditingController _bateriaController;
   late TextEditingController _cometaController;
   late String _tipoSmartphone;
+  int? _selectedUsuarioId;
 
   @override
   void initState() {
@@ -25,6 +31,14 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
       text: widget.datos['version_cometa']?.toString() ?? '',
     );
     _tipoSmartphone = widget.datos['tipo']?.toString() ?? 'SM-OFENSOR';
+    
+    // Safety check for user_id type casting
+    final rawUserId = widget.datos['usuario_id'];
+    if (rawUserId is int) {
+      _selectedUsuarioId = rawUserId;
+    } else if (rawUserId != null) {
+      _selectedUsuarioId = int.tryParse(rawUserId.toString());
+    }
 
     _respuestas = {
       'remaquetado': widget.datos['remaquetado']?.toString(),
@@ -110,6 +124,39 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
               ),
             ),
             const SizedBox(height: 24),
+            DropdownButtonFormField<int>(
+              value: _selectedUsuarioId,
+              decoration: InputDecoration(
+                labelText: 'Usuario asociado',
+                border: const OutlineInputBorder(),
+                suffixIcon: _selectedUsuarioId != null
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        onPressed: () => setState(() => _selectedUsuarioId = null),
+                      )
+                    : null,
+              ),
+              items: widget.usuarios.map((u) {
+                final int id = u['id'] as int;
+                final String name = u['nombre'] as String;
+                final String tipoUser = u['tipo'] == 'AGRESOR' ? 'Agresor' : 'Víctima';
+                return DropdownMenuItem<int>(
+                  value: id,
+                  child: Text('$name ($tipoUser)'),
+                );
+              }).toList(),
+              onChanged: (val) {
+                setState(() {
+                  _selectedUsuarioId = val;
+                  if (val != null) {
+                    final user = widget.usuarios.firstWhere((u) => u['id'] == val);
+                    final String userTipo = user['tipo'] as String;
+                    _tipoSmartphone = userTipo == 'AGRESOR' ? 'SM-OFENSOR' : 'SM-VICTIMA';
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _tipoSmartphone,
               decoration: const InputDecoration(
@@ -161,6 +208,7 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
               'tipo': _tipoSmartphone,
               'porcentaje_bateria': _bateriaController.text.trim(),
               'version_cometa': _cometaController.text.trim(),
+              'usuario_id': _selectedUsuarioId,
               ..._respuestas,
             };
             Navigator.of(context).pop(result);

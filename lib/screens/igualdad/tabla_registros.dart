@@ -136,11 +136,11 @@ class _TablaRegistrosState extends State<TablaRegistros> {
             }).toList();
     }
 
-    // Sort strictly from most recent (newest) to oldest by ID
+    // Sort strictly from most recent (newest) to oldest by date
     filtered.sort((a, b) {
-      final aId = int.tryParse(a['id']?.toString() ?? '') ?? 0;
-      final bId = int.tryParse(b['id']?.toString() ?? '') ?? 0;
-      return bId.compareTo(aId);
+      final aDate = (a['fecha'] ?? a['created_at'])?.toString() ?? '';
+      final bDate = (b['fecha'] ?? b['created_at'])?.toString() ?? '';
+      return bDate.compareTo(aDate);
     });
 
     final theme = Theme.of(context);
@@ -217,6 +217,7 @@ class _TablaRegistrosState extends State<TablaRegistros> {
                       fecha: fecha,
                       idim: idim,
                       oysta: oysta,
+                      usuarioNombre: r['usuario_nombre']?.toString(),
                       onEditar: widget.onEditar != null
                           ? () => widget.onEditar!(id, r)
                           : null,
@@ -260,6 +261,7 @@ class _SmartphoneCard extends StatelessWidget {
   final String fecha;
   final String? idim;
   final String? oysta;
+  final String? usuarioNombre;
   final VoidCallback? onEditar;
   final VoidCallback? onEliminar;
 
@@ -271,6 +273,7 @@ class _SmartphoneCard extends StatelessWidget {
     this.cometa,
     this.idim,
     this.oysta,
+    this.usuarioNombre,
     this.onEditar,
     this.onEliminar,
   });
@@ -370,6 +373,12 @@ class _SmartphoneCard extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 4,
                     children: [
+                      if (usuarioNombre != null && usuarioNombre!.isNotEmpty)
+                        _MiniPill(
+                          icon: Icons.person_outline_rounded,
+                          label: 'Usuario: $usuarioNombre',
+                          color: const Color(0xFF9C27B0),
+                        ),
                       if (bateria != null && bateria!.isNotEmpty)
                         _MiniPill(
                           icon: Icons.battery_charging_full_rounded,

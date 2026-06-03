@@ -2600,20 +2600,6 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
             ),
           ),
           // Sidebar Handle
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: EdgeNavHandle(
-                user: Provider.of<ApiService>(
-                  context,
-                  listen: false,
-                ).currentUser,
-                width: 28,
-              ),
-            ),
-          ),
         ],
       ),
     );
