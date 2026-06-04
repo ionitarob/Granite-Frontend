@@ -1127,16 +1127,27 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
               detail = backendError.toString();
             }
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Registro guardado, pero ERROR DE IMPRESIÓN: $detail\nPulsa REIMPRIMIR si es necesario.'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 8),
-            ),
-          );
-          // Even if print fails, we already saved, so move on or allow retry
-          _isUsingExistingRegistry = false; 
-          _advanceToNextEmptyRow();
+          if (wasUsingRegistry) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('ERROR DE IMPRESIÓN: $detail\nPulsa REIMPRIMIR si es necesario.'),
+                backgroundColor: Colors.redAccent,
+                duration: const Duration(seconds: 8),
+              ),
+            );
+            // Do NOT advance or reset _isUsingExistingRegistry so they can retry printing the same existing unit
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Registro guardado, pero ERROR DE IMPRESIÓN: $detail\nPulsa REIMPRIMIR si es necesario.'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 8),
+              ),
+            );
+            // Even if print fails, we already saved, so move on or allow retry
+            _isUsingExistingRegistry = false; 
+            _advanceToNextEmptyRow();
+          }
         }
       }
     } catch (e, st) {
@@ -1168,56 +1179,113 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildHeader(),
-          const Divider(height: 1, color: Colors.white10),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: _buildStepContent(),
-          ),
-          if (_currentStep > 1) _buildFooterActions(),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 650;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildHeader(isCompact),
+              const Divider(height: 1, color: Colors.white10),
+              Padding(
+                padding: EdgeInsets.all(isCompact ? 12 : 24),
+                child: _buildStepContent(isCompact),
+              ),
+              if (_currentStep > 1) _buildFooterActions(isCompact),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isCompact) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: EdgeInsets.symmetric(horizontal: isCompact ? 12 : 24, vertical: 12),
       child: Row(
         children: [
           const Icon(Icons.print_outlined, color: Colors.cyan, size: 24),
           const SizedBox(width: 12),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('FLUJO DE SERIGRAFIADO', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
-              Text('Automatización Excel-Print-Scan', style: TextStyle(fontSize: 10, color: Colors.white38)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isCompact ? 'SERIGRAFIADO' : 'FLUJO DE SERIGRAFIADO', 
+                  style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (!isCompact)
+                  const Text('Automatización Excel-Print-Scan', style: TextStyle(fontSize: 10, color: Colors.white38)),
+              ],
+            ),
           ),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: _showReprintDialog,
-            icon: const Icon(Icons.history_rounded, size: 18),
-            label: const Text('REIMPRIMIR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-            style: TextButton.styleFrom(foregroundColor: Colors.cyan, padding: const EdgeInsets.symmetric(horizontal: 16)),
-          ),
+          if (isCompact) ...[
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.cyan),
+              onSelected: (value) {
+                if (value == 'reprint') {
+                  _showReprintDialog();
+                } else if (value == 'repository') {
+                  Navigator.pushNamed(context, '/serials/repository').then((_) => _loadStandards());
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'reprint',
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text('Reimprimir'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'repository',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Configurar Repositorio'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            TextButton.icon(
+              onPressed: _showReprintDialog,
+              icon: const Icon(Icons.history_rounded, size: 18),
+              label: const Text('REIMPRIMIR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              style: TextButton.styleFrom(foregroundColor: Colors.cyan, padding: const EdgeInsets.symmetric(horizontal: 16)),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined, color: Colors.cyan, size: 22),
+              tooltip: 'Gestionar Repositorio',
+              onPressed: () => Navigator.pushNamed(context, '/serials/repository').then((_) => _loadStandards()),
+            ),
+          ],
           const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.cyan, size: 22),
-            tooltip: 'Gestionar Repositorio',
-            onPressed: () => Navigator.pushNamed(context, '/serials/repository').then((_) => _loadStandards()),
-          ),
-          const SizedBox(width: 8),
-          _buildStepDots(),
+          _buildStepDots(isCompact),
         ],
       ),
     );
   }
 
-  Widget _buildStepDots() {
+  Widget _buildStepDots(bool isCompact) {
+    if (isCompact) {
+      return Text(
+        '$_currentStep/4',
+        style: const TextStyle(
+          color: Colors.cyan,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      );
+    }
     return Row(
       children: List.generate(4, (index) {
         final stepNum = index + 1;
@@ -1236,30 +1304,31 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
-  Widget _buildStepContent() {
+  Widget _buildStepContent(bool isCompact) {
     switch (_currentStep) {
-      case 1: return _buildPhase1();
-      case 2: return _buildPhase2();
-      case 3: return _buildPhase3();
-      case 4: return _buildPhase4();
+      case 1: return _buildPhase1(isCompact);
+      case 2: return _buildPhase2(isCompact);
+      case 3: return _buildPhase3(isCompact);
+      case 4: return _buildPhase4(isCompact);
       default: return const SizedBox();
     }
   }
 
-  Widget _buildPhase1() {
+  Widget _buildPhase1(bool isCompact) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isCompact ? 10 : 16),
           decoration: BoxDecoration(color: Colors.cyan.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.cyan.withOpacity(0.2))),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('CONFIGURACIÓN DEL FLUJO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.cyan, fontSize: 10, letterSpacing: 1)),
               SwitchListTile(
-                title: const Text('¿Requiere etiqueta de inventariado CI?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Genera y vincula automáticamente códigos de inventario de la base de datos', style: TextStyle(fontSize: 11, color: Colors.white38)),
+                contentPadding: isCompact ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                title: Text('¿Requiere etiqueta de inventariado CI?', style: TextStyle(fontSize: isCompact ? 12 : 14, fontWeight: FontWeight.bold)),
+                subtitle: Text('Genera y vincula automáticamente códigos de inventario de la base de datos', style: TextStyle(fontSize: isCompact ? 9 : 11, color: Colors.white38)),
                 value: _requiresCI,
                 activeColor: Colors.cyan,
                 onChanged: (val) => setState(() => _requiresCI = val),
@@ -1267,33 +1336,69 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        SizedBox(height: isCompact ? 16 : 24),
         const Text('SELECCIONA EL ESTÁNDAR DE ETIQUETA', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 10, letterSpacing: 1)),
         const SizedBox(height: 12),
-        ..._standards.map((s) => _buildStandardTile(s)),
+        ..._standards.map((s) => _buildStandardTile(s, isCompact)),
         const SizedBox(height: 12),
-        _buildManualStandardTile(),
+        _buildManualStandardTile(isCompact),
       ],
     );
   }
 
-  Widget _buildManualStandardTile() {
+  Widget _buildManualStandardTile(bool isCompact) {
     return InkWell(
       onTap: _showManualStandardDialog,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isCompact ? 12 : 16),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.02),
           border: Border.all(color: Colors.white.withOpacity(0.05)),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.add_link_rounded, color: Colors.grey),
-            SizedBox(width: 16),
-            Expanded(child: Text('Configurar Estándar Manual', style: TextStyle(color: Colors.grey))),
-            Icon(Icons.edit_note_rounded, color: Colors.white24),
+            const Icon(Icons.add_link_rounded, color: Colors.grey, size: 20),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Configurar Estándar Manual', style: TextStyle(color: Colors.grey, fontSize: isCompact ? 12 : 14))),
+            const Icon(Icons.edit_note_rounded, color: Colors.white24, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStandardTile(SerigrafiaStandard s, bool isCompact) {
+    final isSelected = _selectedStandard == s;
+    return InkWell(
+      onTap: () => setState(() {
+        _selectedStandard = s;
+        _currentStep = 2;
+      }),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: EdgeInsets.all(isCompact ? 12 : 16),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.cyan.withOpacity(0.1) : Colors.white.withOpacity(0.05),
+          border: Border.all(color: isSelected ? Colors.cyan : Colors.white.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.label_important_outline_rounded, color: Colors.cyan, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isCompact ? 13 : 14)),
+                  Text('${s.variables.join(', ')}', style: TextStyle(fontSize: isCompact ? 10 : 12, color: Colors.cyan)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white24, size: 20),
           ],
         ),
       ),
@@ -1341,50 +1446,16 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
-  Widget _buildStandardTile(SerigrafiaStandard s) {
-    final isSelected = _selectedStandard == s;
-    return InkWell(
-      onTap: () => setState(() {
-        _selectedStandard = s;
-        _currentStep = 2;
-      }),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.cyan.withOpacity(0.1) : Colors.white.withOpacity(0.05),
-          border: Border.all(color: isSelected ? Colors.cyan : Colors.white.withOpacity(0.1)),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.label_important_outline_rounded, color: Colors.cyan),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('${s.variables.join(', ')}', style: const TextStyle(fontSize: 12, color: Colors.cyan)),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white24),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildPhase2() {
+
+  Widget _buildPhase2(bool isCompact) {
     final photos = widget.detail?.photos ?? [];
     final excels = photos.where((p) => p.fileName.toLowerCase().endsWith('.xlsx') || p.fileName.toLowerCase().endsWith('.xls'));
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('PASO 2: SELECCIONA EL EXCEL DE ARCHIVOS', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
+        Text('PASO 2: SELECCIONA EL EXCEL DE ARCHIVOS', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: isCompact ? 10 : 11)),
         const SizedBox(height: 16),
         if (_loadingExcel) const Center(child: CircularProgressIndicator()),
         if (!_loadingExcel && excels.isEmpty) 
@@ -1535,18 +1606,18 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
-  Widget _buildPhase3() {
+  Widget _buildPhase3(bool isCompact) {
     if (_selectedStandard == null) return const SizedBox();
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('PASO 3: MAPEO Y FILTRO DE RANGO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
+        Text('PASO 3: MAPEO Y FILTRO DE RANGO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: isCompact ? 10 : 11)),
         const SizedBox(height: 16),
         
         // CI Range Filter Section
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isCompact ? 10 : 16),
           decoration: BoxDecoration(
             color: Colors.cyan.withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
@@ -1555,60 +1626,117 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.filter_alt_rounded, size: 16, color: Colors.cyan),
-                  SizedBox(width: 8),
-                  Text('FILTRAR POR RANGO DE CI (OPCIONAL)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.cyan, fontSize: 11)),
+                  const Icon(Icons.filter_alt_rounded, size: 16, color: Colors.cyan),
+                  const SizedBox(width: 8),
+                  Text('FILTRAR POR RANGO DE CI (OPCIONAL)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.cyan, fontSize: isCompact ? 10 : 11)),
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _startCiController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'CI Inicial (ej: 816735)', border: OutlineInputBorder()),
-                      onChanged: (val) => setState(() => _startCiFilter = int.tryParse(val)),
+              isCompact
+                  ? Column(
+                      children: [
+                        TextField(
+                          controller: _startCiController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'CI Inicial (ej: 816735)', border: OutlineInputBorder()),
+                          onChanged: (val) => setState(() => _startCiFilter = int.tryParse(val)),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _endCiController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'CI Final (ej: 816800)', border: OutlineInputBorder()),
+                          onChanged: (val) => setState(() => _endCiFilter = int.tryParse(val)),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _startCiController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'CI Inicial (ej: 816735)', border: OutlineInputBorder()),
+                            onChanged: (val) => setState(() => _startCiFilter = int.tryParse(val)),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: _endCiController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'CI Final (ej: 816800)', border: OutlineInputBorder()),
+                            onChanged: (val) => setState(() => _endCiFilter = int.tryParse(val)),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextField(
-                      controller: _endCiController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'CI Final (ej: 816800)', border: OutlineInputBorder()),
-                      onChanged: (val) => setState(() => _endCiFilter = int.tryParse(val)),
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 8),
-              const Text('Si se define un rango, la app solo mostrará las filas que tengan un CI dentro de estos números.', style: TextStyle(fontSize: 10, color: Colors.white38)),
+              Text('Si se define un rango, la app solo mostrará las filas que tengan un CI dentro de estos números.', style: TextStyle(fontSize: isCompact ? 9 : 10, color: Colors.white38)),
             ],
           ),
         ),
         
-        const SizedBox(height: 32),
-        const Text('MAPEO DE VARIABLES A COLUMNAS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70, fontSize: 10)),
+        SizedBox(height: isCompact ? 20 : 32),
+        Text('MAPEO DE VARIABLES A COLUMNAS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70, fontSize: isCompact ? 9 : 10)),
         const SizedBox(height: 12),
-        ..._allVariables.map((v) => _buildMappingRow(v)),
-        const SizedBox(height: 32),
+        ..._allVariables.map((v) => _buildMappingRow(v, isCompact)),
+        SizedBox(height: isCompact ? 20 : 32),
         Center(
           child: FilledButton.icon(
             onPressed: _startExecution,
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Comenzar Procesamiento'),
-            style: FilledButton.styleFrom(backgroundColor: Colors.cyan, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.cyan, 
+              padding: EdgeInsets.symmetric(horizontal: isCompact ? 24 : 32, vertical: isCompact ? 12 : 16)
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMappingRow(String variableName) {
+  Widget _buildMappingRow(String variableName, bool isCompact) {
     final currentMapping = _variableToColumnMapping[variableName];
+    if (isCompact) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.cyan.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text(variableName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.cyan)),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_downward_rounded, size: 14, color: Colors.white24),
+              ],
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _excelHeaders.contains(currentMapping) ? currentMapping : null,
+              decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12), border: OutlineInputBorder()),
+              hint: const Text('Seleccionar Columna', style: TextStyle(fontSize: 12)),
+              items: _excelHeaders.map((h) => DropdownMenuItem(value: h, child: Text(h, overflow: TextOverflow.ellipsis))).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _variableToColumnMapping[variableName] = val);
+                  if (variableName.toUpperCase() == 'CI' || variableName.toUpperCase() == 'CI_CODE') {
+                    _autoDetectCiRange(val);
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -1631,7 +1759,6 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
               onChanged: (val) {
                 if (val != null) {
                   setState(() => _variableToColumnMapping[variableName] = val);
-                  // Auto-detect CI range if this is a CI field
                   if (variableName.toUpperCase() == 'CI' || variableName.toUpperCase() == 'CI_CODE') {
                     _autoDetectCiRange(val);
                   }
@@ -1644,7 +1771,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
-  Widget _buildPhase4() {
+  Widget _buildPhase4(bool isCompact) {
     if (_excel == null) return const SizedBox();
     final sheet = _firstSheet;
     if (sheet == null) return const Center(child: Text('No se pudo encontrar la hoja de cálculo'));
@@ -1653,94 +1780,211 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('PASO 4: ESCANEO Y REGISTRO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.history_toggle_off_rounded, size: 22, color: Colors.cyan),
-                  tooltip: 'Ver Historial de Registros',
-                  onPressed: _showRegistryManager,
-                ),
-                const SizedBox(width: 4),
-                TextButton.icon(
-                  onPressed: _syncExcelWithDatabase,
-                  icon: const Icon(Icons.sync_rounded, size: 16, color: Colors.orange),
-                  label: const Text('FORZAR SINCRONIZACIÓN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.orange.withOpacity(0.05),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        if (isCompact) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('PASO 4: ESCANEO Y REGISTRO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 10)),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.cyan),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'history':
+                      _showRegistryManager();
+                      break;
+                    case 'sync':
+                      _syncExcelWithDatabase();
+                      break;
+                    case 'export':
+                      if (!_loadingExcel) _createExcelFromRegistries();
+                      break;
+                    case 'current':
+                      _advanceToNextEmptyRow();
+                      break;
+                    case 'gap':
+                      _jumpToNextGap();
+                      break;
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'history',
+                    child: Row(
+                      children: [
+                        Icon(Icons.history_toggle_off_rounded, size: 18, color: Colors.cyan),
+                        SizedBox(width: 8),
+                        Text('Ver Historial', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _loadingExcel ? null : _createExcelFromRegistries,
-                  icon: const Icon(Icons.download_for_offline_outlined, size: 16, color: Colors.green),
-                  label: const Text('EXPORTAR RELACIÓN A EXCEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.green.withOpacity(0.05),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  const PopupMenuItem(
+                    value: 'sync',
+                    child: Row(
+                      children: [
+                        Icon(Icons.sync_rounded, size: 18, color: Colors.orange),
+                        SizedBox(width: 8),
+                        Text('Forzar Sincronización', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _advanceToNextEmptyRow,
-                  icon: const Icon(Icons.fast_forward_rounded, size: 16, color: Colors.cyan),
-                  label: const Text('VOLVER AL ACTUAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.cyan.withOpacity(0.05),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  const PopupMenuItem(
+                    value: 'export',
+                    child: Row(
+                      children: [
+                        Icon(Icons.download_for_offline_outlined, size: 18, color: Colors.green),
+                        SizedBox(width: 8),
+                        Text('Exportar Relación', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _jumpToNextGap,
-                  icon: const Icon(Icons.search_rounded, size: 16, color: Colors.cyan),
-                  label: const Text('BUSCAR HUECO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.cyan.withOpacity(0.05),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  const PopupMenuItem(
+                    value: 'current',
+                    child: Row(
+                      children: [
+                        Icon(Icons.fast_forward_rounded, size: 18, color: Colors.cyan),
+                        SizedBox(width: 8),
+                        Text('Volver al Actual', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Container(width: 1, height: 20, color: Colors.white12),
-                const SizedBox(width: 8),
-                if (_startCiFilter != null || _endCiFilter != null)
-                   Container(
-                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                     margin: const EdgeInsets.only(right: 8),
-                     decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.orange.withOpacity(0.3))),
-                     child: const Text('FILTRADO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange)),
-                   ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.cyan),
-                  tooltip: 'Fila Anterior',
-                  onPressed: _currentRowIndex > 1
-                      ? () => setState(() => _currentRowIndex--)
-                      : null,
-                ),
-                Text('Fila ${_currentRowIndex + 1} de ${sheet.maxRows}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.cyan)),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.cyan),
-                  tooltip: 'Siguiente Fila',
-                  onPressed: _currentRowIndex < sheet.maxRows - 1
-                      ? () => setState(() => _currentRowIndex++)
-                      : null,
-                ),
-              ],
-            ),
-          ],
-        ),
+                  const PopupMenuItem(
+                    value: 'gap',
+                    child: Row(
+                      children: [
+                        Icon(Icons.search_rounded, size: 18, color: Colors.cyan),
+                        SizedBox(width: 8),
+                        Text('Buscar Hueco', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.cyan),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentRowIndex > 1
+                        ? () => setState(() => _currentRowIndex--)
+                        : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Text('Fila ${_currentRowIndex + 1} de ${sheet.maxRows}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.cyan),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentRowIndex < sheet.maxRows - 1
+                        ? () => setState(() => _currentRowIndex++)
+                        : null,
+                  ),
+                ],
+              ),
+              if (_startCiFilter != null || _endCiFilter != null)
+                 Container(
+                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                   decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.orange.withOpacity(0.3))),
+                   child: const Text('FILTRADO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange)),
+                 ),
+            ],
+          ),
+        ] else ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('PASO 4: ESCANEO Y REGISTRO', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey, fontSize: 11)),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.history_toggle_off_rounded, size: 22, color: Colors.cyan),
+                    tooltip: 'Ver Historial de Registros',
+                    onPressed: _showRegistryManager,
+                  ),
+                  const SizedBox(width: 4),
+                  TextButton.icon(
+                    onPressed: _syncExcelWithDatabase,
+                    icon: const Icon(Icons.sync_rounded, size: 16, color: Colors.orange),
+                    label: const Text('FORZAR SINCRONIZACIÓN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.orange.withOpacity(0.05),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _loadingExcel ? null : _createExcelFromRegistries,
+                    icon: const Icon(Icons.download_for_offline_outlined, size: 16, color: Colors.green),
+                    label: const Text('EXPORTAR RELACIÓN A EXCEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green.withOpacity(0.05),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _advanceToNextEmptyRow,
+                    icon: const Icon(Icons.fast_forward_rounded, size: 16, color: Colors.cyan),
+                    label: const Text('VOLVER AL ACTUAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.cyan.withOpacity(0.05),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _jumpToNextGap,
+                    icon: const Icon(Icons.search_rounded, size: 16, color: Colors.cyan),
+                    label: const Text('BUSCAR HUECO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.cyan.withOpacity(0.05),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(width: 1, height: 20, color: Colors.white12),
+                  const SizedBox(width: 8),
+                  if (_startCiFilter != null || _endCiFilter != null)
+                     Container(
+                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                       margin: const EdgeInsets.only(right: 8),
+                       decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.orange.withOpacity(0.3))),
+                       child: const Text('FILTRADO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange)),
+                     ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.cyan),
+                    tooltip: 'Fila Anterior',
+                    onPressed: _currentRowIndex > 1
+                        ? () => setState(() => _currentRowIndex--)
+                        : null,
+                  ),
+                  Text('Fila ${_currentRowIndex + 1} de ${sheet.maxRows}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.cyan)),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.cyan),
+                    tooltip: 'Siguiente Fila',
+                    onPressed: _currentRowIndex < sheet.maxRows - 1
+                        ? () => setState(() => _currentRowIndex++)
+                        : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         _buildCiIntervalSummaryCard(),
         const SizedBox(height: 16),
-        _buildCurrentRowPreview(rowData),
+        _buildCurrentRowPreview(rowData, isCompact),
         const SizedBox(height: 32),
         _buildScanningUI(),
       ],
@@ -1805,7 +2049,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     );
   }
 
-  Widget _buildCurrentRowPreview(List<excel_pkg.Data?> row) {
+  Widget _buildCurrentRowPreview(List<excel_pkg.Data?> row, bool isCompact) {
     // Extract mapped variables only
     final mappedValues = <String, String>{};
     String? ciValue;
@@ -1846,10 +2090,10 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isCompact ? 12 : 24),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(isCompact ? 16 : 24),
         border: Border.all(color: Colors.white.withOpacity(0.08)),
         boxShadow: [
           BoxShadow(color: Colors.black26, blurRadius: 20, offset: const Offset(0, 10)),
@@ -1859,7 +2103,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (ciValue != null) ...[
-            const Text('CÓDIGO DE INVENTARIO (CI)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.cyan, letterSpacing: 2)),
+            Text('CÓDIGO DE INVENTARIO (CI)', style: TextStyle(fontSize: isCompact ? 9 : 10, fontWeight: FontWeight.w900, color: Colors.cyan, letterSpacing: isCompact ? 1.5 : 2)),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () => _showRegistryManager(initialQuery: ciValue),
@@ -1867,27 +2111,27 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                 cursor: SystemMouseCursors.click,
                 child: Text(
                   ciValue!,
-                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1),
+                  style: TextStyle(fontSize: isCompact ? 32 : 48, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            Divider(color: Colors.white.withOpacity(0.05), indent: 40, endIndent: 40),
-            const SizedBox(height: 24),
+            SizedBox(height: isCompact ? 12 : 24),
+            Divider(color: Colors.white.withOpacity(0.05), indent: isCompact ? 10 : 40, endIndent: isCompact ? 10 : 40),
+            SizedBox(height: isCompact ? 12 : 24),
           ],
-          const Text('DATOS DE LA ETIQUETA', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white38, letterSpacing: 1.5)),
+          Text('DATOS DE LA ETIQUETA', style: TextStyle(fontSize: isCompact ? 8 : 9, fontWeight: FontWeight.bold, color: Colors.white38, letterSpacing: 1.5)),
           const SizedBox(height: 16),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: isCompact ? 8 : 12,
+            runSpacing: isCompact ? 8 : 12,
             alignment: WrapAlignment.center,
             children: mappedValues.entries.where((e) => e.key.toUpperCase() != 'CI' && e.key.toUpperCase() != 'CI_CODE').map((e) {
               final isMissing = e.value.isEmpty;
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: EdgeInsets.symmetric(horizontal: isCompact ? 10 : 16, vertical: isCompact ? 6 : 10),
                 decoration: BoxDecoration(
                   color: isMissing ? Colors.orange.withOpacity(0.1) : Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(isCompact ? 8 : 12),
                   border: Border.all(color: isMissing ? Colors.orange.withOpacity(0.3) : Colors.white.withOpacity(0.1)),
                 ),
                 child: Column(
@@ -1896,12 +2140,12 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                   children: [
                     Text(
                       '${e.key}${!isMissing ? " (${_variableToColumnMapping[e.key]})" : ""}: ', 
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMissing ? Colors.orange : Colors.white38)
+                      style: TextStyle(fontSize: isCompact ? 9 : 10, fontWeight: FontWeight.bold, color: isMissing ? Colors.orange : Colors.white38)
                     ),
                     Text(
                       isMissing ? 'ESPERANDO...' : e.value,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: isCompact ? 11 : 13,
                         fontWeight: FontWeight.w900,
                         color: isMissing ? Colors.orange : Colors.cyan,
                       ),
@@ -1912,7 +2156,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             }).toList(),
           ),
           if (mappedValues.entries.length <= 1 && ciValue != null) 
-            const Text('Listo para imprimir', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold)),
+            Text('Listo para imprimir', style: TextStyle(fontSize: isCompact ? 11 : 12, color: Colors.green, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -2054,8 +2298,10 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
             const Text('Fila Completada', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green)),
             const Text('Esta fila ya tiene todos los datos registrados.', style: TextStyle(fontSize: 13, color: Colors.white38)),
             const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              alignment: WrapAlignment.center,
               children: [
                 ElevatedButton.icon(
                   onPressed: () {
@@ -2082,7 +2328,6 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
-                const SizedBox(width: 16),
                 OutlinedButton.icon(
                   onPressed: () {
                     setState(() {
@@ -2323,7 +2568,7 @@ class _SerigrafiaPanelState extends State<SerigrafiaPanel> {
     ) ?? false;
   }
 
-  Widget _buildFooterActions() {
+  Widget _buildFooterActions(bool isCompact) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.black26,
