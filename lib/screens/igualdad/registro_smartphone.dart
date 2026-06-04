@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
 import '../../../models/paged_response.dart';
 import '../../../models/smartphone.dart';
+import '../../../services/api_service.dart';
 
 import 'formulario_smartphone_new.dart';
 import 'resumen_stock.dart';
 import 'tabla_registros.dart';
 import 'dialogo_editar_smartphone.dart';
 import '../../widgets/animated_background.dart';
+import '../../../widgets/main_sidebar.dart';
 
 class RegistroSmartphoneScreen extends StatefulWidget {
   const RegistroSmartphoneScreen({super.key});
@@ -21,6 +24,7 @@ class RegistroSmartphoneScreen extends StatefulWidget {
 }
 
 class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
+  OverlayEntry? _edgeOverlay;
   // Pagination state
   int _paginaActual = 1;
   static const int _registrosPorPagina = 10;
@@ -42,6 +46,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
   String? _tipoSmartphone = 'AGRESOR';
   List<Map<String, dynamic>> _usuarios = [];
   int? _selectedUsuarioId;
+  String _selectedContrato = 'Contrato Antiguo 3 años';
   final Map<String, String?> _radioValues = {
     'remaquetado': null,
     'danos_fisicos': null,
@@ -82,10 +87,42 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
     _loadData();
     _cargarUltimosRegistros();
     _imeiController.addListener(_onImeiChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final logicalWidth =
+          MediaQuery.maybeOf(context)?.size.width ??
+          (View.of(context).physicalSize.width /
+              View.of(context).devicePixelRatio);
+      if (logicalWidth >= 900) {
+        final routeName = ModalRoute.of(context)?.settings.name;
+        final overlay = Overlay.of(context, rootOverlay: true);
+        _edgeOverlay = OverlayEntry(
+          builder: (ctx) => Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        overlay.insert(_edgeOverlay!);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     _imeiController.removeListener(_onImeiChanged);
     _imeiController.dispose();
     _bateriaController.dispose();
@@ -307,6 +344,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       'imei2': imei2Val,
       'bt': btVal,
       'usuario_id': _selectedUsuarioId,
+      'contrato': _selectedContrato,
     };
     try {
       setState(() => _registrandoIrrecuperable = true);
@@ -320,6 +358,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         _lookupError = null;
         _lastLookupImei = null;
         _selectedUsuarioId = null;
+        _selectedContrato = 'Contrato Antiguo 3 años';
         _formularioResetToken++;
         _imeiController.clear();
         _imei2Controller.clear();
@@ -388,6 +427,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       'imei2': imei2Val,
       'bt': btVal,
       'usuario_id': _selectedUsuarioId,
+      'contrato': _selectedContrato,
     };
     try {
       setState(() => _registrando = true);
@@ -401,6 +441,7 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
         _lookupError = null;
         _lastLookupImei = null;
         _selectedUsuarioId = null;
+        _selectedContrato = 'Contrato Antiguo 3 años';
         _formularioResetToken++;
         _imeiController.clear();
         _imei2Controller.clear();
@@ -691,6 +732,8 @@ class _RegistroSmartphoneScreenState extends State<RegistroSmartphoneScreen> {
       selectedUsuarioId: _selectedUsuarioId,
       onChangeUsuario: (uId) => setState(() => _selectedUsuarioId = uId),
       onRefreshUsuarios: () => _cargarUsuarios(),
+      selectedContrato: _selectedContrato,
+      onChangeContrato: (c) => setState(() => _selectedContrato = c),
       onRegistrarIrrecuperable: _registrarSmartphoneIrrecuperable,
       isSubmitting: _registrando,
       isSubmittingIrrecuperable: _registrandoIrrecuperable,

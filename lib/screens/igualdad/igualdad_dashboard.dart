@@ -55,6 +55,7 @@ class IgualdadDashboard extends StatefulWidget {
 }
 
 class _IgualdadDashboardState extends State<IgualdadDashboard> {
+  OverlayEntry? _edgeOverlay;
   Map<String, dynamic> summaryData = {};
   bool loadingStats = true;
   String? errorStats;
@@ -1002,6 +1003,36 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
     _fetchSummaryData();
     _fetchStockData();
     _fetchDeviceStatusData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final logicalWidth =
+          MediaQuery.maybeOf(context)?.size.width ??
+          (View.of(context).physicalSize.width /
+              View.of(context).devicePixelRatio);
+      if (logicalWidth >= 900) {
+        final routeName = ModalRoute.of(context)?.settings.name;
+        final overlay = Overlay.of(context, rootOverlay: true);
+        _edgeOverlay = OverlayEntry(
+          builder: (ctx) => Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        overlay.insert(_edgeOverlay!);
+      }
+    });
   }
 
   Future<void> _fetchSemanas({bool refreshResumen = false}) async {
@@ -2543,6 +2574,8 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     for (final controller in _manualControllers.values) {
       controller.dispose();
     }
@@ -2600,6 +2633,12 @@ class _IgualdadDashboardState extends State<IgualdadDashboard> {
             ),
           ),
           // Sidebar Handle
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: const SizedBox.shrink(), // Handled by OverlayEntry in initState
+          ),
         ],
       ),
     );

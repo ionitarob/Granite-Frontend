@@ -15,6 +15,7 @@ class CerrarIdimOystaScreen extends StatefulWidget {
 }
 
 class _CerrarIdimOystaScreenState extends State<CerrarIdimOystaScreen> {
+  OverlayEntry? _edgeOverlay;
   final _formKey = GlobalKey<FormState>();
   final _expedicionController = TextEditingController();
   final _jjdController = TextEditingController();
@@ -39,6 +40,36 @@ class _CerrarIdimOystaScreenState extends State<CerrarIdimOystaScreen> {
         _currentGradient = (_currentGradient + 1) % _gradients.length;
       });
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final logicalWidth =
+          MediaQuery.maybeOf(context)?.size.width ??
+          (View.of(context).physicalSize.width /
+              View.of(context).devicePixelRatio);
+      if (logicalWidth >= 900) {
+        final routeName = ModalRoute.of(context)?.settings.name;
+        final overlay = Overlay.of(context, rootOverlay: true);
+        _edgeOverlay = OverlayEntry(
+          builder: (ctx) => Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        overlay.insert(_edgeOverlay!);
+      }
+    });
   }
 
   @override
@@ -53,6 +84,8 @@ class _CerrarIdimOystaScreenState extends State<CerrarIdimOystaScreen> {
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     _timer?.cancel();
     _expedicionController.dispose();
     _jjdController.dispose();

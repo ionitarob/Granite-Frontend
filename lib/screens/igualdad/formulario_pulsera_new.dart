@@ -29,6 +29,8 @@ class FormularioPulseraNew extends StatefulWidget {
   final Map<String, dynamic>? lookupResult;
   final String? lookupError;
   final String? lookupImeiSearched;
+  final String selectedContrato;
+  final void Function(String contrato) onChangeContrato;
 
   const FormularioPulseraNew({
     super.key,
@@ -46,6 +48,8 @@ class FormularioPulseraNew extends StatefulWidget {
     required this.onChangeRegistro,
     required this.onChangeRadio,
     required this.onRegistrar,
+    required this.selectedContrato,
+    required this.onChangeContrato,
     this.onRegistrarIrrecuperable,
     this.isSubmitting = false,
     this.isSubmittingIrrecuperable = false,
@@ -396,6 +400,8 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
           },
         ),
         ..._buildLookupSection(theme, palette),
+        const SizedBox(height: 16),
+        _buildContratoSelection(theme, palette),
         const SizedBox(height: 16),
         // SIM input field
         Row(
@@ -894,6 +900,39 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
         borderRadius: borderRadius,
         borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
       ),
+    );
+  }
+
+  Widget _buildContratoSelection(ThemeData theme, FormPalette palette) {
+    return DropdownButtonFormField<String>(
+      value: widget.selectedContrato,
+      decoration: _inputDecoration(
+        theme,
+        palette,
+        'Tipo de Contrato',
+        Icons.description_outlined,
+      ),
+      items: const [
+        DropdownMenuItem(
+          value: 'Contrato Antiguo 3 años',
+          child: Text('Contrato Antiguo 3 años'),
+        ),
+        DropdownMenuItem(
+          value: 'Contrato Ampliación Sept 2026',
+          child: Text('Contrato Ampliación Sept 2026'),
+        ),
+      ],
+      dropdownColor: palette.dropdownBackground,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: palette.textPrimary,
+      ),
+      iconEnabledColor: palette.textPrimary,
+      iconDisabledColor: palette.textMuted,
+      onChanged: (val) {
+        if (val != null) {
+          widget.onChangeContrato(val);
+        }
+      },
     );
   }
 

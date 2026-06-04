@@ -20,6 +20,7 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
   late TextEditingController _cometaController;
   late String _tipoSmartphone;
   int? _selectedUsuarioId;
+  late String _selectedContrato;
 
   @override
   void initState() {
@@ -30,7 +31,14 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
     _cometaController = TextEditingController(
       text: widget.datos['version_cometa']?.toString() ?? '',
     );
-    _tipoSmartphone = widget.datos['tipo']?.toString() ?? 'SM-OFENSOR';
+    final rawTipo = widget.datos['tipo']?.toString().toUpperCase() ?? '';
+    if (rawTipo == 'SM-OFENSOR' || rawTipo == 'AGRESOR' || rawTipo == 'OFENSOR') {
+      _tipoSmartphone = 'SM-OFENSOR';
+    } else if (rawTipo == 'SM-VICTIMA' || rawTipo == 'VICTIMA') {
+      _tipoSmartphone = 'SM-VICTIMA';
+    } else {
+      _tipoSmartphone = 'SM-OFENSOR'; // safe fallback
+    }
     
     // Safety check for user_id type casting
     final rawUserId = widget.datos['usuario_id'];
@@ -39,6 +47,8 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
     } else if (rawUserId != null) {
       _selectedUsuarioId = int.tryParse(rawUserId.toString());
     }
+
+    _selectedContrato = widget.datos['contrato']?.toString() ?? 'Contrato Antiguo 3 años';
 
     _respuestas = {
       'remaquetado': widget.datos['remaquetado']?.toString(),
@@ -70,17 +80,17 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
             children: [
               ChoiceChip(
                 label: const Text('Sí'),
-                selected: value == 'SI',
-                onSelected: (s) => setState(() => _respuestas[field] = 'SI'),
+                selected: value == 'OK' || value == 'SI',
+                onSelected: (s) => setState(() => _respuestas[field] = 'OK'),
               ),
               ChoiceChip(
                 label: const Text('No'),
-                selected: value == 'NO',
-                onSelected: (s) => setState(() => _respuestas[field] = 'NO'),
+                selected: value == 'NO OK' || value == 'NO',
+                onSelected: (s) => setState(() => _respuestas[field] = 'NO OK'),
               ),
               ChoiceChip(
                 label: const Text('Sin dato'),
-                selected: value == null || (value != 'SI' && value != 'NO'),
+                selected: value == null || (value != 'OK' && value != 'SI' && value != 'NO OK' && value != 'NO'),
                 onSelected: (s) => setState(() => _respuestas[field] = null),
               ),
             ],
@@ -95,8 +105,8 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
     final imei = widget.datos['imei']?.toString() ?? 'N/A';
     final idRaw = widget.datos['id']?.toString() ?? 'N/A';
     final fecha = widget.datos['fecha']?.toString() ?? 'N/A';
-    final idim = widget.datos['idim_codigo']?.toString();
-    final oysta = widget.datos['oysta_codigo']?.toString();
+    final idim = (widget.datos['idim_codigo'] ?? widget.datos['idim'])?.toString();
+    final oysta = (widget.datos['oysta_codigo'] ?? widget.datos['oysta'])?.toString();
     final String origen = idim != null ? 'IDIM: $idim' : (oysta != null ? 'OYSTA: $oysta' : 'Origen desconocido');
 
     return AlertDialog(
@@ -158,6 +168,27 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
+              value: _selectedContrato,
+              decoration: const InputDecoration(
+                labelText: 'Contrato',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'Contrato Antiguo 3 años',
+                  child: Text('Contrato Antiguo 3 años'),
+                ),
+                DropdownMenuItem(
+                  value: 'Contrato Ampliación Sept 2026',
+                  child: Text('Contrato Ampliación Sept 2026'),
+                ),
+              ],
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedContrato = val);
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
               value: _tipoSmartphone,
               decoration: const InputDecoration(
                 labelText: 'Tipo',
@@ -209,6 +240,7 @@ class _DialogoEditarSmartphoneState extends State<DialogoEditarSmartphone> {
               'porcentaje_bateria': _bateriaController.text.trim(),
               'version_cometa': _cometaController.text.trim(),
               'usuario_id': _selectedUsuarioId,
+              'contrato': _selectedContrato,
               ..._respuestas,
             };
             Navigator.of(context).pop(result);

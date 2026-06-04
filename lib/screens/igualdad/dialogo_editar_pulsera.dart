@@ -12,6 +12,7 @@ class DialogoEditarPulsera extends StatefulWidget {
 class _DialogoEditarPulseraState extends State<DialogoEditarPulsera> {
   late Map<String, String?> _respuestas;
   late TextEditingController _bateriaController;
+  late String _selectedContrato;
 
   @override
   void initState() {
@@ -19,6 +20,7 @@ class _DialogoEditarPulseraState extends State<DialogoEditarPulsera> {
     _bateriaController = TextEditingController(
       text: widget.datos['porcentaje_bateria']?.toString() ?? '',
     );
+    _selectedContrato = widget.datos['contrato']?.toString() ?? 'Contrato Antiguo 3 años';
     _respuestas = {
       'danos_fisicos': widget.datos['danos_fisicos']?.toString(),
       'empareja_pulsera_boton': widget.datos['empareja_pulsera_boton']?.toString(),
@@ -103,6 +105,27 @@ class _DialogoEditarPulseraState extends State<DialogoEditarPulsera> {
               ),
             ),
             const SizedBox(height: 24),
+            DropdownButtonFormField<String>(
+              value: _selectedContrato,
+              decoration: const InputDecoration(
+                labelText: 'Contrato',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'Contrato Antiguo 3 años',
+                  child: Text('Contrato Antiguo 3 años'),
+                ),
+                DropdownMenuItem(
+                  value: 'Contrato Ampliación Sept 2026',
+                  child: Text('Contrato Ampliación Sept 2026'),
+                ),
+              ],
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedContrato = val);
+              },
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: _bateriaController,
               decoration: const InputDecoration(
@@ -130,6 +153,7 @@ class _DialogoEditarPulseraState extends State<DialogoEditarPulsera> {
           onPressed: () {
             final result = {
               'porcentaje_bateria': _bateriaController.text.trim(),
+              'contrato': _selectedContrato,
               ..._respuestas,
             };
             Navigator.of(context).pop(result);

@@ -223,6 +223,7 @@ class _TablaPulserasState extends State<TablaPulseras> {
                       checks: checks,
                       idim: idim,
                       oysta: oysta,
+                      contrato: p['contrato']?.toString(),
                       onEditar: widget.onEditar != null ? () => widget.onEditar!(id, p) : null,
                       onEliminar: widget.onEliminar != null
                           ? () => _confirmarEliminar(context, id, imei)
@@ -263,6 +264,7 @@ class _PulseraCard extends StatelessWidget {
   final Map<String, String?> checks;
   final String? idim;
   final String? oysta;
+  final String? contrato;
   final VoidCallback? onEditar;
   final VoidCallback? onEliminar;
 
@@ -273,6 +275,7 @@ class _PulseraCard extends StatelessWidget {
     this.bateria,
     this.idim,
     this.oysta,
+    this.contrato,
     this.onEditar,
     this.onEliminar,
   });
@@ -363,6 +366,12 @@ class _PulseraCard extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 4,
                     children: [
+                      if (contrato != null && contrato!.isNotEmpty)
+                        _MiniPill(
+                          icon: Icons.description_outlined,
+                          label: contrato!,
+                          color: const Color(0xFF00796B),
+                        ),
                       if (bateria != null && bateria!.isNotEmpty)
                         _MiniPill(
                           icon: Icons.battery_charging_full_rounded,

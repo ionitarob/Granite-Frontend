@@ -4,9 +4,11 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
+import 'package:configtool_granite_frontend/services/api_service.dart';
 import 'historial_expediciones_old.dart';
 import '../../widgets/main_sidebar.dart';
 
@@ -28,6 +30,7 @@ class HistorialExpedicionesScreen extends StatefulWidget {
 class _HistorialExpedicionesScreenState
     extends State<HistorialExpedicionesScreen>
     with SingleTickerProviderStateMixin {
+  OverlayEntry? _edgeOverlay;
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true, _saving = false;
 
@@ -60,6 +63,36 @@ class _HistorialExpedicionesScreenState
       begin: Alignment.bottomLeft,
       end: Alignment.topRight,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final logicalWidth =
+          MediaQuery.maybeOf(context)?.size.width ??
+          (View.of(context).physicalSize.width /
+              View.of(context).devicePixelRatio);
+      if (logicalWidth >= 900) {
+        final routeName = ModalRoute.of(context)?.settings.name;
+        final overlay = Overlay.of(context, rootOverlay: true);
+        _edgeOverlay = OverlayEntry(
+          builder: (ctx) => Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        overlay.insert(_edgeOverlay!);
+      }
+    });
   }
 
   @override
@@ -74,6 +107,8 @@ class _HistorialExpedicionesScreenState
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     _ctrl.dispose();
     _hScroll.dispose();
     _vScroll.dispose();

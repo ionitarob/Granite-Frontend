@@ -2,8 +2,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../src/api/igualdad_api.dart';
+import '../../services/api_service.dart';
 import '../../widgets/main_sidebar.dart';
 
 class EntradaStockNewScreen extends StatefulWidget {
@@ -14,6 +16,7 @@ class EntradaStockNewScreen extends StatefulWidget {
 }
 
 class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
+	OverlayEntry? _edgeOverlay;
 	final FocusNode _focusRoot = FocusNode();
 	String? _selectedSource;
 	String? _pickedFileName;
@@ -38,10 +41,42 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 	void initState() {
 		super.initState();
 		_numeroPedidoController.addListener(_onNumeroPedidoChanged);
+		WidgetsBinding.instance.addPostFrameCallback((_) {
+			if (!mounted) return;
+			final logicalWidth =
+					MediaQuery.maybeOf(context)?.size.width ??
+					(View.of(context).physicalSize.width /
+							View.of(context).devicePixelRatio);
+			if (logicalWidth >= 900) {
+				final routeName = ModalRoute.of(context)?.settings.name;
+				final overlay = Overlay.of(context, rootOverlay: true);
+				_edgeOverlay = OverlayEntry(
+					builder: (ctx) => Positioned(
+						left: 0,
+						top: 0,
+						bottom: 0,
+						child: SafeArea(
+							child: Align(
+								alignment: Alignment.centerLeft,
+								child: EdgeNavHandle(
+									user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+									width: 32,
+									currentRoute: routeName,
+									showIndicator: true,
+								),
+							),
+						),
+					),
+				);
+				overlay.insert(_edgeOverlay!);
+			}
+		});
 	}
 
 	@override
 	void dispose() {
+		_edgeOverlay?.remove();
+		_edgeOverlay = null;
 		_numeroPedidoController.removeListener(_onNumeroPedidoChanged);
 		_numeroPedidoController.dispose();
 		_numSeController.dispose();

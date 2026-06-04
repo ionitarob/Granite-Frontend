@@ -2,14 +2,16 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:configtool_granite_frontend/src/api/igualdad_api.dart';
+import '../../../services/api_service.dart';
 import 'formulario_pulsera_new.dart';
 import 'resumen_stock.dart';
 import 'tablapulseras.dart';
 import 'dialogo_editar_pulsera.dart';
-import '../../widgets/main_sidebar.dart';
 import '../../widgets/animated_background.dart';
+import '../../../widgets/main_sidebar.dart';
 
 class RegistroPulseraScreen extends StatefulWidget {
   const RegistroPulseraScreen({super.key});
@@ -19,6 +21,7 @@ class RegistroPulseraScreen extends StatefulWidget {
 }
 
 class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
+  OverlayEntry? _edgeOverlay;
   // ─── Formulario ────────────────────────────────────────────────────────
   final _imeiController = TextEditingController();
   final _bateriaController = TextEditingController();
@@ -41,6 +44,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     "geolocalizacion_funcional": null,
   };
   bool _registrando = false;
+  String _selectedContrato = 'Contrato Antiguo 3 años';
   bool _registrandoIrrecuperable = false;
   bool _lookupLoading = false;
   String? _lookupError;
@@ -77,10 +81,42 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
     _loadData();
     _loadPulseras(1, refreshAll: true);
     _imeiController.addListener(_onImeiChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final logicalWidth =
+          MediaQuery.maybeOf(context)?.size.width ??
+          (View.of(context).physicalSize.width /
+              View.of(context).devicePixelRatio);
+      if (logicalWidth >= 900) {
+        final routeName = ModalRoute.of(context)?.settings.name;
+        final overlay = Overlay.of(context, rootOverlay: true);
+        _edgeOverlay = OverlayEntry(
+          builder: (ctx) => Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: EdgeNavHandle(
+                  user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                  width: 32,
+                  currentRoute: routeName,
+                  showIndicator: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        overlay.insert(_edgeOverlay!);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
+    _edgeOverlay = null;
     _imeiController.removeListener(_onImeiChanged);
     _imeiController.dispose();
     _bateriaController.dispose();
@@ -311,6 +347,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       'imei1': imei1Val,
       'imei2': imei2Val,
       'bt': btVal,
+      'contrato': _selectedContrato,
     };
     try {
       setState(() => _registrandoIrrecuperable = true);
@@ -323,6 +360,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
         _lookupResult = null;
         _lookupError = null;
         _lastLookupImei = null;
+        _selectedContrato = 'Contrato Antiguo 3 años';
         _imeiController.clear();
         _imei2Controller.clear();
         _simController.clear();
@@ -385,6 +423,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
       'imei1': imei1Val,
       'imei2': imei2Val,
       'bt': btVal,
+      'contrato': _selectedContrato,
     };
     try {
       setState(() => _registrando = true);
@@ -397,6 +436,7 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
         _lookupResult = null;
         _lookupError = null;
         _lastLookupImei = null;
+        _selectedContrato = 'Contrato Antiguo 3 años';
         _imeiController.clear();
         _imei2Controller.clear();
         _simController.clear();
@@ -672,6 +712,8 @@ class _RegistroPulseraScreenState extends State<RegistroPulseraScreen> {
         });
       },
       onChangeRadio: (k, v) => setState(() => _radioValues[k] = v),
+      selectedContrato: _selectedContrato,
+      onChangeContrato: (c) => setState(() => _selectedContrato = c),
       onRegistrar: _registrarPulsera,
       onRegistrarIrrecuperable: _registrarPulseraIrrecuperable,
       isSubmitting: _registrando,

@@ -218,6 +218,7 @@ class _TablaRegistrosState extends State<TablaRegistros> {
                       idim: idim,
                       oysta: oysta,
                       usuarioNombre: r['usuario_nombre']?.toString(),
+                      contrato: r['contrato']?.toString(),
                       onEditar: widget.onEditar != null
                           ? () => widget.onEditar!(id, r)
                           : null,
@@ -262,6 +263,7 @@ class _SmartphoneCard extends StatelessWidget {
   final String? idim;
   final String? oysta;
   final String? usuarioNombre;
+  final String? contrato;
   final VoidCallback? onEditar;
   final VoidCallback? onEliminar;
 
@@ -274,6 +276,7 @@ class _SmartphoneCard extends StatelessWidget {
     this.idim,
     this.oysta,
     this.usuarioNombre,
+    this.contrato,
     this.onEditar,
     this.onEliminar,
   });
@@ -373,6 +376,12 @@ class _SmartphoneCard extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 4,
                     children: [
+                      if (contrato != null && contrato!.isNotEmpty)
+                        _MiniPill(
+                          icon: Icons.description_outlined,
+                          label: contrato!,
+                          color: const Color(0xFF00796B),
+                        ),
                       if (usuarioNombre != null && usuarioNombre!.isNotEmpty)
                         _MiniPill(
                           icon: Icons.person_outline_rounded,
