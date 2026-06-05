@@ -656,11 +656,17 @@ class PerformanceTab extends StatelessWidget {
   }
 
   Future<void> _showExportDialog(BuildContext context, ThemeData theme) async {
-    DateTime selectedDate = DateTime.now();
-    final List<String> months = [
-      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
-    ];
+    DateTime startDate = DateTime.now().subtract(const Duration(days: 30));
+    DateTime endDate = DateTime.now();
+
+    Future<DateTime?> _pickDate(BuildContext context, DateTime initial) async {
+      return await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2035),
+      );
+    }
 
     await showDialog(
       context: context,
@@ -671,88 +677,97 @@ class PerformanceTab extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Seleccione el mes para exportar:'),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        selectedDate = DateTime(selectedDate.year - 1, selectedDate.month);
-                      });
-                    },
-                    icon: const Icon(Icons.chevron_left_rounded),
-                  ),
-                  Text(
-                    '${selectedDate.year}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        selectedDate = DateTime(selectedDate.year + 1, selectedDate.month);
-                      });
-                    },
-                    icon: const Icon(Icons.chevron_right_rounded),
-                  ),
-                ],
+              const Text(
+                'Seleccione el rango de fecha para exportar:',
+                style: TextStyle(fontSize: 14),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: 300,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(3, (rowIndex) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Row(
-                        children: List.generate(4, (colIndex) {
-                          final index = rowIndex * 4 + colIndex;
-                          final isSelected = selectedDate.month == (index + 1);
-                          return Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    selectedDate = DateTime(selectedDate.year, index + 1);
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.primaryContainer.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? theme.colorScheme.primary
-                                          : theme.colorScheme.outline.withOpacity(0.2),
-                                    ),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    months[index],
-                                    style: TextStyle(
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                      color: isSelected
-                                          ? theme.colorScheme.onPrimary
-                                          : theme.colorScheme.onSurface,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
+              const SizedBox(height: 20),
+              
+              // Start Date selector
+              Text(
+                'Desde:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () async {
+                  final picked = await _pickDate(context, startDate);
+                  if (picked != null) {
+                    setState(() {
+                      startDate = picked;
+                    });
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month_rounded, color: theme.colorScheme.primary, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          DateFormat('dd/MM/yyyy').format(startDate),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
                       ),
-                    );
-                  }),
+                      Icon(Icons.edit_rounded, color: theme.colorScheme.primary.withOpacity(0.7), size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // End Date selector
+              Text(
+                'Hasta:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () async {
+                  final picked = await _pickDate(context, endDate);
+                  if (picked != null) {
+                    setState(() {
+                      endDate = picked;
+                    });
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month_rounded, color: theme.colorScheme.primary, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          DateFormat('dd/MM/yyyy').format(endDate),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                      Icon(Icons.edit_rounded, color: theme.colorScheme.primary.withOpacity(0.7), size: 18),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -765,9 +780,9 @@ class PerformanceTab extends StatelessWidget {
             FilledButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                final start = DateTime(selectedDate.year, selectedDate.month, 1);
-                final end = DateTime(selectedDate.year, selectedDate.month + 1, 0, 23, 59, 59);
-                onExport(start, end);
+                final startOfDay = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+                final endOfDay = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+                onExport(startOfDay, endOfDay);
               },
               child: const Text('Exportar'),
             ),

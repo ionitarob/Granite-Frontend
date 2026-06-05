@@ -1188,7 +1188,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     );
   }
 
-  Widget _headerCell(String title, double width) {
+    Widget _headerCell(String title, double width) {
     final theme = Theme.of(context);
     return SizedBox(
       width: width,
@@ -1197,11 +1197,12 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
         child: Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            title,
+            title.toUpperCase(),
             style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              letterSpacing: 1.1,
+              color: theme.colorScheme.onSurface.withOpacity(0.55),
             ),
           ),
         ),
@@ -1210,22 +1211,48 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   }
 
   Widget _buildMonthRow(String groupTitle, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+        gradient: LinearGradient(
+          colors: isDark
+              ? [
+                  theme.colorScheme.primaryContainer.withOpacity(0.18),
+                  theme.colorScheme.primaryContainer.withOpacity(0.04),
+                ]
+              : [
+                  theme.colorScheme.primaryContainer.withOpacity(0.35),
+                  theme.colorScheme.primaryContainer.withOpacity(0.1),
+                ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
         border: Border(
-          left: BorderSide(color: theme.colorScheme.primary, width: 4),
+          left: BorderSide(color: theme.colorScheme.primary, width: 6),
+          bottom: BorderSide(color: theme.dividerColor.withOpacity(isDark ? 0.05 : 0.15)),
         ),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        groupTitle,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: theme.colorScheme.onPrimaryContainer,
-        ),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          Icon(
+            Icons.calendar_today_rounded,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            groupTitle,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              letterSpacing: 0.5,
+              color: theme.colorScheme.onPrimaryContainer,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1249,11 +1276,21 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                 width: 150,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    _formatOrderNbr(order.orderNbr),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary.withOpacity(0.9),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
+                    ),
+                    child: Text(
+                      _formatOrderNbr(order.orderNbr),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: theme.colorScheme.primary,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 ),
@@ -1269,6 +1306,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                         : '-',
                     style: TextStyle(
                       fontSize: 13,
+                      fontWeight: FontWeight.w500,
                       color: theme.colorScheme.onSurface.withOpacity(
                         isDark ? 0.7 : 0.72,
                       ),
@@ -1287,7 +1325,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1331,7 +1369,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                       style: TextStyle(
                         fontSize: 12,
                         color: theme.colorScheme.primary.withOpacity(0.8),
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
@@ -1351,39 +1389,53 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                               Color prioColor = Colors.grey;
                               if (prioText.contains('1')) {
                                 prioText = 'Alta';
-                                prioColor = Colors.red;
+                                prioColor = const Color(0xFFEF5350);
                               } else if (prioText.contains('2')) {
                                 prioText = 'Media';
-                                prioColor = Colors.orange;
+                                prioColor = const Color(0xFFFFA726);
                               } else if (prioText.contains('3')) {
                                 prioText = 'Baja';
-                                prioColor = Colors.green;
+                                prioColor = const Color(0xFF66BB6A);
                               } else if (prioText.toLowerCase().contains(
                                 'alta',
                               )) {
-                                prioColor = Colors.red;
+                                prioColor = const Color(0xFFEF5350);
                               }
 
                               return Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
+                                  horizontal: 10,
+                                  vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
                                   color: prioColor.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: prioColor.withOpacity(0.3),
+                                    color: prioColor.withOpacity(0.25),
                                   ),
                                 ),
-                                child: Text(
-                                  prioText.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: prioColor,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: prioColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      prioText.toUpperCase(),
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        color: prioColor,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               );
                             },
@@ -1403,6 +1455,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
+                      fontWeight: FontWeight.w500,
                       color: theme.colorScheme.onSurface.withOpacity(
                         isDark ? 0.8 : 0.9,
                       ),
