@@ -656,24 +656,123 @@ class PerformanceTab extends StatelessWidget {
   }
 
   Future<void> _showExportDialog(BuildContext context, ThemeData theme) async {
-    DateTime? selectedMonth = DateTime.now();
+    DateTime selectedDate = DateTime.now();
+    final List<String> months = [
+      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+    ];
+
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Exportar Datos'),
-        content: const Text('Seleccione el mes para exportar.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              final start = DateTime(selectedMonth!.year, selectedMonth.month, 1);
-              final end = DateTime(selectedMonth.year, selectedMonth.month + 1, 0);
-              onExport(start, end);
-            },
-            child: const Text('Exportar'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Exportar Datos'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Seleccione el mes para exportar:'),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedDate = DateTime(selectedDate.year - 1, selectedDate.month);
+                      });
+                    },
+                    icon: const Icon(Icons.chevron_left_rounded),
+                  ),
+                  Text(
+                    '${selectedDate.year}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedDate = DateTime(selectedDate.year + 1, selectedDate.month);
+                      });
+                    },
+                    icon: const Icon(Icons.chevron_right_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(3, (rowIndex) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        children: List.generate(4, (colIndex) {
+                          final index = rowIndex * 4 + colIndex;
+                          final isSelected = selectedDate.month == (index + 1);
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    selectedDate = DateTime(selectedDate.year, index + 1);
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.primaryContainer.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.outline.withOpacity(0.2),
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    months[index],
+                                    style: TextStyle(
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected
+                                          ? theme.colorScheme.onPrimary
+                                          : theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                final start = DateTime(selectedDate.year, selectedDate.month, 1);
+                final end = DateTime(selectedDate.year, selectedDate.month + 1, 0, 23, 59, 59);
+                onExport(start, end);
+              },
+              child: const Text('Exportar'),
+            ),
+          ],
+        ),
       ),
     );
   }

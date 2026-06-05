@@ -24,9 +24,15 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<XiaomiProvider>().fetchSummary();
-      _fetchTrend();
+      _refreshAll();
     });
+  }
+
+  Future<void> _refreshAll() async {
+    final provider = context.read<XiaomiProvider>();
+    await provider.fetchSummary();
+    _fetchTrend();
+    _fetchTeamHistory();
   }
 
   void _fetchTrend() {
@@ -95,6 +101,14 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
         title: const Text('Estadísticas Xiaomi (Equipos)'),
         centerTitle: true,
         backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _refreshAll,
+          ),
+          const SizedBox(width: 8),
+        ],
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -127,7 +141,7 @@ class _XiaomiEstadisticasPageState extends State<XiaomiEstadisticasPage> {
             const Center(child: CircularProgressIndicator())
           else
             RefreshIndicator(
-              onRefresh: () => xiaomi.fetchSummary(),
+              onRefresh: _refreshAll,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
