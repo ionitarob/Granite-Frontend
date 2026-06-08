@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
 import '../../services/xiaomi_provider.dart';
@@ -26,12 +27,36 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
 
   List<dynamic> _pendingList = [];
   bool _loadingPending = false;
-  
   Map<String, dynamic>? _activeCesb;
   Map<String, dynamic>? _nextCesb;
+  String? _manuallySelectedNextCesbId;
 
   Timer? _timer;
   Duration _elapsed = Duration.zero;
+  Map<String, dynamic>? _persistentPrinter;
+  bool _isShowingPrinterDialog = false;
+
+  Future<void> _loadPersistentPrinter() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString('xiaomi_printer_id');
+    final ip = prefs.getString('xiaomi_printer_ip');
+    final name = prefs.getString('xiaomi_printer_name');
+    if (id != null) {
+      setState(() {
+        _persistentPrinter = {
+          'printer_id': int.tryParse(id) ?? id,
+          'printer_name': name ?? 'Impresora Guardada',
+        };
+      });
+    } else if (ip != null) {
+      setState(() {
+        _persistentPrinter = {
+          'printer_ip': ip,
+          'printer_name': name ?? ip,
+        };
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -43,6 +68,7 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPersistentPrinter();
     
     // Initialize teams and pending
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -100,6 +126,457 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
     }
   }
 
+  Future<List<Map<String, dynamic>>> _fetchPrinters({
+    String q = '',
+    int limit = 1000,
+  }) async {
+    final client = ApiService.instance?.client;
+    if (client == null) throw Exception('Servicio API no disponible');
+    final encoded = Uri.encodeQueryComponent(q.trim());
+    final res = await client.get('/serials/printers?q=$encoded&limit=$limit');
+    if (!res.ok) throw Exception('Error fetching printers (${res.statusCode})');
+    final body = res.body;
+    if (body is List) {
+      return body
+          .whereType<Map>()
+          .map((e) => _normalizePrinterEntry(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    if (body is Map) {
+      for (final key in ['results', 'printers', 'data']) {
+        if (body[key] is List) {
+          return (body[key] as List)
+              .whereType<Map>()
+              .map((e) => _normalizePrinterEntry(Map<String, dynamic>.from(e)))
+              .toList();
+        }
+      }
+      for (final v in body.values) {
+        if (v is List) {
+          return v
+              .whereType<Map>()
+              .map((e) => _normalizePrinterEntry(Map<String, dynamic>.from(e)))
+              .toList();
+        }
+      }
+    }
+    return [];
+  }
+
+  Map<String, dynamic> _normalizePrinterEntry(Map<String, dynamic> e) {
+    String? id;
+    try {
+      id = (e['id_printer'] ?? e['id'] ?? e['printer_id'] ?? e['idPrinter'])
+          ?.toString();
+    } catch (_) {
+      id = null;
+    }
+    String? name;
+    try {
+      name = (e['printer_name'] ?? e['name'] ?? e['printerName'])?.toString();
+    } catch (_) {
+      name = null;
+    }
+    String? ip;
+    try {
+      ip =
+          (e['ip_address'] ??
+                  e['ip'] ??
+                  e['address'] ??
+                  e['ip_address']?.toString())
+              ?.toString();
+    } catch (_) {
+      ip = null;
+    }
+    final out = <String, dynamic>{};
+    if (id != null && id.isNotEmpty) out['id_printer'] = int.tryParse(id) ?? id;
+    if (name != null) out['printer_name'] = name;
+    if (ip != null) out['ip_address'] = ip;
+    for (final kv in e.entries) {
+      if (!out.containsKey(kv.key)) out[kv.key.toString()] = kv.value;
+    }
+    return out;
+  }
+
+  Future<Map<String, dynamic>?> _getOrSelectPrinter(String title, {bool forceShow = false}) async {
+    if (_persistentPrinter != null && !forceShow) return _persistentPrinter;
+    if (_isShowingPrinterDialog) return null;
+
+    _isShowingPrinterDialog = true;
+    try {
+      List<Map<String, dynamic>> printers = [];
+      try {
+        printers = await _fetchPrinters();
+      } catch (e) {
+        printers = [];
+        if (mounted) {
+          try {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error obteniendo impresoras: $e')),
+            );
+          } catch (_) {}
+        }
+      }
+
+      Map<String, dynamic>? selectedPrinter;
+      final txtIp = TextEditingController();
+
+      if (!mounted) return null;
+
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (printers.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'No se encontraron impresoras en el servidor. Puedes introducir una IP manualmente.',
+                    ),
+                  )
+                else
+                  Column(
+                    children: printers
+                        .map(
+                          (p) => RadioListTile<Map<String, dynamic>>(
+                            value: p,
+                            groupValue: selectedPrinter,
+                            title: Text(
+                              p['printer_name']?.toString() ??
+                                  p['ip_address']?.toString() ??
+                                  'Impresora',
+                            ),
+                            subtitle: Text(p['ip_address']?.toString() ?? ''),
+                            onChanged: (v) {
+                              selectedPrinter = v;
+                              (c as Element).markNeedsBuild();
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: txtIp,
+                  decoration: const InputDecoration(
+                    labelText:
+                        'IP de impresora (opcional, sobreescribe selección)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final nameCtrl = TextEditingController();
+                final ipCtrl = TextEditingController();
+                final addOk = await showDialog<bool>(
+                  context: c,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Registrar Nueva Impresora'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: nameCtrl,
+                          decoration: const InputDecoration(labelText: 'Nombre de Impresora'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: ipCtrl,
+                          decoration: const InputDecoration(labelText: 'Dirección IP'),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Guardar'),
+                      ),
+                    ],
+                  ),
+                );
+                
+                if (addOk == true) {
+                  final name = nameCtrl.text.trim();
+                  final ip = ipCtrl.text.trim();
+                  if (name.isNotEmpty && ip.isNotEmpty) {
+                    final api = ApiService.instance?.client;
+                    if (api != null) {
+                      final res = await api.post('/serials/printers/add', jsonBody: {
+                        'printer_name': name,
+                        'ip_address': ip,
+                      });
+                      if (res.ok) {
+                        try {
+                          final freshPrinters = await _fetchPrinters();
+                          printers = freshPrinters;
+                        } catch (_) {}
+                        (c as Element).markNeedsBuild();
+                      } else {
+                        final errorMsg = res.body is Map ? (res.body['error'] ?? res.error) : res.error;
+                        if (c.mounted) {
+                          ScaffoldMessenger.of(c).showSnackBar(
+                            SnackBar(content: Text('Error: $errorMsg'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+                nameCtrl.dispose();
+                ipCtrl.dispose();
+              },
+              child: const Text('Añadir Impresora'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+
+      final manualIp = txtIp.text.trim().isNotEmpty ? txtIp.text.trim() : null;
+      txtIp.dispose();
+
+      if (ok != true) return null;
+
+      final result = <String, dynamic>{};
+      if (manualIp != null) {
+        result['printer_ip'] = manualIp;
+        result['printer_name'] = manualIp;
+      } else if (selectedPrinter != null) {
+        if (selectedPrinter!['id_printer'] != null) {
+          result['printer_id'] = selectedPrinter!['id_printer'];
+        } else if (selectedPrinter!['ip_address'] != null) {
+          result['printer_ip'] = selectedPrinter!['ip_address'];
+        }
+        result['printer_name'] = selectedPrinter!['printer_name'] ?? selectedPrinter!['ip_address'] ?? 'Impresora';
+      } else if (printers.isNotEmpty) {
+        final first = printers.first;
+        if (first['id_printer'] != null) {
+          result['printer_id'] = first['id_printer'];
+        } else if (first['ip_address'] != null) {
+          result['printer_ip'] = first['ip_address'];
+        }
+        result['printer_name'] = first['printer_name'] ?? first['ip_address'] ?? 'Impresora';
+      } else {
+        throw Exception('No printer selected or provided');
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      if (result['printer_id'] != null) {
+        await prefs.setString('xiaomi_printer_id', result['printer_id'].toString());
+        await prefs.remove('xiaomi_printer_ip');
+      } else if (result['printer_ip'] != null) {
+        await prefs.setString('xiaomi_printer_ip', result['printer_ip'].toString());
+        await prefs.remove('xiaomi_printer_id');
+      }
+      if (result['printer_name'] != null) {
+        await prefs.setString('xiaomi_printer_name', result['printer_name'].toString());
+      }
+
+      setState(() {
+        _persistentPrinter = result;
+      });
+      return result;
+    } finally {
+      _isShowingPrinterDialog = false;
+    }
+  }
+
+  Future<void> _printCesbLabel(String cesb) async {
+    final client = ApiService.instance?.client;
+    if (client == null) return;
+    
+    if (_persistentPrinter == null) {
+      final printer = await _getOrSelectPrinter('Seleccionar impresora para continuar');
+      if (printer == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Impresión cancelada. No se seleccionó impresora.')),
+          );
+        }
+        return;
+      }
+    }
+    
+    if (_persistentPrinter == null) return;
+    
+    final payload = Map<String, dynamic>.from(_persistentPrinter!);
+    payload['cesb'] = cesb;
+    
+    try {
+      final resp = await client.post('/xiaomieco/print_cesb_label/', jsonBody: payload);
+      if (mounted) {
+        if (resp.ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Imprimiendo siguiente CESB: $cesb'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          final errorMsg = resp.body is Map ? (resp.body['error'] ?? resp.error) : resp.error;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al imprimir: $errorMsg'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error de conexión con impresora: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleAfterFinishingCesb() async {
+    final validatedList = _pendingList
+        .where((item) => item?['fecha_hora_inicio'] == null && item?['fecha_hora_validado'] != null)
+        .toList();
+        
+    final pendingNotValidated = _pendingList
+        .where((item) => item?['fecha_hora_inicio'] == null && item?['fecha_hora_validado'] == null)
+        .toList();
+
+    if (validatedList.isNotEmpty) {
+      if (_nextCesb != null && _nextCesb!['fecha_hora_validado'] != null) {
+        final nextCesbName = _nextCesb!['cesb'];
+        await _printCesbLabel(nextCesbName);
+      }
+    } else {
+      if (pendingNotValidated.isNotEmpty) {
+        await _showValidationDialog();
+      } else {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('¡Enhorabuena!'),
+              content: const Text('Ha acabado todos los CESB.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Aceptar'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showValidationDialog() async {
+    final ctrl = TextEditingController();
+    final focus = FocusNode();
+    bool validating = false;
+    
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          Future<void> submitValidation() async {
+            final code = ctrl.text.trim();
+            if (code.isEmpty) return;
+            
+            setDialogState(() => validating = true);
+            try {
+              final success = await context.read<XiaomiProvider>().validateCesb(code);
+              if (success) {
+                await _refreshData();
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('CESB $code Validado con éxito'), backgroundColor: Colors.green),
+                  );
+                  await _handleAfterFinishingCesb();
+                }
+              } else {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(content: Text('Error al validar CESB $code'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            } finally {
+              if (ctx.mounted) {
+                setDialogState(() => validating = false);
+                ctrl.clear();
+                focus.requestFocus();
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Validar más CESB'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'No quedan más CESB validados. Para continuar, escanea o introduce un nuevo CESB para validarlo:',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: ctrl,
+                    focusNode: focus,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Escanear CESB...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      suffixIcon: validating 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : IconButton(
+                            icon: const Icon(Icons.check_circle_rounded),
+                            onPressed: submitValidation,
+                          ),
+                    ),
+                    onSubmitted: (_) => submitValidation(),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Cerrar'),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+    
+    ctrl.dispose();
+    focus.dispose();
+  }
+
+
   void _evaluateState() {
     if (_selectedTeam == null) {
       _activeCesb = null;
@@ -109,8 +586,17 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
     }
 
     // 1. Check if this team has an active CESB (started but not finished)
+    // Match by team_name if available, otherwise fallback to team_id comparison
     final active = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
-      (item) => item?['team_id'] == _selectedTeam!.id && item?['fecha_hora_inicio'] != null,
+      (item) {
+        if (item == null) return false;
+        final itemTeamName = item['team_name']?.toString().toLowerCase();
+        final selectedTeamName = _selectedTeam!.nombre.toLowerCase();
+        if (itemTeamName != null && itemTeamName.isNotEmpty) {
+          return itemTeamName == selectedTeamName && item['fecha_hora_inicio'] != null;
+        }
+        return item['team_id'] == _selectedTeam!.id && item['fecha_hora_inicio'] != null;
+      },
       orElse: () => null,
     );
 
@@ -134,13 +620,25 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
       _stopTimer();
       
       // 2. Find the NEXT CESB based on priority (oldest date) and validation
-      // Note: Backend already returns them sorted by registration date ASC
-      _nextCesb = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
+      // Check if there is a manual selection that is still pending (fecha_hora_inicio == null)
+      Map<String, dynamic>? next;
+      if (_manuallySelectedNextCesbId != null) {
+        next = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
+          (item) => item?['cesb'] == _manuallySelectedNextCesbId && item?['fecha_hora_inicio'] == null,
+          orElse: () => null,
+        );
+      }
+      
+      // Fallback to priority if no manual selection or if it's no longer valid
+      next ??= _pendingList.cast<Map<String, dynamic>?>().firstWhere(
         (item) => item?['fecha_hora_inicio'] == null,
         orElse: () => null,
       );
+      
+      _nextCesb = next;
     }
   }
+
 
   void _startTimer(DateTime startTime, {DateTime? pauseTime, int pausedSeconds = 0}) {
     _timer?.cancel();
@@ -234,6 +732,7 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CESB Finalizado.')));
         await _refreshData();
+        await _handleAfterFinishingCesb();
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -310,6 +809,10 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
                       else ...[
                         _buildTeamSelector(xiaomi, theme),
                         const SizedBox(height: 12),
+                        if (_selectedTeam != null && _pendingList.any((item) => item?['fecha_hora_inicio'] == null && item?['fecha_hora_validado'] != null)) ...[
+                          _buildPrinterConfigCard(theme),
+                          const SizedBox(height: 12),
+                        ],
                         _buildWorkControl(theme),
                       ],
                     ],
@@ -318,6 +821,35 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPrinterConfigCard(ThemeData theme) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.15)),
+      ),
+      color: theme.colorScheme.primary.withOpacity(0.02),
+      child: ListTile(
+        dense: true,
+        leading: Icon(Icons.print_rounded, color: theme.colorScheme.primary),
+        title: Text(
+          _persistentPrinter == null
+              ? 'Impresora no configurada'
+              : 'Impresora: ${_persistentPrinter!['printer_name'] ?? _persistentPrinter!['printer_ip'] ?? 'Impresora Guardada'}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text('Pulsa para configurar o cambiar la impresora persistente'),
+        trailing: const Icon(Icons.edit_rounded, size: 16),
+        onTap: () async {
+          final printer = await _getOrSelectPrinter('Configurar Impresora', forceShow: true);
+          if (printer != null && mounted) {
+            setState(() {});
+          }
+        },
       ),
     );
   }
@@ -489,6 +1021,21 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: OutlinedButton.icon(
+            onPressed: () => _printCesbLabel(_activeCesb!['cesb']),
+            icon: const Icon(Icons.print_rounded),
+            label: const Text('REIMPRIMIR ETIQUETA CESB'),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
+              foregroundColor: theme.colorScheme.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
         if (isPaused) ...[
           const SizedBox(height: 16),
           const Text(
@@ -502,6 +1049,9 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
 
   Widget _buildNextTaskView(ThemeData theme) {
     final isValidated = _nextCesb!['fecha_hora_validado'] != null;
+    final allPending = _pendingList
+        .where((item) => item?['fecha_hora_inicio'] == null)
+        .toList();
 
     return Column(
       children: [
@@ -515,7 +1065,54 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
           ),
           child: Column(
             children: [
-              const Text('SIGUIENTE TAREA PRIORITARIA', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 11, letterSpacing: 1.1)),
+              if (allPending.length > 1) ...[
+                const Text(
+                  'SELECCIONAR TAREA PENDIENTE:',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _nextCesb?['cesb'],
+                      dropdownColor: theme.cardColor,
+                      items: allPending.map((item) {
+                        final cesbName = item['cesb'] ?? 'Sin nombre';
+                        final skuName = item['sku'] ?? '';
+                        final isVal = item['fecha_hora_validado'] != null;
+                        return DropdownMenuItem<String>(
+                          value: cesbName,
+                          child: Text(
+                            '$cesbName - $skuName (${isVal ? "VALIDADO" : "PENDIENTE"})',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isVal ? FontWeight.bold : FontWeight.normal,
+                              color: isVal ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _manuallySelectedNextCesbId = val;
+                            _evaluateState();
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const Divider(height: 32),
+              ],
+              const Text('TAREA SELECCIONADA', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 11, letterSpacing: 1.1)),
               const SizedBox(height: 16),
               Text(_nextCesb!['cesb'] ?? '', textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               Text('${_nextCesb!['sku']}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey)),
@@ -560,6 +1157,21 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: theme.colorScheme.onPrimary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: OutlinedButton.icon(
+            onPressed: () => _printCesbLabel(_nextCesb!['cesb']),
+            icon: const Icon(Icons.print_rounded),
+            label: const Text('REIMPRIMIR ETIQUETA CESB'),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5)),
+              foregroundColor: theme.colorScheme.primary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
           ),

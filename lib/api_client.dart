@@ -806,6 +806,75 @@ class ApiClient {
     }
   }
 
+  Future<ApiResult> patchMultipart(
+    String path, {
+    Map<String, String>? fields,
+    String? fileFieldName,
+    String? fileName,
+    List<int>? fileBytes,
+    List<MultipartAttachment>? files,
+    Map<String, String>? extraHeaders,
+  }) async {
+    final uri = _uri(path);
+    try {
+      final headers = _authHeaders();
+      if (extraHeaders != null) headers.addAll(extraHeaders);
+      final req = http.MultipartRequest('PATCH', uri);
+      req.headers.addAll(headers);
+      if (fields != null && fields.isNotEmpty) req.fields.addAll(fields);
+      if (files != null && files.isNotEmpty) {
+        for (final attachment in files) {
+          final mf = http.MultipartFile.fromBytes(
+            attachment.fieldName,
+            attachment.bytes,
+            filename: attachment.fileName,
+          );
+          req.files.add(mf);
+        }
+      } else if (fileBytes != null && fileName != null) {
+        final mf = http.MultipartFile.fromBytes(
+          fileFieldName ?? 'file',
+          fileBytes,
+          filename: fileName,
+        );
+        req.files.add(mf);
+      }
+      _logRequestHeaders('MULTIPART-PATCH', uri, req.headers);
+      final streamed = await _client.send(req);
+      final resp = await http.Response.fromStream(streamed);
+      _updateCookiesFromResponse(resp);
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        dynamic parsed;
+        if (resp.body.isNotEmpty) {
+          try {
+            parsed = jsonDecode(resp.body);
+          } catch (e) {
+            parsed = resp.body;
+          }
+        }
+        return ApiResult(true, resp.statusCode, body: parsed);
+      }
+      dynamic errBody;
+      if (resp.body.isNotEmpty) {
+        try {
+          errBody = jsonDecode(resp.body);
+        } catch (_) {
+          errBody = resp.body;
+        }
+      }
+      final result = ApiResult(
+        false,
+        resp.statusCode,
+        body: errBody,
+        error: 'HTTP ${resp.statusCode}',
+      );
+      _emitUnauthorized(result);
+      return result;
+    } catch (e) {
+      return ApiResult(false, -1, error: e.toString());
+    }
+  }
+
   void clearSession({bool forgetPersisted = true}) async {
     _cookies.clear();
     _accessToken = null;

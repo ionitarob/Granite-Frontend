@@ -100,7 +100,7 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 		try {
 			final result = await FilePicker.platform.pickFiles(
 				type: FileType.custom,
-				allowedExtensions: const ['csv'],
+				allowedExtensions: const ['csv', 'xlsx'],
 				withData: true,
 			);
 			if (!mounted) return;
@@ -119,7 +119,7 @@ class _EntradaStockNewScreenState extends State<EntradaStockNewScreen> {
 	Future<void> _handleCsvSelected(PlatformFile file) async {
 		if (file.bytes == null) {
 			ScaffoldMessenger.of(context).showSnackBar(
-				const SnackBar(content: Text('No se pudieron leer los datos del CSV seleccionado.')),
+				const SnackBar(content: Text('No se pudieron leer los datos del archivo seleccionado.')),
 			);
 			return;
 		}

@@ -39,6 +39,7 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
   List<List<String>> _previewRows = [];
   Map<String, dynamic>? _session;
   final List<Map<String, dynamic>> _pendingScans = [];
+  int? _serverFirstScanLength;
 
   bool _boxModeEnabled = false;
   final TextEditingController _boxCtrl = TextEditingController();
@@ -50,6 +51,8 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
   List<Map<String, dynamic>> _pastBoxes = [];
   bool _loadingBoxes = false;
   int _boxCtrlVersion = 0;
+  int _boxesCurrentPage = 1;
+  final int _boxesPageSize = 5;
 
   bool _previewLoading = false;
   bool _starting = false;
@@ -395,10 +398,15 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
     setState(() => _loadingBoxes = true);
     try {
       final res = await client.get('/serials/verification/boxes?session_id=${session['id']}');
-      if (res.ok && res.body is List) {
-        final list = res.body as List;
+      List? boxesList;
+      if (res.body is Map) {
+        boxesList = (res.body as Map)['boxes'] as List?;
+      } else if (res.body is List) {
+        boxesList = res.body as List?;
+      }
+      if (res.ok && boxesList != null) {
         setState(() {
-          _pastBoxes = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+          _pastBoxes = boxesList!.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
         });
       }
     } catch (_) {}
@@ -625,6 +633,7 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
       if (session is Map) {
         setState(() => _session = Map<String, dynamic>.from(session));
       }
+      await _fetchFirstScanLength();
       final dup = body['duplicate_upload_rows'] ?? 0;
       final imported = body['imported_rows'] ?? 0;
       _showSnack('Verificación iniciada. Cargados: $imported, duplicados en archivo: $dup');
@@ -657,6 +666,7 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
       if (session is Map) {
         setState(() => _session = Map<String, dynamic>.from(session));
         _showSnack('Sesión reabierta');
+        await _fetchFirstScanLength();
         await _promoteScannerFocus();
         await _fetchPastBoxes();
         await _loadActiveBoxState();
@@ -730,6 +740,42 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
     }
   }
 
+  int? _getReferenceLength() {
+    return _serverFirstScanLength;
+  }
+
+  Future<void> _fetchFirstScanLength() async {
+    final client = _clientOrNull();
+    final session = _sessionMap();
+    if (client == null || session == null) return;
+    try {
+      final res = await client.get('/serials/verification/items?session_id=${session['id']}&page_size=1000');
+      if (res.ok && res.body is Map) {
+        final body = Map<String, dynamic>.from(res.body as Map);
+        final list = body['items'] as List? ?? [];
+        final items = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        
+        final scans = items.where((i) => i['source_type'] == 'scan').toList();
+        if (scans.isNotEmpty) {
+          scans.sort((a, b) => (a['id'] as int).compareTo(b['id'] as int));
+          final firstSerial = scans.first['serial']?.toString() ?? '';
+          if (firstSerial.isNotEmpty) {
+            setState(() {
+              _serverFirstScanLength = firstSerial.length;
+            });
+            debugPrint('[_fetchFirstScanLength] Found first scan: $firstSerial (length: ${firstSerial.length})');
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[_fetchFirstScanLength] Error fetching items: $e');
+    }
+    setState(() {
+      _serverFirstScanLength = null;
+    });
+  }
+
   Future<void> _scanSerial() async {
     final client = _clientOrNull();
     final session = _sessionMap();
@@ -753,6 +799,22 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
       }
     }
     if (serial.isEmpty) return;
+
+    final refLen = _getReferenceLength();
+    if (refLen != null && serial.length != refLen) {
+      SoundPlayer.playError();
+      _showSnack('Serial ignorado: longitud incorrecta (${serial.length} vs esperado $refLen)');
+      _scanCtrl.clear();
+      _scanFocus.requestFocus();
+      return;
+    }
+
+    if (_serverFirstScanLength == null) {
+      setState(() {
+        _serverFirstScanLength = serial.length;
+      });
+    }
+
 
     if (_boxModeEnabled) {
       if (_currentBoxGoodSerials.contains(serial) || _currentBoxBadSerials.contains(serial)) {
@@ -878,8 +940,9 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
         }
       } else {
         SoundPlayer.playError();
+        final errorMsg = res.body is Map ? (res.body['error'] ?? res.error) : res.error;
         if (_boxModeEnabled) {
-          _showSnack('Error escaneando serial: registrado como malo en caja');
+          _showSnack('Error escaneando serial: ${errorMsg ?? "registrado como malo en caja"}');
           setState(() {
             _currentBoxBadSerials.add(serial);
           });
@@ -887,7 +950,7 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
             await _finishBox();
           }
         } else {
-          _showSnack('No se pudo escanear (${res.statusCode})');
+          _showSnack(errorMsg ?? 'No se pudo escanear (${res.statusCode})');
         }
       }
     } catch (e) {
@@ -1630,13 +1693,6 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
                                           icon: Icons.warning_rounded,
                                           color: Colors.red,
                                         ),
-                                        _metricPill(
-                                          context: context,
-                                          label: 'No en archivo',
-                                          value: counts['duplicate_scan_not_in_upload_rows'],
-                                          icon: Icons.block_flipped,
-                                          color: Colors.deepOrange,
-                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 24),
@@ -1732,7 +1788,9 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
                                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                         ),
                                         onChanged: (_) {
-                                          setState(() {});
+                                          setState(() {
+                                            _boxesCurrentPage = 1;
+                                          });
                                         },
                                       ),
                                       const SizedBox(height: 12),
@@ -1758,53 +1816,102 @@ class _SerialVerificationScreenState extends State<SerialVerificationScreen> {
                                             );
                                           }
 
-                                          return ListView.separated(
-                                            shrinkWrap: true,
-                                            physics: const NeverScrollableScrollPhysics(),
-                                            itemCount: filteredBoxes.length,
-                                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                            itemBuilder: (_, index) {
-                                              final box = filteredBoxes[index];
-                                              final boxId = box['box_id']?.toString() ?? '';
-                                              final total = box['total_items'] ?? 0;
-                                              final good = box['good_items'] ?? 0;
-                                              final bad = box['bad_items'] ?? 0;
-                                              return Container(
-                                                decoration: BoxDecoration(
-                                                  color: theme.colorScheme.primary.withOpacity(0.03),
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
-                                                ),
-                                                child: ListTile(
-                                                  dense: true,
-                                                  leading: Container(
-                                                    padding: const EdgeInsets.all(8),
-                                                    decoration: BoxDecoration(
-                                                      color: theme.colorScheme.primary.withOpacity(0.1),
-                                                      shape: BoxShape.circle,
+                                          final totalPages = (filteredBoxes.length / _boxesPageSize).ceil();
+                                          if (_boxesCurrentPage > totalPages) {
+                                            _boxesCurrentPage = totalPages;
+                                          }
+                                          if (_boxesCurrentPage < 1) {
+                                            _boxesCurrentPage = 1;
+                                          }
+
+                                          final displayBoxes = filteredBoxes
+                                              .skip((_boxesCurrentPage - 1) * _boxesPageSize)
+                                              .take(_boxesPageSize)
+                                              .toList();
+
+                                        return Column(
+                                          children: [
+                                            ListView.separated(
+                                              shrinkWrap: true,
+                                              physics: const NeverScrollableScrollPhysics(),
+                                              itemCount: displayBoxes.length,
+                                              separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                              itemBuilder: (_, index) {
+                                                final box = displayBoxes[index];
+                                                final boxId = box['box_id']?.toString() ?? '';
+                                                final total = box['total_items'] ?? box['total'] ?? 0;
+                                                final good = box['good_items'] ?? box['good'] ?? 0;
+                                                final bad = box['bad_items'] ?? box['bad'] ?? 0;
+                                                return Container(
+                                                  decoration: BoxDecoration(
+                                                    color: theme.colorScheme.primary.withOpacity(0.03),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                                                  ),
+                                                  child: ListTile(
+                                                    dense: true,
+                                                    leading: Container(
+                                                      padding: const EdgeInsets.all(8),
+                                                      decoration: BoxDecoration(
+                                                        color: theme.colorScheme.primary.withOpacity(0.1),
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      child: Icon(
+                                                        Icons.inventory_2_rounded,
+                                                        color: theme.colorScheme.primary,
+                                                        size: 16,
+                                                      ),
                                                     ),
-                                                    child: Icon(
-                                                      Icons.inventory_2_rounded,
-                                                      color: theme.colorScheme.primary,
-                                                      size: 16,
+                                                    title: Text(
+                                                      boxId,
+                                                      style: const TextStyle(fontWeight: FontWeight.bold),
                                                     ),
+                                                    subtitle: Text(
+                                                      'Total: $total · Buenos: $good · Malos: $bad',
+                                                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                                                    ),
+                                                    trailing: const Icon(Icons.chevron_right_rounded),
+                                                    onTap: () => _showBoxDetailsDialog(boxId),
                                                   ),
-                                                  title: Text(
-                                                    boxId,
-                                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                                );
+                                              },
+                                            ),
+                                            if (totalPages > 1) ...[
+                                              const SizedBox(height: 12),
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  IconButton(
+                                                    icon: const Icon(Icons.chevron_left_rounded),
+                                                    onPressed: _boxesCurrentPage > 1
+                                                        ? () {
+                                                            setState(() {
+                                                              _boxesCurrentPage--;
+                                                            });
+                                                          }
+                                                        : null,
                                                   ),
-                                                  subtitle: Text(
-                                                    'Total: $total · Buenos: $good · Malos: $bad',
-                                                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                                                  Text(
+                                                    'Página $_boxesCurrentPage de $totalPages',
+                                                    style: theme.textTheme.bodyMedium,
                                                   ),
-                                                  trailing: const Icon(Icons.chevron_right_rounded),
-                                                  onTap: () => _showBoxDetailsDialog(boxId),
-                                                ),
-                                              );
-                                            },
-                                          );
-                                        },
-                                      ),
+                                                  IconButton(
+                                                    icon: const Icon(Icons.chevron_right_rounded),
+                                                    onPressed: _boxesCurrentPage < totalPages
+                                                        ? () {
+                                                            setState(() {
+                                                              _boxesCurrentPage++;
+                                                            });
+                                                          }
+                                                        : null,
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ],
+                                        );
+                                      },
+                                    ),
                                     ],
                                   ],
                                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../services/theme_controller.dart';
@@ -112,13 +113,18 @@ class _MainSidebarState extends State<MainSidebar> {
                       color: textMuted.withOpacity(0.12),
                     ),
                   ),
-                  const SidebarSectionHeader(title: 'RRHH'),
+                  SidebarSectionHeader(
+                    title: 'RRHH',
+                    icon: Icons.badge_rounded,
+                    color: Colors.cyan,
+                  ),
                   const SizedBox(height: 4),
                   SidebarExpansionTile(
                     title: 'Recursos Humanos',
                     icon: Icons.people_alt_rounded,
                     highlight: highlight,
                     textPrimary: textPrimary,
+                    accentColor: Colors.cyan,
                     initiallyExpanded: [
                       '/hr/fichaje',
                       '/hr/alta_empleado',
@@ -139,6 +145,7 @@ class _MainSidebarState extends State<MainSidebar> {
                         highlight: highlight,
                         textPrimary: textPrimary,
                         isDark: isDark,
+                        accentColor: Colors.cyan,
                       ),
                       _SidebarTile(
                         label: 'Alta Empleado',
@@ -152,6 +159,7 @@ class _MainSidebarState extends State<MainSidebar> {
                         highlight: highlight,
                         textPrimary: textPrimary,
                         isDark: isDark,
+                        accentColor: Colors.cyan,
                       ),
                       _SidebarTile(
                         label: 'Registro Fichajes',
@@ -165,6 +173,7 @@ class _MainSidebarState extends State<MainSidebar> {
                         highlight: highlight,
                         textPrimary: textPrimary,
                         isDark: isDark,
+                        accentColor: Colors.cyan,
                       ),
                       _SidebarTile(
                         label: 'Asignación Trabajo',
@@ -178,6 +187,7 @@ class _MainSidebarState extends State<MainSidebar> {
                         highlight: highlight,
                         textPrimary: textPrimary,
                         isDark: isDark,
+                        accentColor: Colors.cyan,
                       ),
                       _SidebarTile(
                         label: 'Gestión Empleado',
@@ -191,6 +201,7 @@ class _MainSidebarState extends State<MainSidebar> {
                         highlight: highlight,
                         textPrimary: textPrimary,
                         isDark: isDark,
+                        accentColor: Colors.cyan,
                       ),
                     ],
                   ),
@@ -282,125 +293,120 @@ class _MainSidebarState extends State<MainSidebar> {
     String logoAsset,
   ) {
     final user = widget.user;
-    return Column(
-      children: [
-        _SidebarTile(
-          label: isDark ? 'Night Mode' : 'Bright Mode',
-          icon: isDark ? Icons.dark_mode_rounded : Icons.light_mode_outlined,
-          selected: false,
-          onTap: () {
-            try {
-              Provider.of<ThemeController>(context, listen: false).toggle();
-            } catch (_) {}
-          },
-          highlight: textPrimary,
-          textPrimary: textPrimary,
-          isDark: isDark,
-          trailing: Switch.adaptive(
-            value: isDark,
-            onChanged: (v) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withOpacity(0.03)
+            : Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withOpacity(0.05)
+              : Colors.black.withOpacity(0.05),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+                width: 1.5,
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 15,
+              backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+              child: Text(
+                (user?.displayName() ?? 'U')[0].toUpperCase(),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  user?.displayName() ?? 'Usuario',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    letterSpacing: -0.3,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  user?.role ?? 'Cuenta',
+                  style: TextStyle(
+                    color: textMuted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              isDark ? Icons.wb_sunny_rounded : Icons.nightlight_round,
+              color: textMuted,
+              size: 16,
+            ),
+            onPressed: () {
               try {
                 Provider.of<ThemeController>(context, listen: false).toggle();
               } catch (_) {}
             },
-            activeColor: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withOpacity(0.03)
-                : Colors.black.withOpacity(0.03),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.05),
+            tooltip: isDark ? 'Modo Claro' : 'Modo Oscuro',
+            constraints: const BoxConstraints(),
+            padding: const EdgeInsets.all(6),
+            style: IconButton.styleFrom(
+              backgroundColor: isDark
+                  ? Colors.white.withOpacity(0.04)
+                  : Colors.black.withOpacity(0.04),
+              hoverColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withOpacity(0.5),
-                    width: 2,
-                  ),
-                ),
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withOpacity(0.2),
-                  child: Text(
-                    (user?.displayName() ?? 'U')[0].toUpperCase(),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user?.displayName() ?? 'Usuario',
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        letterSpacing: -0.3,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      user?.role ?? 'Cuenta',
-                      style: TextStyle(
-                        color: textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.logout_rounded, color: textMuted, size: 20),
-                onPressed: () => _handleLogout(context),
-                tooltip: 'Cerrar sesión',
-                style: IconButton.styleFrom(
-                  backgroundColor: isDark
-                      ? Colors.white.withOpacity(0.05)
-                      : Colors.black.withOpacity(0.05),
-                  hoverColor: Theme.of(
-                    context,
-                  ).colorScheme.error.withOpacity(0.1),
-                ),
-              ),
-            ],
+          const SizedBox(width: 4),
+          IconButton(
+            icon: Icon(Icons.logout_rounded, color: textMuted, size: 16),
+            onPressed: () => _handleLogout(context),
+            tooltip: 'Cerrar sesión',
+            constraints: const BoxConstraints(),
+            padding: const EdgeInsets.all(6),
+            style: IconButton.styleFrom(
+              backgroundColor: isDark
+                  ? Colors.white.withOpacity(0.04)
+                  : Colors.black.withOpacity(0.04),
+              hoverColor: Theme.of(context).colorScheme.error.withOpacity(0.1),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -792,7 +798,11 @@ class _MainSidebarState extends State<MainSidebar> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SidebarSectionHeader(title: 'PROYECTOS'),
+        SidebarSectionHeader(
+          title: 'PROYECTOS',
+          icon: Icons.rocket_launch_rounded,
+          color: Colors.blueAccent,
+        ),
         if ([
           'chief',
           'admin',
@@ -805,6 +815,7 @@ class _MainSidebarState extends State<MainSidebar> {
             icon: Icons.psychology_rounded,
             highlight: highlight,
             textPrimary: textPrimary,
+            accentColor: Colors.blue,
             initiallyExpanded: orderOpsExpanded,
             children: [
               _SidebarTile(
@@ -819,6 +830,7 @@ class _MainSidebarState extends State<MainSidebar> {
                 highlight: highlight,
                 textPrimary: textPrimary,
                 isDark: isDark,
+                accentColor: Colors.blue,
               ),
               if (canAccessOrderOpsProyectos)
                 _SidebarTile(
@@ -833,6 +845,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   highlight: highlight,
                   textPrimary: textPrimary,
                   isDark: isDark,
+                  accentColor: Colors.blue,
                 ),
               if ((user?.role == 'admin' || user?.role == 'chief'))
                 _SidebarTile(
@@ -847,6 +860,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   highlight: highlight,
                   textPrimary: textPrimary,
                   isDark: isDark,
+                  accentColor: Colors.blue,
                 ),
             ],
           ),
@@ -864,6 +878,7 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.shopping_basket_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.orange,
           initiallyExpanded: amazonExpanded,
           children: [
             SidebarExpansionTile(
@@ -871,6 +886,7 @@ class _MainSidebarState extends State<MainSidebar> {
               icon: Icons.grade_rounded,
               highlight: highlight,
               textPrimary: textPrimary,
+              accentColor: Colors.orange,
               initiallyExpanded: gradingExpanded,
               nested: true,
               children: [
@@ -887,6 +903,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
                 _SidebarTile(
                   label: 'Sorting',
@@ -901,6 +918,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
                 _SidebarTile(
                   label: 'Quality Check',
@@ -915,12 +933,14 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
                 SidebarExpansionTile(
                   title: 'Herramientas',
                   icon: Icons.build_rounded,
                   highlight: highlight,
                   textPrimary: textPrimary,
+                  accentColor: Colors.orange,
                   initiallyExpanded: amazonToolsExpanded,
                   nested: true,
                   children: [
@@ -937,6 +957,7 @@ class _MainSidebarState extends State<MainSidebar> {
                       textPrimary: textPrimary,
                       isDark: isDark,
                       nested: true,
+                      accentColor: Colors.orange,
                     ),
                     _SidebarTile(
                       label: 'Buscar Box',
@@ -951,6 +972,7 @@ class _MainSidebarState extends State<MainSidebar> {
                       textPrimary: textPrimary,
                       isDark: isDark,
                       nested: true,
+                      accentColor: Colors.orange,
                     ),
                     _SidebarTile(
                       label: 'Buscar DSN',
@@ -965,6 +987,7 @@ class _MainSidebarState extends State<MainSidebar> {
                       textPrimary: textPrimary,
                       isDark: isDark,
                       nested: true,
+                      accentColor: Colors.orange,
                     ),
                   ],
                 ),
@@ -975,6 +998,7 @@ class _MainSidebarState extends State<MainSidebar> {
               icon: Icons.assignment_turned_in_rounded,
               highlight: highlight,
               textPrimary: textPrimary,
+              accentColor: Colors.orange,
               initiallyExpanded: amazonProyectosExpanded,
               nested: true,
               children: [
@@ -991,6 +1015,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
               ],
             ),
@@ -999,6 +1024,7 @@ class _MainSidebarState extends State<MainSidebar> {
               icon: Icons.inventory_2_rounded,
               highlight: highlight,
               textPrimary: textPrimary,
+              accentColor: Colors.orange,
               initiallyExpanded: inventoryExpanded,
               nested: true,
               children: [
@@ -1015,6 +1041,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
                 _SidebarTile(
                   label: 'Picking',
@@ -1029,6 +1056,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
                 _SidebarTile(
                   label: 'Receiving',
@@ -1043,6 +1071,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
                 _SidebarTile(
                   label: 'ICQA',
@@ -1057,6 +1086,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.orange,
                 ),
               ],
             ),
@@ -1075,6 +1105,7 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.group_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.green,
           initiallyExpanded: igualdadExpanded,
           children: [
             _SidebarTile(
@@ -1089,6 +1120,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.green,
             ),
             _SidebarTile(
               label: 'Entrada Stock',
@@ -1102,12 +1134,14 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.green,
             ),
             SidebarExpansionTile(
               title: 'Registros',
               icon: Icons.folder_open_rounded,
               highlight: highlight,
               textPrimary: textPrimary,
+              accentColor: Colors.green,
               initiallyExpanded: igualdadRegExpanded,
               nested: true,
               children: [
@@ -1124,6 +1158,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.green,
                 ),
                 _SidebarTile(
                   label: 'Pulsera',
@@ -1138,6 +1173,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.green,
                 ),
                 _SidebarTile(
                   label: 'Powerbank',
@@ -1152,6 +1188,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.green,
                 ),
                 _SidebarTile(
                   label: 'Botón',
@@ -1166,6 +1203,7 @@ class _MainSidebarState extends State<MainSidebar> {
                   textPrimary: textPrimary,
                   isDark: isDark,
                   nested: true,
+                  accentColor: Colors.green,
                 ),
               ],
             ),
@@ -1181,6 +1219,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.green,
             ),
             _SidebarTile(
               label: 'Cerrar Expedición',
@@ -1194,6 +1233,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.green,
             ),
           ],
         ),
@@ -1211,6 +1251,7 @@ class _MainSidebarState extends State<MainSidebar> {
             icon: Icons.analytics_rounded,
             highlight: highlight,
             textPrimary: textPrimary,
+            accentColor: Colors.teal,
             initiallyExpanded: routeIn([
               '/analisis/dashboard',
               '/analisis/management',
@@ -1228,6 +1269,7 @@ class _MainSidebarState extends State<MainSidebar> {
                 highlight: highlight,
                 textPrimary: textPrimary,
                 isDark: isDark,
+                accentColor: Colors.teal,
               ),
               _SidebarTile(
                 label: 'Dashboard',
@@ -1241,6 +1283,7 @@ class _MainSidebarState extends State<MainSidebar> {
                 highlight: highlight,
                 textPrimary: textPrimary,
                 isDark: isDark,
+                accentColor: Colors.teal,
               ),
             ],
           ),
@@ -1257,6 +1300,7 @@ class _MainSidebarState extends State<MainSidebar> {
             highlight: highlight,
             textPrimary: textPrimary,
             isDark: isDark,
+            accentColor: Colors.teal,
           ),
         ],
         Padding(
@@ -1272,6 +1316,7 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.phone_android_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.deepOrange,
           initiallyExpanded: xiaomiExpanded,
           children: [
             _SidebarTile(
@@ -1286,6 +1331,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.deepOrange,
             ),
             _SidebarTile(
               label: 'Producción CESB',
@@ -1299,6 +1345,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.deepOrange,
             ),
             _SidebarTile(
               label: 'Historial',
@@ -1312,6 +1359,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.deepOrange,
             ),
             _SidebarTile(
               label: 'Estadísticas',
@@ -1321,10 +1369,11 @@ class _MainSidebarState extends State<MainSidebar> {
                 context,
                 '/xiaomi/estadisticas',
                 closeOverlay: !permanent,
-              ),
+                ),
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.deepOrange,
             ),
           ],
         ),
@@ -1336,13 +1385,18 @@ class _MainSidebarState extends State<MainSidebar> {
             color: textMuted.withOpacity(0.12),
           ),
         ),
-        const SidebarSectionHeader(title: 'HERRAMIENTAS'),
+        SidebarSectionHeader(
+          title: 'HERRAMIENTAS',
+          icon: Icons.handyman_rounded,
+          color: Colors.purpleAccent,
+        ),
         const SizedBox(height: 8),
         SidebarExpansionTile(
           title: 'Serials',
           icon: Icons.qr_code_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.purple,
           initiallyExpanded: serialsExpanded,
           children: [
             const SidebarSubHeader(title: 'MATCH / VINCULAR'),
@@ -1358,6 +1412,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
             _SidebarTile(
               label: 'Verificación de Serials',
@@ -1371,6 +1426,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
             _SidebarTile(
               label: 'Historial de Vínculos',
@@ -1384,6 +1440,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
 
             const SidebarSubHeader(title: 'CAMBIO DE SERIAL'),
@@ -1399,6 +1456,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
             _SidebarTile(
               label: 'Historial de Cambios',
@@ -1412,6 +1470,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
 
             const SidebarSubHeader(title: 'OTROS'),
@@ -1427,6 +1486,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
             _SidebarTile(
               label: 'Máscaras',
@@ -1440,6 +1500,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.purple,
             ),
           ],
         ),
@@ -1456,6 +1517,7 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.tv_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.red,
           initiallyExpanded: routeName?.startsWith('/tv') ?? false,
           children: [
             _SidebarTile(
@@ -1467,6 +1529,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.red,
             ),
             _SidebarTile(
               label: 'Historial Revisión TV',
@@ -1477,6 +1540,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.red,
             ),
           ],
         ),
@@ -1493,6 +1557,7 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.dns_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.cyan,
           initiallyExpanded: serversExpanded,
           children: [
             _SidebarTile(
@@ -1507,6 +1572,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.cyan,
             ),
             _SidebarTile(
               label: 'Servidores',
@@ -1520,6 +1586,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.cyan,
             ),
           ],
         ),
@@ -1536,6 +1603,7 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.security_rounded,
           highlight: highlight,
           textPrimary: textPrimary,
+          accentColor: Colors.teal,
           initiallyExpanded: [
             '/sentinel/active',
             '/sentinel/tables',
@@ -1554,6 +1622,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.teal,
             ),
             _SidebarTile(
               label: 'Imágenes Activas',
@@ -1567,6 +1636,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.teal,
             ),
             _SidebarTile(
               label: 'Estadísticas',
@@ -1580,6 +1650,7 @@ class _MainSidebarState extends State<MainSidebar> {
               highlight: highlight,
               textPrimary: textPrimary,
               isDark: isDark,
+              accentColor: Colors.teal,
             ),
           ],
         ),
@@ -1603,6 +1674,7 @@ class _MainSidebarState extends State<MainSidebar> {
           highlight: highlight,
           textPrimary: textPrimary,
           isDark: isDark,
+          accentColor: Colors.purple,
         ),
       ],
     );
@@ -1619,6 +1691,7 @@ class _SidebarTile extends StatefulWidget {
   final bool isDark;
   final bool nested;
   final Widget? trailing;
+  final Color? accentColor;
 
   const _SidebarTile({
     required this.label,
@@ -1630,6 +1703,7 @@ class _SidebarTile extends StatefulWidget {
     required this.isDark,
     this.nested = false,
     this.trailing,
+    this.accentColor,
   });
 
   @override
@@ -1663,7 +1737,7 @@ class _SidebarTileState extends State<_SidebarTile>
 
   @override
   Widget build(BuildContext context) {
-    final active = widget.highlight;
+    final active = widget.accentColor ?? widget.highlight;
     final isDark = widget.isDark;
 
     final bgSelected = active.withOpacity(isDark ? 0.18 : 0.12);
@@ -1820,25 +1894,33 @@ class AppleSidebarSurface extends StatelessWidget {
 
 class SidebarSectionHeader extends StatelessWidget {
   final String title;
-  const SidebarSectionHeader({super.key, required this.title});
+  final IconData? icon;
+  final Color? color;
+
+  const SidebarSectionHeader({
+    super.key,
+    required this.title,
+    this.icon,
+    this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final Color c = isDark
-        ? Colors.white.withOpacity(0.55)
-        : Colors.black.withOpacity(0.45);
+    final Color labelColor = isDark
+        ? Colors.white.withOpacity(0.45)
+        : Colors.black.withOpacity(0.40);
 
     return Padding(
-      padding: const EdgeInsets.only(left: 10, top: 6, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(10, 18, 10, 6),
       child: Text(
-        title,
+        title.toUpperCase(),
         style: TextStyle(
-          color: c,
-          fontSize: 11,
+          color: labelColor,
+          fontSize: 10,
           fontWeight: FontWeight.w700,
-          letterSpacing: 1.4,
+          letterSpacing: 1.2,
         ),
       ),
     );
@@ -1900,13 +1982,29 @@ class _AppleSidebarSearchState extends State<AppleSidebarSearch> {
       () => setState(() => _isFocused = _focusNode.hasFocus),
     );
     _controller.addListener(() => setState(() {}));
+    HardwareKeyboard.instance.addHandler(_handleKeyPress);
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyPress);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  bool _handleKeyPress(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
+      final isControlPressed = HardwareKeyboard.instance.isControlPressed;
+      if ((isMetaPressed || isControlPressed) && event.logicalKey == LogicalKeyboardKey.keyK) {
+        if (!_focusNode.hasFocus) {
+          _focusNode.requestFocus();
+          return true; // event handled
+        }
+      }
+    }
+    return false;
   }
 
   @override
@@ -1971,7 +2069,34 @@ class _AppleSidebarSearchState extends State<AppleSidebarSearch> {
                     widget.onChanged?.call('');
                   },
                 )
-              : null,
+              : Container(
+                  width: 38,
+                  alignment: Alignment.center,
+                  margin: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.08)
+                          : Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withOpacity(0.12)
+                            : Colors.black.withOpacity(0.08),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      defaultTargetPlatform == TargetPlatform.macOS ? '⌘K' : 'Ctrl+K',
+                      style: TextStyle(
+                        color: hintC.withOpacity(0.8),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
           hintText: widget.hint,
           hintStyle: TextStyle(
             color: hintC,
@@ -2075,6 +2200,7 @@ class SidebarExpansionTile extends StatefulWidget {
   final bool initiallyExpanded;
   final List<Widget> children;
   final bool nested;
+  final Color? accentColor;
 
   const SidebarExpansionTile({
     super.key,
@@ -2085,6 +2211,7 @@ class SidebarExpansionTile extends StatefulWidget {
     required this.initiallyExpanded,
     required this.children,
     this.nested = false,
+    this.accentColor,
   });
 
   @override
@@ -2112,6 +2239,7 @@ class _SidebarExpansionTileState extends State<SidebarExpansionTile> {
   @override
   Widget build(BuildContext context) {
     final expanded = _expanded;
+    final activeColor = widget.accentColor ?? widget.highlight;
 
     return Theme(
       data: Theme.of(context).copyWith(
@@ -2132,35 +2260,75 @@ class _SidebarExpansionTileState extends State<SidebarExpansionTile> {
           borderRadius: BorderRadius.circular(14),
         ),
         tilePadding: EdgeInsets.symmetric(horizontal: widget.nested ? 10 : 8),
-        childrenPadding: EdgeInsets.only(left: widget.nested ? 12 : 0),
-        leading: Icon(
-          widget.icon,
-          color: expanded
-              ? widget.highlight
-              : widget.textPrimary.withOpacity(0.7),
-          size: 20,
-        ),
+        childrenPadding: EdgeInsets.zero,
+        leading: widget.nested
+            ? Icon(
+                widget.icon,
+                color: activeColor.withOpacity(expanded ? 1.0 : 0.6),
+                size: 18,
+              )
+            : Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: activeColor.withOpacity(expanded ? 0.18 : 0.08),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(
+                  widget.icon,
+                  color: activeColor,
+                  size: 16,
+                ),
+              ),
         title: Text(
           widget.title,
           style: TextStyle(
-            color: expanded ? widget.highlight : widget.textPrimary,
+            color: expanded ? activeColor : widget.textPrimary,
             fontWeight: expanded ? FontWeight.w700 : FontWeight.w600,
             fontSize: 14,
           ),
         ),
         trailing: AnimatedRotation(
-          turns: expanded ? 0.5 : 0.0,
+          turns: expanded ? 0.25 : 0.0,
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           child: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: expanded
-                ? widget.highlight
-                : widget.textPrimary.withOpacity(0.5),
-            size: 20,
+            Icons.chevron_right_rounded,
+            color: widget.textPrimary.withOpacity(0.4),
+            size: 16,
           ),
         ),
-        children: widget.children,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(
+              left: widget.nested ? 20 : 18,
+              right: 4,
+              bottom: 4,
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 1.2,
+                    decoration: BoxDecoration(
+                      color: activeColor.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: widget.children,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2438,8 +2606,10 @@ class GlobalMobileSidebarDock extends StatelessWidget {
     required IconData icon,
     required String route,
     required String? currentRoute,
+    Color? accentColor,
   }) {
     final selected = currentRoute == route;
+    final activeColor = accentColor ?? Colors.white;
     return InkWell(
       onTap: () {
         final elapsed = DateTime.now().difference(
@@ -2454,31 +2624,35 @@ class GlobalMobileSidebarDock extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: selected ? Colors.white.withOpacity(0.12) : Colors.transparent,
+          color: selected ? activeColor.withOpacity(0.12) : Colors.transparent,
           border: Border.all(
             color: selected
-                ? Colors.white.withOpacity(0.32)
+                ? activeColor.withOpacity(0.24)
                 : Colors.transparent,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 19, color: Colors.white.withOpacity(0.9)),
+            Icon(
+              icon,
+              size: 19,
+              color: selected ? activeColor : Colors.white.withOpacity(0.9),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+                style: TextStyle(
+                  color: selected ? activeColor : Colors.white,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                   fontSize: 15,
                 ),
               ),
             ),
             Icon(
               Icons.chevron_right_rounded,
-              size: 20,
-              color: Colors.white.withOpacity(0.6),
+              size: 18,
+              color: selected ? activeColor.withOpacity(0.7) : Colors.white.withOpacity(0.6),
             ),
           ],
         ),
@@ -2500,8 +2674,11 @@ class GlobalMobileSidebarDock extends StatelessWidget {
     required List<String> routePrefixes,
     required List<Widget> children,
     bool nested = false,
+    Color? accentColor,
   }) {
     final expanded = _routeMatchesAnyPrefix(currentRoute, routePrefixes);
+    final activeColor = accentColor ?? Colors.white;
+
     return Container(
       margin: EdgeInsets.fromLTRB(nested ? 18 : 8, 4, 8, 4),
       decoration: BoxDecoration(
@@ -2521,18 +2698,41 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           initiallyExpanded: expanded,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
           childrenPadding: const EdgeInsets.only(bottom: 6),
-          leading: Icon(icon, size: 19, color: Colors.white.withOpacity(0.88)),
+          leading: nested
+              ? Icon(
+                  icon,
+                  size: 18,
+                  color: activeColor.withOpacity(expanded ? 1.0 : 0.6),
+                )
+              : Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: activeColor.withOpacity(expanded ? 0.22 : 0.10),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 15,
+                    color: activeColor,
+                  ),
+                ),
           title: Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
+            style: TextStyle(
+              color: expanded ? activeColor : Colors.white,
+              fontWeight: expanded ? FontWeight.w700 : FontWeight.w600,
               fontSize: 15,
             ),
           ),
-          trailing: Icon(
-            Icons.expand_more_rounded,
-            color: Colors.white.withOpacity(0.72),
+          trailing: AnimatedRotation(
+            turns: expanded ? 0.25 : 0.0,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withOpacity(0.5),
+              size: 18,
+            ),
           ),
           children: children,
         ),
@@ -2754,6 +2954,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.access_time_rounded,
           route: '/hr/fichaje',
           currentRoute: currentRoute,
+          accentColor: Colors.cyan,
         ),
         _menuRouteTile(
           dialogContext: dialogCtx,
@@ -2761,6 +2962,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.person_add_rounded,
           route: '/hr/alta_empleado',
           currentRoute: currentRoute,
+          accentColor: Colors.cyan,
         ),
         _menuRouteTile(
           dialogContext: dialogCtx,
@@ -2768,6 +2970,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.format_list_bulleted_rounded,
           route: '/hr/registro_fichaje',
           currentRoute: currentRoute,
+          accentColor: Colors.cyan,
         ),
         _menuRouteTile(
           dialogContext: dialogCtx,
@@ -2775,6 +2978,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.work_outline_rounded,
           route: '/hr/asignacion_trabajo',
           currentRoute: currentRoute,
+          accentColor: Colors.cyan,
         ),
         _menuRouteTile(
           dialogContext: dialogCtx,
@@ -2782,6 +2986,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.manage_accounts_rounded,
           route: '/hr/gestion_empleado',
           currentRoute: currentRoute,
+          accentColor: Colors.cyan,
         ),
       ],
     );
@@ -2803,6 +3008,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.list_alt_rounded,
           route: '/orderops/queue',
           currentRoute: currentRoute,
+          accentColor: Colors.blue,
         ),
         _menuRouteTile(
           dialogContext: dialogCtx,
@@ -2810,6 +3016,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.table_chart_rounded,
           route: '/orderops/cotizaciones',
           currentRoute: currentRoute,
+          accentColor: Colors.blue,
         ),
         _menuRouteTile(
           dialogContext: dialogCtx,
@@ -2817,6 +3024,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.assignment_rounded,
           route: '/orderops/proyectos',
           currentRoute: currentRoute,
+          accentColor: Colors.blue,
         ),
       ],
     );
@@ -2839,6 +3047,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.shopping_basket_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/amazon/'],
+          accentColor: Colors.orange,
           children: [
             _menuExpandableGroup(
               dialogContext: dialogCtx,
@@ -2852,6 +3061,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                 '/amazon/herramientas/',
               ],
               nested: true,
+              accentColor: Colors.orange,
               children: [
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2859,6 +3069,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.grade_rounded,
                   route: '/amazon/grading',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2866,6 +3077,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.sort_rounded,
                   route: '/amazon/sorting',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2873,6 +3085,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.search_rounded,
                   route: '/amazon/quality',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
                 _menuExpandableGroup(
                   dialogContext: dialogCtx,
@@ -2881,6 +3094,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   currentRoute: currentRoute,
                   routePrefixes: const ['/amazon/herramientas/'],
                   nested: true,
+                  accentColor: Colors.orange,
                   children: [
                     _menuRouteTile(
                       dialogContext: dialogCtx,
@@ -2888,6 +3102,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                       icon: Icons.close_rounded,
                       route: '/amazon/herramientas/closebox',
                       currentRoute: currentRoute,
+                      accentColor: Colors.orange,
                     ),
                     _menuRouteTile(
                       dialogContext: dialogCtx,
@@ -2895,6 +3110,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                       icon: Icons.find_in_page_rounded,
                       route: '/amazon/herramientas/findbox',
                       currentRoute: currentRoute,
+                      accentColor: Colors.orange,
                     ),
                     _menuRouteTile(
                       dialogContext: dialogCtx,
@@ -2902,6 +3118,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                       icon: Icons.search_rounded,
                       route: '/amazon/herramientas/finddsn',
                       currentRoute: currentRoute,
+                      accentColor: Colors.orange,
                     ),
                   ],
                 ),
@@ -2914,6 +3131,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               currentRoute: currentRoute,
               routePrefixes: const ['/amazon/proyectos'],
               nested: true,
+              accentColor: Colors.orange,
               children: [
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2921,6 +3139,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.dashboard_rounded,
                   route: '/amazon/proyectos',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
               ],
             ),
@@ -2931,6 +3150,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               currentRoute: currentRoute,
               routePrefixes: const ['/amazon/inventory'],
               nested: true,
+              accentColor: Colors.orange,
               children: [
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2938,6 +3158,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.app_registration_rounded,
                   route: '/amazon/inventory',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2945,6 +3166,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.shopping_cart_rounded,
                   route: '/amazon/inventory/picking',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2952,6 +3174,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.move_to_inbox_rounded,
                   route: '/amazon/inventory/receiving',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2959,6 +3182,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.check_circle_rounded,
                   route: '/amazon/inventory/icqa',
                   currentRoute: currentRoute,
+                  accentColor: Colors.orange,
                 ),
               ],
             ),
@@ -2970,6 +3194,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.group_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/igualdad/'],
+          accentColor: Colors.green,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -2977,6 +3202,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.dashboard_rounded,
               route: '/igualdad/dashboard',
               currentRoute: currentRoute,
+              accentColor: Colors.green,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -2984,6 +3210,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.login_rounded,
               route: '/igualdad/entrada',
               currentRoute: currentRoute,
+              accentColor: Colors.green,
             ),
             _menuExpandableGroup(
               dialogContext: dialogCtx,
@@ -2992,6 +3219,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               currentRoute: currentRoute,
               routePrefixes: const ['/igualdad/registro/'],
               nested: true,
+              accentColor: Colors.green,
               children: [
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -2999,6 +3227,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.smartphone_rounded,
                   route: '/igualdad/registro/smartphone',
                   currentRoute: currentRoute,
+                  accentColor: Colors.green,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -3006,6 +3235,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.watch_rounded,
                   route: '/igualdad/registro/pulsera',
                   currentRoute: currentRoute,
+                  accentColor: Colors.green,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -3013,6 +3243,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.battery_charging_full_rounded,
                   route: '/igualdad/registro/powerbank',
                   currentRoute: currentRoute,
+                  accentColor: Colors.green,
                 ),
                 _menuRouteTile(
                   dialogContext: dialogCtx,
@@ -3020,6 +3251,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
                   icon: Icons.radio_button_checked_rounded,
                   route: '/igualdad/registro/boton',
                   currentRoute: currentRoute,
+                  accentColor: Colors.green,
                 ),
               ],
             ),
@@ -3029,6 +3261,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.history_rounded,
               route: '/igualdad/historial',
               currentRoute: currentRoute,
+              accentColor: Colors.green,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3036,6 +3269,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.lock_outline_rounded,
               route: '/igualdad/cerrar',
               currentRoute: currentRoute,
+              accentColor: Colors.green,
             ),
           ],
         ),
@@ -3045,6 +3279,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.qr_code_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/serials/'],
+          accentColor: Colors.purple,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3052,6 +3287,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.change_circle_rounded,
               route: '/serials/cambio',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3059,6 +3295,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.fact_check_rounded,
               route: '/serials/verification',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3066,6 +3303,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.swap_horiz_rounded,
               route: '/serials/change',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3073,6 +3311,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.label_rounded,
               route: '/serials/labels',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3080,6 +3319,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.masks_rounded,
               route: '/serials/masks',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3087,6 +3327,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.inventory_2_rounded,
               route: '/serials/repository',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3094,6 +3335,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.history_edu_rounded,
               route: '/serials/serial-changes',
               currentRoute: currentRoute,
+              accentColor: Colors.purple,
             ),
           ],
         ),
@@ -3103,6 +3345,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.phone_android_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/xiaomi/'],
+          accentColor: Colors.deepOrange,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3110,6 +3353,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.app_registration_rounded,
               route: '/xiaomi/registro/unidades',
               currentRoute: currentRoute,
+              accentColor: Colors.deepOrange,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3117,6 +3361,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.check_circle_outline_rounded,
               route: '/xiaomi/cerrar_cesb',
               currentRoute: currentRoute,
+              accentColor: Colors.deepOrange,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3124,6 +3369,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.history_rounded,
               route: '/xiaomi/historial',
               currentRoute: currentRoute,
+              accentColor: Colors.deepOrange,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3131,6 +3377,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.bar_chart_rounded,
               route: '/xiaomi/estadisticas',
               currentRoute: currentRoute,
+              accentColor: Colors.deepOrange,
             ),
           ],
         ),
@@ -3141,6 +3388,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.dns_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/servers/'],
+          accentColor: Colors.cyan,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3148,6 +3396,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.preview_rounded,
               route: '/servers/previ',
               currentRoute: currentRoute,
+              accentColor: Colors.cyan,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3155,6 +3404,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.storage_rounded,
               route: '/servers/servidores',
               currentRoute: currentRoute,
+              accentColor: Colors.cyan,
             ),
           ],
         ),
@@ -3164,6 +3414,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.security_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/sentinel/'],
+          accentColor: Colors.teal,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3171,6 +3422,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.table_restaurant_rounded,
               route: '/sentinel/tables',
               currentRoute: currentRoute,
+              accentColor: Colors.teal,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3178,6 +3430,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.downloading_rounded,
               route: '/sentinel/active',
               currentRoute: currentRoute,
+              accentColor: Colors.teal,
             ),
           ],
         ),
@@ -3187,6 +3440,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.analytics_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/analisis/'],
+          accentColor: Colors.teal,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3194,6 +3448,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.dashboard_rounded,
               route: '/analisis/dashboard',
               currentRoute: currentRoute,
+              accentColor: Colors.teal,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3201,6 +3456,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.settings_suggest_rounded,
               route: '/analisis/management',
               currentRoute: currentRoute,
+              accentColor: Colors.teal,
             ),
           ],
         ),
@@ -3210,6 +3466,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           icon: Icons.tv_rounded,
           currentRoute: currentRoute,
           routePrefixes: const ['/tv/'],
+          accentColor: Colors.red,
           children: [
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3217,6 +3474,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.screenshot_monitor_rounded,
               route: '/tv/revision',
               currentRoute: currentRoute,
+              accentColor: Colors.red,
             ),
             _menuRouteTile(
               dialogContext: dialogCtx,
@@ -3224,6 +3482,7 @@ class GlobalMobileSidebarDock extends StatelessWidget {
               icon: Icons.history_rounded,
               route: '/tv/history',
               currentRoute: currentRoute,
+              accentColor: Colors.red,
             ),
           ],
         ),
