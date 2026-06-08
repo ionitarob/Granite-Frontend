@@ -2369,7 +2369,12 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
   void initState() {
     super.initState();
     _myId = ++EdgeNavHandle._nextId;
-    EdgeNavHandle._topId.value = _myId;
+    // Defer the notifier update to after the current build frame to avoid
+    // "setState called during build" when a ValueListenableBuilder is already
+    // being built with the old value.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) EdgeNavHandle._topId.value = _myId;
+    });
   }
 
   @override

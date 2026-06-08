@@ -276,4 +276,21 @@ class XiaomiProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<Map<String, dynamic>?> transferCesb(String cesb, int completedQty, int newTeamId) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/transfer_cesb/', jsonBody: {
+        'cesb': cesb,
+        'completed_qty': completedQty,
+        'new_team_id': newTeamId,
+      });
+      if (resp.ok && resp.body is Map) {
+        return Map<String, dynamic>.from(resp.body);
+      }
+      debugPrint('Error transferCesb: ${resp.body}');
+    } catch (e) {
+      debugPrint('Error transferCesb: $e');
+    }
+    return null;
+  }
 }
