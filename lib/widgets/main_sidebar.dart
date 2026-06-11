@@ -537,6 +537,11 @@ class _MainSidebarState extends State<MainSidebar> {
           icon: Icons.list_alt_rounded,
           route: '/orderops/queue',
         ),
+        (
+          label: 'OrderOps · Alertas Servicios',
+          icon: Icons.warning_amber_rounded,
+          route: '/orderops/alertas',
+        ),
         if (canAccessOrderOpsProyectos)
           (
             label: 'OrderOps · Proyectos',
@@ -779,6 +784,7 @@ class _MainSidebarState extends State<MainSidebar> {
     ];
     const orderOpsRoutes = [
       '/orderops/queue',
+      '/orderops/alertas',
       '/orderops/proyectos',
       '/orderops/cotizaciones',
     ];
@@ -825,6 +831,20 @@ class _MainSidebarState extends State<MainSidebar> {
                 onTap: () => _navigate(
                   context,
                   '/orderops/queue',
+                  closeOverlay: !permanent,
+                ),
+                highlight: highlight,
+                textPrimary: textPrimary,
+                isDark: isDark,
+                accentColor: Colors.blue,
+              ),
+              _SidebarTile(
+                label: 'Alertas Servicios',
+                icon: Icons.warning_amber_rounded,
+                selected: isRoute('/orderops/alertas'),
+                onTap: () => _navigate(
+                  context,
+                  '/orderops/alertas',
                   closeOverlay: !permanent,
                 ),
                 highlight: highlight,
@@ -2379,9 +2399,16 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
 
   @override
   void dispose() {
-    // When this instance is removed, if it was the top, step back
+    // Defer the notifier update — dispose() runs during finalizeTree where
+    // synchronous ValueNotifier updates can trigger "setState during build".
+    // Reset to 0 (not _myId-1) so surviving handles with non-contiguous IDs
+    // correctly become visible again (topId > _myId guard handles this).
     if (EdgeNavHandle._topId.value == _myId) {
-      EdgeNavHandle._topId.value = _myId - 1;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (EdgeNavHandle._topId.value == _myId) {
+          EdgeNavHandle._topId.value = 0;
+        }
+      });
     }
     super.dispose();
   }
@@ -2414,19 +2441,23 @@ class _EdgeNavHandleState extends State<EdgeNavHandle> {
     }
 
     final route = ModalRoute.of(context);
-    if (route != null && !route.isCurrent) {
+    // Only hide when the route is completely inactive (popped), not when a
+    // dialog/bottom-sheet is on top (isCurrent becomes false in that case too,
+    // which caused the arrow to disappear intermittently).
+    if (route != null && !route.isActive) {
       return const SizedBox.shrink();
     }
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Global singleton guard: only the most-recently mounted instance renders.
-    // All older stacked instances collapse to avoid showing multiple arrows.
+    // Singleton guard: hide if a more-recently mounted handle is still active.
+    // We compare _myId < topId (not !=) so that when the top handle disposes
+    // and resets topId to 0, older surviving handles become visible again.
     return ValueListenableBuilder<int>(
       valueListenable: EdgeNavHandle._topId,
       builder: (context, topId, _) {
-        if (_myId != topId) return const SizedBox.shrink();
+        if (topId > _myId) return const SizedBox.shrink();
         return _buildHandle(context, isDark);
       },
     );

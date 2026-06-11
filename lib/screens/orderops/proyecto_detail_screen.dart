@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
@@ -16,108 +15,6 @@ import '../../services/orderops_service.dart';
 import '../../widgets/main_sidebar.dart';
 import 'order_detail_screen.dart';
 import '../../config.dart';
-
-class _ManualOrderPromptResult {
-  const _ManualOrderPromptResult({
-    required this.unitsText,
-    required this.doubleEntry,
-  });
-
-  final String unitsText;
-  final bool doubleEntry;
-}
-
-class _ManualUnitsDialog extends StatefulWidget {
-  const _ManualUnitsDialog({required this.numOrden});
-
-  final String numOrden;
-
-  @override
-  State<_ManualUnitsDialog> createState() => _ManualUnitsDialogState();
-}
-
-class _ManualUnitsDialogState extends State<_ManualUnitsDialog> {
-  late final TextEditingController _ctrl;
-  bool _doubleEntry = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    Navigator.of(context).pop(
-      _ManualOrderPromptResult(
-        unitsText: _ctrl.text.trim(),
-        doubleEntry: _doubleEntry,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Orden no encontrada'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Introduce el número de unidades para la orden ${widget.numOrden}.',
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _ctrl,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Número de unidades'),
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onSubmitted: (_) => _submit(),
-          ),
-          const SizedBox(height: 12),
-          const Text('Tipo de registro'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: const Text('Unitario'),
-                selected: !_doubleEntry,
-                onSelected: (_) => setState(() => _doubleEntry = false),
-              ),
-              ChoiceChip(
-                label: const Text('Doble'),
-                selected: _doubleEntry,
-                onSelected: (_) => setState(() => _doubleEntry = true),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _doubleEntry
-                ? 'Captura Serial y Inventario/IMEI'
-                : 'Solo Serial (S/N)',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Confirmar')),
-      ],
-    );
-  }
-}
 
 class ProyectoDetailScreen extends StatefulWidget {
   final Proyecto proyecto;
@@ -174,6 +71,78 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
       );
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _renameProyecto(Proyecto p) async {
+    if (_service == null) return;
+    final ctrl = TextEditingController(text: p.nombre);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renombrar Proyecto'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Nombre',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Guardar')),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      try {
+        await _service!.updateProyecto(p.id, nombre: ctrl.text.trim());
+        await _refreshProyecto();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
+    }
+  }
+
+  Future<void> _toggleArchive(Proyecto p) async {
+    if (_service == null) return;
+    final isArchiving = p.status == 'Activo';
+    final newStatus = isArchiving ? 'Archivado' : 'Activo';
+    final label = isArchiving ? 'archivar' : 'restaurar';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isArchiving ? 'Archivar Proyecto' : 'Restaurar Proyecto'),
+        content: Text('¿Seguro que quieres $label "${p.nombre}"?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(isArchiving ? 'Archivar' : 'Restaurar')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      try {
+        await _service!.updateProyecto(p.id, status: newStatus);
+        await _refreshProyecto();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
     }
   }
 
@@ -332,28 +301,52 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                             builder: (context, constraints) {
                               final isNarrow = constraints.maxWidth < 760;
                               final isPhoneCard = constraints.maxWidth < 430;
+                              final isArchived = proyecto.status == 'Archivado';
+                              final statusColor = isArchived ? Colors.grey : Colors.green;
+
                               final infoColumn = Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Status chip
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: statusColor.withOpacity(0.13),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: statusColor.withOpacity(0.4), width: 1),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          proyecto.status,
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
                                   Text(
                                     proyecto.nombre,
                                     style: theme.textTheme.titleLarge?.copyWith(
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 0.2,
-                                      fontSize: isPhoneCard ? 34 : null,
                                     ),
-                                    maxLines: isPhoneCard ? 2 : 3,
+                                    maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 6),
                                   Text(
-                                    proyecto.description ?? 'Sin descripción',
+                                    proyecto.description?.isNotEmpty == true
+                                        ? proyecto.description!
+                                        : 'Sin descripción',
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.onSurface.withOpacity(0.78),
+                                      color: theme.colorScheme.onSurface.withOpacity(0.68),
                                       height: 1.35,
-                                      fontSize: isPhoneCard ? 13 : null,
                                     ),
-                                    maxLines: isPhoneCard ? 3 : 4,
+                                    maxLines: 4,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 12),
@@ -361,9 +354,9 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                                     spacing: 8,
                                     runSpacing: 6,
                                     children: [
-                                      _buildMetricPill(theme, Icons.receipt_long_rounded, 'pedidos', proyecto.orders?.length ?? 0, compact: isPhoneCard),
-                                      _buildMetricPill(theme, Icons.forum_outlined, 'comentarios', proyecto.observations?.length ?? 0, compact: isPhoneCard),
-                                      _buildMetricPill(theme, Icons.folder_open_rounded, 'archivos', proyecto.photos?.length ?? 0, compact: isPhoneCard),
+                                      _buildMetricPill(theme, Icons.receipt_long_rounded, 'pedidos', proyecto.effectiveOrderCount, compact: isPhoneCard),
+                                      _buildMetricPill(theme, Icons.forum_outlined, 'comentarios', proyecto.effectiveObsCount, compact: isPhoneCard),
+                                      _buildMetricPill(theme, Icons.folder_open_rounded, 'archivos', proyecto.effectiveFileCount, compact: isPhoneCard),
                                     ],
                                   ),
                                 ],
@@ -387,41 +380,14 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 10),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      OutlinedButton.icon(
-                                        onPressed: _refreshProyecto,
-                                        icon: const Icon(Icons.refresh, size: 18),
-                                        label: const Text('Refrescar'),
-                                        style: OutlinedButton.styleFrom(
-                                          visualDensity: isNarrow ? VisualDensity.compact : VisualDensity.standard,
-                                          side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.35)),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                        ),
-                                      ),
-                                      FilledButton.tonalIcon(
-                                        onPressed: _showAddCommentDialog,
-                                        icon: const Icon(Icons.add_comment, size: 18),
-                                        label: const Text('Comentario'),
-                                        style: FilledButton.styleFrom(
-                                          visualDensity: isNarrow ? VisualDensity.compact : VisualDensity.standard,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                        ),
-                                      ),
-                                      FilledButton.tonalIcon(
-                                        onPressed: _showSubfamiliesPicker,
-                                        icon: const Icon(Icons.category_outlined, size: 18),
-                                        label: const Text('Subfamilias'),
-                                        style: FilledButton.styleFrom(
-                                          visualDensity: isNarrow ? VisualDensity.compact : VisualDensity.standard,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                          backgroundColor: Colors.teal.withOpacity(0.2),
-                                          foregroundColor: Colors.teal,
-                                        ),
-                                      ),
-                                    ],
+                                  FilledButton.tonalIcon(
+                                    onPressed: _showAddCommentDialog,
+                                    icon: const Icon(Icons.add_comment_rounded, size: 18),
+                                    label: const Text('Comentario'),
+                                    style: FilledButton.styleFrom(
+                                      visualDensity: isNarrow ? VisualDensity.compact : VisualDensity.standard,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
                                   ),
                                 ],
                               );
@@ -456,52 +422,22 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                     // Orders section
                     _buildSectionShell(
                       theme,
-                      title: 'Pedidos',
+                      title: 'Pedidos (${proyecto.effectiveOrderCount})',
                       child: proyecto.orders == null || proyecto.orders!.isEmpty
                           ? const Padding(
                               padding: EdgeInsets.symmetric(vertical: 4),
                               child: Text('No hay pedidos asignados a este proyecto.'),
                             )
                           : Column(
-                              children: proyecto.orders!.map((order) {
-                                final compactOrderRow = MediaQuery.of(context).size.width < 760;
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    color: theme.colorScheme.surface.withOpacity(0.4),
-                                    border: Border.all(color: theme.colorScheme.outline.withOpacity(0.25)),
-                                  ),
-                                  child: ListTile(
-                                    dense: compactOrderRow,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: compactOrderRow ? 10 : 16,
-                                      vertical: compactOrderRow ? 2 : 4,
-                                    ),
-                                    leading: CircleAvatar(
-                                      backgroundColor: theme.colorScheme.primary.withOpacity(0.14),
-                                      child: Text(
-                                        order.idnbr.toString().substring(order.idnbr.toString().length - 2),
-                                        style: const TextStyle(fontWeight: FontWeight.w700),
-                                      ),
-                                    ),
-                                    title: Text('Orden #${order.idnbr}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                                    subtitle: compactOrderRow
-                                        ? Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(order.customer, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                              const SizedBox(height: 4),
-                                              Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: _StatusBadge(status: order.estado, isNative: true),
-                                              ),
-                                            ],
-                                          )
-                                        : Text(order.customer, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    trailing: compactOrderRow
-                                        ? const Icon(Icons.chevron_right_rounded)
-                                        : _StatusBadge(status: order.estado, isNative: true),
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Estado distribution bar
+                                _EstadoBar(orders: proyecto.orders!),
+                                const SizedBox(height: 12),
+                                ...proyecto.orders!.map((order) {
+                                  return _OrderRow(
+                                    order: order,
+                                    theme: theme,
                                     onTap: () async {
                                       final result = await Navigator.push(
                                         context,
@@ -509,13 +445,11 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                                           builder: (_) => OrderDetailScreen(orderId: order.idnbr),
                                         ),
                                       );
-                                      if (result == true) {
-                                        _refreshProyecto();
-                                      }
+                                      if (result == true) _refreshProyecto();
                                     },
-                                  ),
-                                );
-                              }).toList(),
+                                  );
+                                }),
+                              ],
                             ),
                     ),
 
@@ -536,20 +470,62 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        leading: isDesktop
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Volver',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Volver',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
-          if (isDesktop)
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            tooltip: 'Opciones del proyecto',
+            onSelected: (v) async {
+              final p = _detailedProyecto ?? widget.proyecto;
+              switch (v) {
+                case 'rename':
+                  await _renameProyecto(p);
+                case 'archive':
+                  await _toggleArchive(p);
+                case 'refresh':
+                  _refreshProyecto();
+              }
+            },
+            itemBuilder: (_) {
+              final p = _detailedProyecto ?? widget.proyecto;
+              final isArchived = p.status == 'Archivado';
+              return [
+                const PopupMenuItem(
+                  value: 'rename',
+                  child: Row(children: [
+                    Icon(Icons.edit_outlined, size: 18),
+                    SizedBox(width: 10),
+                    Text('Renombrar'),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'archive',
+                  child: Row(children: [
+                    Icon(
+                        isArchived
+                            ? Icons.unarchive_outlined
+                            : Icons.archive_outlined,
+                        size: 18),
+                    const SizedBox(width: 10),
+                    Text(isArchived ? 'Restaurar' : 'Archivar'),
+                  ]),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'refresh',
+                  child: Row(children: [
+                    Icon(Icons.refresh_rounded, size: 18),
+                    SizedBox(width: 10),
+                    Text('Recargar'),
+                  ]),
+                ),
+              ];
+            },
+          ),
         ],
       ),
       body: DropTarget(
@@ -629,129 +605,6 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
     }
   }
 
-  // Floating actions are exposed via the AppBar menu and section buttons now.
-
-  Widget _buildOrdersTab(Proyecto proyecto) {
-    final orders = proyecto.orders ?? [];
-    if (orders.isEmpty) {
-      return const Center(child: Text('No hay pedidos asignados a este proyecto.'));
-    }
-
-    return ListView.builder(
-      itemCount: orders.length,
-      padding: const EdgeInsets.all(8),
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        return Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.blue.withOpacity(0.1),
-              child: Text(order.idnbr.toString().characters.takeLast(2).toString()),
-            ),
-            title: Text('Orden #${order.idnbr}'),
-            subtitle: Text(order.customer),
-            trailing: _StatusBadge(status: order.estado ?? '', isNative: true),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => OrderDetailScreen(orderId: order.idnbr),
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildCommentsTab(Proyecto proyecto) {
-    final observations = proyecto.observations ?? [];
-    if (observations.isEmpty) {
-      return const Center(child: Text('No hay comentarios en este proyecto.'));
-    }
-
-    return ListView.separated(
-      itemCount: observations.length,
-      padding: const EdgeInsets.all(16),
-      separatorBuilder: (_, __) => const Divider(),
-      itemBuilder: (context, index) {
-        final obs = observations[index];
-        final dateStr = obs.createdAt != null 
-            ? DateFormat('dd/MM HH:mm').format(obs.createdAt!)
-            : '';
-        
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  obs.author ?? 'Usuario',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                const Spacer(),
-                Text(
-                  dateStr,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 11),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(obs.body),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildFilesTab(Proyecto proyecto) {
-    final photos = proyecto.photos ?? [];
-    if (photos.isEmpty) {
-      return const Center(child: Text('No hay archivos compartidos.'));
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: photos.length,
-      itemBuilder: (context, index) {
-        final photo = photos[index];
-        return InkWell(
-          onTap: () {
-            final isDoc = photo.filePath.toLowerCase().endsWith('.pdf') || photo.filePath.toLowerCase().endsWith('.doc');
-            if (isDoc) {
-              _openFile(photo.filePath);
-            } else {
-              _showPhotoPreview(photo.filePath);
-            }
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: photo.filePath.toLowerCase().endsWith('.pdf') || 
-                     photo.filePath.toLowerCase().endsWith('.doc')
-                  ? Center(child: Icon(Icons.insert_drive_file, size: 40, color: Colors.blue[700]))
-                  : Image.network(
-                      photo.filePath,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image)),
-                    ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _showAddCommentDialog() async {
     final controller = TextEditingController();
     final ok = await showDialog<bool>(
@@ -788,105 +641,6 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
           proyectoId: proyecto.id,
         );
         if (success) _refreshProyecto();
-      } finally {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _showSubfamiliesPicker() async {
-    if (_service == null) return;
-    final proyecto = _detailedProyecto ?? widget.proyecto;
-    final currentSubfam = List<String>.from(proyecto.subfamilies);
-
-    // Fetch catalog families
-    List<String> catalog = [];
-    try {
-      catalog = await _service!.getCatalogFamilies();
-      if (catalog.isEmpty) {
-        catalog = [
-          'SERIGRAFIADO',
-          'MANIPULACIÓN Y ETIQUETADO',
-          'ORDENADORES SERVIDOR',
-          'CAMBIO DE SERIAL',
-          'XIAOMI ETIQUETADO',
-        ];
-      }
-    } catch (e) {
-      debugPrint('Error fetching catalog families: $e');
-    }
-
-    if (!mounted) return;
-
-    final selected = await showDialog<List<String>>(
-      context: context,
-      builder: (ctx) {
-        final List<String> tempSelected = List.from(currentSubfam);
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              title: const Text('Gestionar Subfamilias'),
-              content: SizedBox(
-                width: 400,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('Selecciona las subfamilias para este proyecto:'),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: catalog.length,
-                        itemBuilder: (ctx, index) {
-                          final f = catalog[index];
-                          final isSel = tempSelected.contains(f);
-                          return CheckboxListTile(
-                            title: Text(f),
-                            value: isSel,
-                            onChanged: (val) {
-                              setDialogState(() {
-                                if (val == true) {
-                                  tempSelected.add(f);
-                                } else {
-                                  tempSelected.remove(f);
-                                }
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('CANCELAR'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, tempSelected),
-                  child: const Text('GUARDAR'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (selected != null) {
-      setState(() => _isLoading = true);
-      try {
-        final ok = await _service!.updateProyecto(
-          proyecto.id,
-          subfamilies: selected,
-        );
-        if (ok) _refreshProyecto();
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error guardando subfamilias: $e')),
-        );
       } finally {
         setState(() => _isLoading = false);
       }
@@ -1096,98 +850,155 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
   }
 
   Widget _buildObservationsPanel(ThemeData theme) {
-    final observations = (_detailedProyecto ?? widget.proyecto).observations ?? [];
+    final observations = List.of(
+      (_detailedProyecto ?? widget.proyecto).observations ?? [],
+    )..sort((a, b) => (a.createdAt ?? DateTime(0)).compareTo(b.createdAt ?? DateTime(0)));
 
     return _buildSectionShell(
       theme,
-      title: 'Comentarios',
+      title: 'Comentarios (${observations.length})',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 700;
-              final textField = TextField(
-                controller: _obsController,
-                decoration: InputDecoration(
-                  hintText: 'Añadir nueva observación...',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  filled: true,
-                  fillColor: theme.colorScheme.surface.withOpacity(0.45),
-                ),
-                maxLines: 2,
-              );
-
-              final addButton = FilledButton.icon(
-                onPressed: _addObservation,
-                icon: const Icon(Icons.add_comment, size: 18),
-                label: const Text('Añadir'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              );
-
-              if (isNarrow) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    textField,
-                    const SizedBox(height: 10),
-                    addButton,
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+          // ── Chat-style list ─────────────────────────────────────────────
+          if (observations.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
                 children: [
-                  Expanded(child: textField),
-                  const SizedBox(width: 12),
-                  addButton,
+                  Icon(Icons.chat_bubble_outline_rounded,
+                      size: 18,
+                      color: theme.colorScheme.onSurface.withOpacity(0.3)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Sin comentarios aún. Sé el primero.',
+                    style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                  ),
                 ],
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          observations.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4),
-                  child: Text('No hay comentarios en este proyecto.'),
-                )
-              : Column(
-                  children: observations.map((obs) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
+              ),
+            )
+          else
+            ...observations.map((obs) {
+              final author = obs.author?.isNotEmpty == true ? obs.author! : 'Usuario';
+              final initials = author
+                  .trim()
+                  .split(' ')
+                  .where((String w) => w.isNotEmpty)
+                  .take(2)
+                  .map((w) => w[0].toUpperCase())
+                  .join();
+              final dateStr = obs.createdAt != null
+                  ? DateFormat('dd/MM HH:mm').format(obs.createdAt!)
+                  : '';
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Avatar
+                    Container(
+                      width: 34,
+                      height: 34,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: theme.colorScheme.surface.withOpacity(0.4),
-                        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.28)),
+                        shape: BoxShape.circle,
+                        color: theme.colorScheme.primary.withOpacity(0.15),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(obs.author ?? 'Usuario', style: const TextStyle(fontWeight: FontWeight.w700)),
-                              const Spacer(),
-                              Text(
-                                obs.createdAt != null ? DateFormat('dd/MM HH:mm').format(obs.createdAt!) : '',
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.62),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
+                      alignment: Alignment.center,
+                      child: Text(
+                        initials,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Bubble
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(2),
+                            topRight: Radius.circular(12),
+                            bottomLeft: Radius.circular(12),
+                            bottomRight: Radius.circular(12),
                           ),
-                          const SizedBox(height: 8),
-                          Text(obs.body, style: theme.textTheme.bodyMedium?.copyWith(height: 1.3)),
-                        ],
+                          color: theme.colorScheme.surface.withOpacity(0.55),
+                          border: Border.all(
+                              color: theme.colorScheme.outline
+                                  .withOpacity(0.22)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(author,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13)),
+                                const Spacer(),
+                                Text(
+                                  dateStr,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Text(obs.body,
+                                style: theme.textTheme.bodyMedium
+                                    ?.copyWith(height: 1.35)),
+                          ],
+                        ),
                       ),
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 ),
+              );
+            }),
+          const SizedBox(height: 12),
+          // ── Compose row ─────────────────────────────────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _obsController,
+                  maxLines: 3,
+                  minLines: 1,
+                  decoration: InputDecoration(
+                    hintText: 'Escribe un comentario...',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor:
+                        theme.colorScheme.surface.withOpacity(0.45),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: _addObservation,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.all(14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Icon(Icons.send_rounded, size: 20),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1442,10 +1253,6 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
     );
   }
 
-  Future<void> _uploadFile() async {
-    await _uploadArchivo();
-  }
-
   Future<Uint8List> _downloadProjectFileBytes(AgentOrderPhoto file) async {
     final token = ApiService.instance?.client.accessToken;
     final normalizedPath = _resolveArchivoUrl(file.filePath);
@@ -1592,50 +1399,273 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
     }
   }
 
-  void _openFile(String url) {
-    // Simple URL open logic (could use url_launcher)
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Abriendo: $url')));
-  }
-
   void _showPhotoPreview(String filePath) {
     final imageUrl = _resolveArchivoUrl(filePath);
 
     showDialog(
       context: context,
-      builder: (ctx) {
-        return Dialog(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: MediaQuery.of(context).size.width * 0.8,
-                height: 480,
-                child: InteractiveViewer(
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 48)),
-                  ),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: MediaQuery.of(context).size.width * 0.85,
+              height: 500,
+              child: InteractiveViewer(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  headers: {
+                    if (ApiService.instance?.client.accessToken != null)
+                      'Authorization':
+                          'Bearer ${ApiService.instance!.client.accessToken}',
+                  },
+                  errorBuilder: (_, __, ___) =>
+                      const Center(child: Icon(Icons.broken_image, size: 48)),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(onPressed: () { Navigator.of(ctx).pop(); _openFile(imageUrl); }, child: const Text('Abrir')),
-                    const SizedBox(width: 8),
-                    TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cerrar')),
-                  ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Cerrar')),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Estado distribution bar ──────────────────────────────────────────────────
+
+class _EstadoBar extends StatelessWidget {
+  final List<AgentOrder> orders;
+  const _EstadoBar({required this.orders});
+
+  static String _labelFor(String k) {
+    switch (k) {
+      case '1': return 'Validada';
+      case '2': return 'Pendiente';
+      case '3': return 'En Ejecución';
+      case '4': return 'Parada';
+      case '5': return 'Finalizada';
+      case '6': return 'Facturada';
+      default:  return 'Estado $k';
+    }
+  }
+
+  static Color _colorFor(String k) {
+    switch (k) {
+      case '1': return Colors.blue;
+      case '2': return Colors.orange;
+      case '3': return Colors.cyan;
+      case '4': return Colors.red;
+      case '5': return Colors.green;
+      case '6': return Colors.purple;
+      default:  return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = <String, int>{};
+    for (final o in orders) {
+      final key = o.estado.replaceAll(RegExp(r'[^0-9]'), '');
+      final k = key.isNotEmpty ? key[0] : '?';
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    if (counts.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: counts.entries.map((e) {
+        final label = _labelFor(e.key);
+        final color = _colorFor(e.key);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.4), width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '$label · ${e.value}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
                 ),
               ),
             ],
           ),
         );
-      },
+      }).toList(),
     );
   }
 }
+
+// ── Order row ────────────────────────────────────────────────────────────────
+
+class _OrderRow extends StatelessWidget {
+  final AgentOrder order;
+  final ThemeData theme;
+  final VoidCallback onTap;
+  const _OrderRow({required this.order, required this.theme, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 760;
+    final assignee = order.assignedToName?.isNotEmpty == true
+        ? order.assignedToName!
+        : null;
+    final family = order.family?.isNotEmpty == true ? order.family! : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: theme.colorScheme.surface.withOpacity(0.4),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.22)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 14,
+            vertical: compact ? 8 : 10,
+          ),
+          child: Row(
+            children: [
+              // ID circle
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary.withOpacity(0.12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '#${order.idnbr % 100}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Main info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Orden #${order.idnbr}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        if (family != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.secondary.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              family,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.secondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      order.customer,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    if (assignee != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.person_outline_rounded, size: 12,
+                              color: theme.colorScheme.onSurface.withOpacity(0.45)),
+                          const SizedBox(width: 3),
+                          Text(
+                            assignee,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurface.withOpacity(0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Status + chevron
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _StatusBadge(status: order.estado, isNative: true),
+                  if (order.completedAt != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      DateFormat('dd/MM/yy').format(order.completedAt!),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded,
+                  size: 18,
+                  color: theme.colorScheme.onSurface.withOpacity(0.3)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Status badge ─────────────────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
   final String status;

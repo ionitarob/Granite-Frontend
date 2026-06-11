@@ -189,7 +189,7 @@ class AgentOrder {
           : (json['subfamilies'] is String
               ? (json['subfamilies'] as String)
                   .split(',')
-                  .where((s) => s.isNotEmpty)
+                  .where((String s) => s.isNotEmpty)
                   .toList()
               : const []),
       completedFamilies: json['completed_families'] is List
@@ -197,7 +197,7 @@ class AgentOrder {
           : (json['completed_families'] is String
               ? (json['completed_families'] as String)
                   .split(',')
-                  .where((s) => s.isNotEmpty)
+                  .where((String s) => s.isNotEmpty)
                   .toList()
               : const []),
       assignedTo: json['assigned_to'] as String?,
@@ -534,7 +534,12 @@ class Proyecto {
   final int id;
   final String nombre;
   final String? description;
+  final String status;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final int orderCount;
+  final int obsCount;
+  final int fileCount;
   final List<AgentOrder>? orders;
   final List<AgentOrderObservation>? observations;
   final List<AgentOrderPhoto>? photos;
@@ -544,21 +549,37 @@ class Proyecto {
     required this.id,
     required this.nombre,
     this.description,
+    this.status = 'Activo',
     this.createdAt,
+    this.updatedAt,
+    this.orderCount = 0,
+    this.obsCount = 0,
+    this.fileCount = 0,
     this.orders,
     this.observations,
     this.photos,
     this.subfamilies = const [],
   });
 
+  int get effectiveOrderCount => orders?.length ?? orderCount;
+  int get effectiveObsCount => observations?.length ?? obsCount;
+  int get effectiveFileCount => photos?.length ?? fileCount;
+
   factory Proyecto.fromJson(Map<String, dynamic> json) {
     return Proyecto(
       id: json['id'] as int? ?? 0,
       nombre: json['nombre'] as String? ?? '',
       description: json['description'] as String?,
+      status: json['status'] as String? ?? 'Activo',
       createdAt: json['created_at'] != null
-          ? DateTime.tryParse(json['created_at'])
+          ? DateTime.tryParse(json['created_at'].toString())
           : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString())
+          : null,
+      orderCount: json['order_count'] as int? ?? 0,
+      obsCount: json['obs_count'] as int? ?? 0,
+      fileCount: json['file_count'] as int? ?? 0,
       orders: json['orders'] is List
           ? List<dynamic>.from(json['orders']).map((e) => AgentOrder.fromJson(Map<String, dynamic>.from(e))).toList()
           : (json['agent_orders'] is List
@@ -575,7 +596,7 @@ class Proyecto {
           : (json['subfamilies'] is String
               ? (json['subfamilies'] as String)
                   .split(',')
-                  .where((s) => s.isNotEmpty)
+                  .where((String s) => s.isNotEmpty)
                   .toList()
               : const []),
     );
@@ -676,3 +697,59 @@ class AgentPrinter {
         'ip': ip,
       };
 }
+
+class AgentServiceAlert {
+  final int idnbr;
+  final String orderNbr;
+  final String customer;
+  final String sku;
+  final String description;
+  final double coste;
+  final double theoreticalPvd;
+  final double orderUnitPrice;
+  final String colorState; // 'red' | 'yellow' | 'green'
+  final String status;     // 'pending' | 'validated' | 'reported'
+  final String notes;
+  final DateTime? orderDate;
+
+  AgentServiceAlert({
+    required this.idnbr,
+    required this.orderNbr,
+    required this.customer,
+    required this.sku,
+    required this.description,
+    required this.coste,
+    required this.theoreticalPvd,
+    required this.orderUnitPrice,
+    required this.colorState,
+    required this.status,
+    required this.notes,
+    this.orderDate,
+  });
+
+  factory AgentServiceAlert.fromJson(Map<String, dynamic> json) {
+    double asDouble(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
+    }
+    return AgentServiceAlert(
+      idnbr: json['idnbr'] as int? ?? 0,
+      orderNbr: json['order_nbr'] as String? ?? '',
+      customer: json['customer'] as String? ?? '',
+      sku: json['sku'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      coste: asDouble(json['coste']),
+      theoreticalPvd: asDouble(json['theoretical_pvd']),
+      orderUnitPrice: asDouble(json['order_unit_price']),
+      colorState: json['color_state'] as String? ?? 'green',
+      status: json['status'] as String? ?? 'pending',
+      notes: json['notes'] as String? ?? '',
+      orderDate: json['order_date'] != null
+          ? DateTime.tryParse(json['order_date'])
+          : null,
+    );
+  }
+}
+

@@ -194,8 +194,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     if (!silent) setState(() => _loading = true);
 
     try {
-      // PERFORMANCE: Reduced polling limit from 100k to 2000 as recommended.
-      final allOrders = await _orderOpsService!.getAgentOrders(limit: 2000);
+      final allOrders = await _orderOpsService!.getAgentOrders(limit: 10000);
       final orders = allOrders.toList();
 
       // PERFORMANCE: Change detection. If no functional changes, skip heavy UI updates.
@@ -681,136 +680,176 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   }
 
   Widget _buildSearchBar(ThemeData theme) {
-    // Unique native estados to filter by (normalized to avoid duplicates/stale values)
-    final estados =
-        _orders
-            .map((e) => e.estado.trim())
-            .where((e) => e.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    final selectedEstadoValue =
-        (_selectedEstado != null && estados.contains(_selectedEstado))
-        ? _selectedEstado
-        : null;
-    final isMobile = MediaQuery.of(context).size.width < 800;
     final isDark = theme.brightness == Brightness.dark;
+    final presentStatuses = _orders
+        .map((e) => e.estado.trim())
+        .where((String s) => s.isNotEmpty)
+        .toSet();
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1200),
-        child: Flex(
-          direction: isMobile ? Axis.vertical : Axis.horizontal,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _searchController,
+          style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Buscar por orden, cliente o descripción...',
+            prefixIcon: Icon(
+              Icons.search,
+              size: 20,
+              color: theme.colorScheme.onSurface.withOpacity(0.45),
+            ),
+            hintStyle: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(isDark ? 0.4 : 0.45),
+            ),
+            filled: true,
+            fillColor: isDark
+                ? theme.colorScheme.surface.withOpacity(0.5)
+                : theme.colorScheme.surface.withOpacity(0.95),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: theme.dividerColor.withOpacity(0.12)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: theme.dividerColor.withOpacity(0.12)),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () {
+                      _searchController.clear();
+                      _applyFilters();
+                    },
+                  )
+                : null,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _filterChip(
+                label: 'Todas',
+                selected: _selectedEstado == null && !_filterByMe,
+                color: theme.colorScheme.primary,
+                isDark: isDark,
+                onTap: () {
+                  setState(() {
+                    _selectedEstado = null;
+                    _filterByMe = false;
+                  });
+                  _applyFilters();
+                },
+              ),
+              const SizedBox(width: 6),
+              ...['1', '2', '3', '4', '5', '6']
+                  .where((code) => presentStatuses.any((s) => s.contains(code)))
+                  .map((code) {
+                    final color = _statusColor(code);
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _filterChip(
+                        label: _statusLabel(code),
+                        dotColor: color,
+                        selected: _selectedEstado != null &&
+                            _selectedEstado!.contains(code),
+                        color: color,
+                        isDark: isDark,
+                        onTap: () {
+                          _selectedEstado =
+                              (_selectedEstado != null &&
+                                      _selectedEstado!.contains(code))
+                                  ? null
+                                  : code;
+                          _applyFilters();
+                        },
+                      ),
+                    );
+                  }),
+              Container(
+                width: 1,
+                height: 22,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: theme.dividerColor.withOpacity(0.35),
+              ),
+              _filterChip(
+                label: 'Mis órdenes',
+                selected: _filterByMe,
+                color: theme.colorScheme.secondary,
+                isDark: isDark,
+                onTap: () {
+                  _filterByMe = !_filterByMe;
+                  _applyFilters();
+                },
+              ),
+            ],
+          ),
+        ),
+        if (_filteredOrdersList.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '${_filteredOrdersList.length} orden${_filteredOrdersList.length == 1 ? '' : 'es'}',
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withOpacity(0.45),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _filterChip({
+    required String label,
+    required bool selected,
+    required Color color,
+    required bool isDark,
+    required VoidCallback onTap,
+    Color? dotColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withOpacity(isDark ? 0.18 : 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? color.withOpacity(0.55)
+                : Colors.grey.withOpacity(0.28),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              flex: isMobile ? 0 : 2,
-              child: TextField(
-                controller: _searchController,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: theme.colorScheme.onSurface,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Buscar por orden, cliente...',
-                  prefixIcon: Icon(
-                    Icons.search,
-                    size: 20,
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                  hintStyle: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(
-                      isDark ? 0.65 : 0.55,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: isDark
-                      ? theme.colorScheme.surface.withOpacity(0.5)
-                      : theme.colorScheme.surface.withOpacity(0.95),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: theme.dividerColor.withOpacity(
-                        isDark ? 0.1 : 0.35,
-                      ),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: theme.dividerColor.withOpacity(
-                        isDark ? 0.1 : 0.35,
-                      ),
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                ),
-                onChanged: (val) => setState(() {}),
-              ),
-            ),
-            if (isMobile)
-              const SizedBox(height: 12)
-            else
-              const SizedBox(width: 16),
-            Container(
-              width: isMobile ? double.infinity : null,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? theme.colorScheme.surface.withOpacity(0.5)
-                    : theme.colorScheme.surface.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.dividerColor.withOpacity(isDark ? 0.1 : 0.35),
+            if (dotColor != null) ...[
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? dotColor : dotColor.withOpacity(0.45),
                 ),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selectedEstadoValue,
-                  isExpanded: isMobile,
-                  hint: const Text('Estado (Todos)'),
-                  icon: const Icon(Icons.filter_list, size: 20),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('Todos los estados'),
-                    ),
-                    ...estados.map((e) {
-                      String label = e;
-                      if (e.contains('1'))
-                        label = 'Validada';
-                      else if (e.contains('2'))
-                        label = 'Pendiente';
-                      else if (e.contains('3'))
-                        label = 'En Ejecución';
-                      else if (e.contains('4'))
-                        label = 'Parada';
-                      else if (e.contains('5'))
-                        label = 'Finalizada';
-                      else if (e.contains('6'))
-                        label = 'Facturada';
-                      return DropdownMenuItem(
-                        value: e,
-                        child: Text(label.isEmpty ? 'Sin Estado' : label),
-                      );
-                    }),
-                  ],
-                  onChanged: (val) {
-                    _selectedEstado = val;
-                    _applyFilters();
-                  },
-                ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? color : Colors.grey,
               ),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: const Text('Mis órdenes'),
-              selected: _filterByMe,
-              onSelected: (val) {
-                _filterByMe = val;
-                _applyFilters();
-              },
-              selectedColor: theme.colorScheme.primaryContainer,
-              checkmarkColor: theme.colorScheme.primary,
             ),
           ],
         ),
@@ -818,81 +857,32 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     );
   }
 
-  // Helper to group orders by Month/Year
-  Map<String, List<AgentOrder>> _groupOrdersByMonth(List<AgentOrder> orders) {
-    final Map<String, List<AgentOrder>> groups = {};
-    for (var order in orders) {
-      final date = order.orderDate;
-      String key = 'Sin Fecha';
-      if (date != null) {
-        // "Enero 2026", "Febrero 2026", etc.
-        // Expecting intl is imported and initialized with 'es'
-        // But to be safe, we can default to English if checks fail,
-        // strictly speaking main.dart initializes 'es'.
-        // We'll use a direct formatting approach with First letter caps.
-        final month = DateFormat('MMMM', 'es').format(date);
-        final year = DateFormat('yyyy').format(date);
-        key = '${month[0].toUpperCase()}${month.substring(1)} $year';
-      }
-      if (!groups.containsKey(key)) {
-        groups[key] = [];
-      }
-      groups[key]!.add(order);
-    }
-    // Sort keys? Ideally we want newest months first.
-    // Since keys are strings, sorting is tricky.
-    // Better to use a sorted list of keys derived from dates if needed,
-    // but typically regular iteration might suffice if source list is sorted.
-    // If we assume source `orders` list is sorted by date descending (from API),
-    // then the insertion order into map is preserved in Dart.
-    return groups;
+  static String _statusLabel(String code) {
+    if (code.contains('1')) return 'Validada';
+    if (code.contains('2')) return 'Pendiente';
+    if (code.contains('3')) return 'En Ejecución';
+    if (code.contains('4')) return 'Parada';
+    if (code.contains('5')) return 'Finalizada';
+    if (code.contains('6')) return 'Facturada';
+    return code.isEmpty ? '' : code;
+  }
+
+  static Color _statusColor(String code) {
+    if (code.contains('1')) return Colors.blue;
+    if (code.contains('2')) return Colors.orange;
+    if (code.contains('3')) return Colors.cyan;
+    if (code.contains('4')) return Colors.red;
+    if (code.contains('5')) return Colors.green;
+    if (code.contains('6')) return Colors.purple;
+    return Colors.blueGrey;
   }
 
   String _formatOrderNbr(String nbr) {
-    // Standardize to xx-xxxxx-xx
-    // Remove any non-numeric characters for processing if we assume it's just numbers
-    // But since it might already have parts, let's keep it simple.
-    // If it's a 9-digit string like 101234567, map to 10-12345-67
     final clean = nbr.replaceAll(RegExp(r'[^0-9]'), '');
     if (clean.length == 9) {
       return '${clean.substring(0, 2)}-${clean.substring(2, 7)}-${clean.substring(7, 9)}';
     }
     return nbr;
-  }
-
-  List<AgentOrder> get _filteredOrders {
-    var list = _orders;
-    if (_selectedEstado != null) {
-      list = list.where((o) => o.estado == _selectedEstado).toList();
-    }
-    if (_filterByMe) {
-      final currentUser = Provider.of<ApiService>(
-        context,
-        listen: false,
-      ).currentUser;
-      if (currentUser != null) {
-        list = list
-            .where(
-              (o) =>
-                  o.assignedTo == currentUser.username ||
-                  o.assignedTo == currentUser.id.toString(),
-            )
-            .toList();
-      }
-    }
-    final query = _searchController.text.trim().toLowerCase();
-    if (query.isNotEmpty) {
-      final cleanQuery = query.replaceAll('-', '');
-      list = list.where((o) {
-        // PERFORMANCE: Using pre-calculated searchable strings to avoid per-item allocations.
-        final nbrMatch = o.searchableOrderNbr.contains(cleanQuery);
-        final customerMatch = o.searchableCustomer.contains(query);
-        final descMatch = o.searchableDesc.contains(query);
-
-        return nbrMatch || customerMatch || descMatch;
-      }).toList();
-    }
-    return list;
   }
 
   Widget _buildTable(ThemeData theme) {
@@ -945,7 +935,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
       );
     }
 
-    const double minWidth = 1300;
+    const double minWidth = 1330;
 
     return Card(
       elevation: 8,
@@ -996,7 +986,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                         _headerCell('Familia', 150),
                         _headerCell('Prioridad', 110),
                         _headerCell('Asignado', 150),
-                        _headerCell('Estado/Manual', 130),
+                        _headerCell('Estado', 160),
                       ],
                     ),
                   ),
@@ -1259,13 +1249,20 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
 
   Widget _buildOrderRow(AgentOrder order, ThemeData theme, bool isEven) {
     final isDark = theme.brightness == Brightness.dark;
+    final statusAccent = _statusColor(order.estado);
     return Material(
       color: isEven
           ? Colors.transparent
           : theme.colorScheme.surface.withOpacity(isDark ? 0.02 : 0.05),
       child: InkWell(
         onTap: () => _onOrderTap(order),
-        child: Container(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: statusAccent.withOpacity(0.55), width: 3),
+            ),
+          ),
+          child: SizedBox(
           height: 64,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1465,7 +1462,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
               ),
               // Estado/Manual
               SizedBox(
-                width: 130,
+                width: 160,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -1479,22 +1476,28 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                           ),
                         ),
                       ),
-                      if (order.family == null || order.family!.isEmpty)
+                      if (order.family == null || order.family!.isEmpty) ...[
+                        const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(
                             Icons.assignment_add,
                             size: 18,
                             color: Colors.amber,
                           ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          splashRadius: 20,
                           tooltip: 'Asignar Familia Manualmente',
                           onPressed: () => _showManualFamilyPicker(order),
                         ),
+                      ],
                     ],
                   ),
                 ),
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -1506,90 +1509,72 @@ class _StatusBadge extends StatelessWidget {
   final bool isNative;
   const _StatusBadge({required this.status, this.isNative = false});
 
+  static String _label(String s, bool isNative) {
+    if (isNative) {
+      if (s.contains('1')) return 'Validada';
+      if (s.contains('2')) return 'Pendiente';
+      if (s.contains('3')) return 'En Ejecución';
+      if (s.contains('4')) return 'Parada';
+      if (s.contains('5')) return 'Finalizada';
+      if (s.contains('6')) return 'Facturada';
+    }
+    return s.replaceAll('_', ' ');
+  }
+
+  static Color _color(String s, bool isNative) {
+    if (isNative) {
+      if (s.contains('1')) return Colors.blue;
+      if (s.contains('2')) return Colors.orange;
+      if (s.contains('3')) return Colors.cyan;
+      if (s.contains('4')) return Colors.red;
+      if (s.contains('5')) return Colors.green;
+      if (s.contains('6')) return Colors.purple;
+    }
+    switch (s.toLowerCase()) {
+      case 'new': return Colors.blue;
+      case 'triaged': return Colors.green;
+      case 'blocked': return Colors.red;
+      case 'needs_manual_triage': return Colors.orange;
+      case 'open': return Colors.blue;
+      case 'done': case 'completado': case 'closed': return Colors.green;
+      case 'cancelled': case 'cancelado': return Colors.red;
+      case 'hold': case 'en pausa': return Colors.orange;
+      default: return Colors.blueGrey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (status.isEmpty) return const SizedBox.shrink();
-
-    String statusLabel = status;
-    Color color;
-
-    if (isNative) {
-      // Map numeric status to labels if applicable
-      if (status.contains('1')) {
-        statusLabel = 'Validada';
-        color = Colors.blue;
-      } else if (status.contains('2')) {
-        statusLabel = 'Pendiente';
-        color = Colors.orange;
-      } else if (status.contains('3')) {
-        statusLabel = 'En Ejecución';
-        color = Colors.cyan;
-      } else if (status.contains('4')) {
-        statusLabel = 'Parada';
-        color = Colors.red;
-      } else if (status.contains('5')) {
-        statusLabel = 'Finalizada';
-        color = Colors.green;
-      } else if (status.contains('6')) {
-        statusLabel = 'Facturada';
-        color = Colors.purple;
-      } else {
-        switch (status.toLowerCase()) {
-          case 'abierto':
-          case 'open':
-            color = Colors.blue;
-            break;
-          case 'completado':
-          case 'closed':
-          case 'done':
-            color = Colors.green;
-            break;
-          case 'cancelado':
-          case 'cancelled':
-            color = Colors.red;
-            break;
-          case 'en pausa':
-          case 'hold':
-            color = Colors.orange;
-            break;
-          default:
-            color = Colors.blueGrey;
-        }
-      }
-    } else {
-      switch (status.toLowerCase()) {
-        case 'new':
-          color = Colors.blue;
-          break;
-        case 'triaged':
-          color = Colors.green;
-          break;
-        case 'blocked':
-          color = Colors.red;
-          break;
-        case 'needs_manual_triage':
-          color = Colors.orange;
-          break;
-        default:
-          color = Colors.blueGrey;
-      }
-    }
+    final color = _color(status, isNative);
+    final label = _label(status, isNative).toUpperCase();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.25)),
       ),
-      child: Text(
-        statusLabel.replaceAll('_', ' ').toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
       ),
     );
   }

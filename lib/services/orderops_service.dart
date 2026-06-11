@@ -43,11 +43,13 @@ class OrderOpsService {
     int id, {
     String? nombre,
     String? description,
+    String? status,
     List<String>? subfamilies,
   }) async {
     final body = <String, dynamic>{};
     if (nombre != null) body['nombre'] = nombre;
-    if (description != null) body['descripcion'] = description;
+    if (description != null) body['description'] = description;
+    if (status != null) body['status'] = status;
     if (subfamilies != null) body['subfamilies'] = subfamilies.join(',');
 
     final result = await _client.patch(
@@ -203,6 +205,7 @@ class OrderOpsService {
     int idnbr, {
     String? department,
     String? estado,
+    bool? forceEstado,
     String? reason,
     bool? markCompleted,
     String? completionSummary,
@@ -218,6 +221,7 @@ class OrderOpsService {
     final body = <String, dynamic>{};
     if (department != null) body['department'] = department;
     if (estado != null) body['estado'] = estado;
+    if (forceEstado == true) body['force_estado'] = true;
     if (reason != null) body['reason'] = reason;
     if (markCompleted != null) body['mark_completed'] = markCompleted;
     if (family != null) body['family'] = family;
@@ -852,5 +856,25 @@ class OrderOpsService {
         'pdf_base64': base64Pdf,
       },
     );
+  }
+
+  Future<List<AgentServiceAlert>> getServiceAlerts() async {
+    final result = await _client.get('/orderops/service-alerts');
+    if (!result.ok) throw Exception('Failed to load service alerts');
+    final List<dynamic> data = result.body['results'] ?? [];
+    return data.map((e) => AgentServiceAlert.fromJson(e)).toList();
+  }
+
+  Future<bool> updateServiceAlert(int idnbr, String sku, String status, String notes) async {
+    final result = await _client.post(
+      '/orderops/service-alerts/update',
+      jsonBody: {
+        'idnbr': idnbr,
+        'sku': sku,
+        'status': status,
+        'notes': notes,
+      },
+    );
+    return result.ok;
   }
 }

@@ -71,6 +71,7 @@ import 'screens/orderops/agent_memory_screen.dart';
 import 'screens/orderops/cotizaciones_management_screen.dart';
 import 'screens/orderops/proyectos_management_screen.dart';
 import 'screens/orderops/serigrafia_repository_screen.dart';
+import 'screens/orderops/order_alerts_screen.dart';
 import 'screens/tv/tv_revision_screen.dart';
 import 'screens/tv/tv_history_screen.dart';
 import 'widgets/main_sidebar.dart';
@@ -282,6 +283,7 @@ class MainApp extends StatelessWidget {
                 },
                 // OrderOps AI
                 '/orderops/queue': (_) => const OrderQueueScreen(),
+                '/orderops/alertas': (_) => const OrderAlertsScreen(),
                 '/orderops/work-items': (_) => const WorkItemsScreen(),
                 '/orderops/activity': (_) => const AgentActivityScreen(),
                 '/orderops/memory': (_) => const AgentMemoryScreen(),

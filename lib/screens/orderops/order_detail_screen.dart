@@ -61,6 +61,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   List<AgentOrderObservation> _observations = [];
   List<AgentOrderPhoto> _photos = [];
   List<AgentOrderService> _services = [];
+  List<AgentServiceAlert> _orderAlerts = [];
   final Map<int, Uint8List> _pdfPreviewCache = {};
 
   bool _loading = true;
@@ -263,11 +264,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         _orderOpsService!.getObservations(widget.orderId),
         _orderOpsService!.getPhotos(widget.orderId),
         _orderOpsService!.getServices(widget.orderId),
+        _orderOpsService!.getServiceAlerts(),
       ]);
 
       var observations = futures[0] as List<AgentOrderObservation>;
       var photos = futures[1] as List<AgentOrderPhoto>;
       final services = futures[2] as List<AgentOrderService>;
+      final allAlerts = futures[3] as List<AgentServiceAlert>;
+      final orderAlerts = allAlerts.where((a) => a.idnbr == widget.orderId).toList();
 
       int? proyectoId;
       String? proyectoName;
@@ -302,6 +306,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _observations = observations;
           _photos = photos;
           _services = services;
+          _orderAlerts = orderAlerts;
           _loading = false;
           _error = null;
         });
@@ -483,9 +488,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       child: Scaffold(
         extendBodyBehindAppBar: true,
         appBar: AppBar(
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              if (_detail != null) ...[
+                const SizedBox(width: 10),
+                _buildAppBarStatusChip(_detail!.agentOrder.estado),
+              ],
+            ],
           ),
           centerTitle: true,
           backgroundColor: Colors.transparent,
@@ -751,8 +762,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final sourceOrder = _detail!.sourceOrder;
     final lines = (sourceOrder?['lines'] as List<dynamic>?) ?? const [];
     const topCardHeight = 244.0;
-    final estadoMeta = _mapEstado(order.estado);
-    final prioridadMeta = _mapPrioridad(order.prioridad);
+    final estadoLabel = _labelEstado(order.estado);
+    final estadoColor = _colorEstado(order.estado);
+    final prioLabel = _labelPrioridad(order.prioridad);
+    final prioColor = _colorPrioridad(order.prioridad);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -780,76 +793,40 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               child: _buildSummaryCard(
                 theme,
                 'Informacion de la Orden',
-                Stack(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Positioned.fill(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildInfoItem(
-                              'Cliente',
-                              order.customer,
-                              maxLines: 1,
-                            ),
-                            const SizedBox(height: 4),
-                            _buildInfoItem(
-                              'Orden',
-                              order.orderNbr,
-                              maxLines: 1,
-                            ),
-                            const SizedBox(height: 4),
-                            _buildInfoItem(
-                              'Fecha',
-                              order.orderDate != null
-                                  ? DateFormat(
-                                      'yyyy-MM-dd',
-                                    ).format(order.orderDate!)
-                                  : '-',
-                              maxLines: 1,
-                            ),
-                          ],
-                        ),
-                      ),
+                    _buildInfoItem('Cliente', order.customer, maxLines: 1),
+                    const SizedBox(height: 4),
+                    _buildInfoItem('Orden', order.orderNbr, maxLines: 1),
+                    const SizedBox(height: 4),
+                    _buildInfoItem(
+                      'Fecha',
+                      order.orderDate != null
+                          ? DateFormat('yyyy-MM-dd').format(order.orderDate!)
+                          : '-',
+                      maxLines: 1,
                     ),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildMiniBadge(
-                            'Estado: ${estadoMeta.$1}',
-                            estadoMeta.$2,
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _buildMiniBadge('Estado: $estadoLabel', estadoColor),
+                        _buildMiniBadge('Prioridad: $prioLabel', prioColor),
+                        GestureDetector(
+                          onTap: _canEditProyectoOrFamily
+                              ? () => _showFamilyPicker(order.family ?? '')
+                              : null,
+                          child: _buildMiniBadge(
+                            'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
+                            order.family?.trim().isEmpty ?? true
+                                ? Colors.redAccent
+                                : Colors.tealAccent,
                           ),
-                          const SizedBox(height: 6),
-                          _buildMiniBadge(
-                            'Prioridad: ${prioridadMeta.$1}',
-                            prioridadMeta.$2,
-                          ),
-                          const SizedBox(height: 6),
-                          _canEditProyectoOrFamily
-                              ? GestureDetector(
-                                  onTap: () =>
-                                      _showFamilyPicker(order.family ?? ''),
-                                  child: _buildMiniBadge(
-                                    'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
-                                    order.family?.trim().isEmpty ?? true
-                                        ? Colors.redAccent
-                                        : Colors.tealAccent,
-                                  ),
-                                )
-                              : _buildMiniBadge(
-                                  'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
-                                  order.family?.trim().isEmpty ?? true
-                                      ? Colors.redAccent
-                                      : Colors.tealAccent,
-                                ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -979,32 +956,43 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     double? height,
     Widget? headerTrailing,
   }) {
+    final borderColor = selected
+        ? theme.colorScheme.primary.withValues(alpha: 0.85)
+        : theme.brightness == Brightness.dark
+            ? Colors.white.withValues(alpha: 0.1)
+            : theme.colorScheme.outline.withValues(alpha: 0.2);
+
     final content = Container(
       height: height,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: selected
-            ? theme.colorScheme.primary.withOpacity(0.12)
+            ? theme.colorScheme.primary.withValues(alpha: 0.1)
             : theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary.withOpacity(0.9)
-              : Colors.white10,
-          width: selected ? 1.4 : 1,
-        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: selected ? 1.5 : 1),
+        boxShadow: selected
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: height != null ? MainAxisSize.max : MainAxisSize.min,
         children: [
           Row(
             children: [
               Expanded(
-                child: SelectableText(
+                child: Text(
                   title,
-                  style: const TextStyle(
+                  style: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    letterSpacing: 0.1,
                   ),
                 ),
               ),
@@ -1014,41 +1002,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ],
               if (count != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.18),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: theme.colorScheme.primary.withOpacity(0.7),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.6),
                     ),
                   ),
                   child: Text(
                     '$count',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 10),
-          Expanded(child: body),
+          if (height != null) Expanded(child: body) else body,
         ],
       ),
     );
 
-    if (onTap == null) {
-      return content;
-    }
+    if (onTap == null) return content;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         focusNode: FocusNode(canRequestFocus: false),
         child: content,
@@ -1056,30 +1036,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  (String, Color) _mapEstado(String rawEstado) {
-    if (rawEstado.isEmpty) return ('Desconocido', Colors.grey);
-    var text = rawEstado;
-    Color color = Colors.grey;
-    if (text.contains('1')) {
-      text = 'Validada';
-      color = Colors.blue;
-    } else if (text.contains('2')) {
-      text = 'Pendiente';
-      color = Colors.orange;
-    } else if (text.contains('3')) {
-      text = 'En Ejecucion';
-      color = Colors.cyan;
-    } else if (text.contains('4')) {
-      text = 'Parada';
-      color = Colors.red;
-    } else if (text.contains('5')) {
-      text = 'Finalizada';
-      color = Colors.green;
-    } else if (text.contains('6')) {
-      text = 'Facturada';
-      color = Colors.purple;
-    }
-    return (text, color);
+  static String _labelEstado(String raw) {
+    if (raw.isEmpty) return 'Desconocido';
+    if (raw.contains('1')) return 'Validada';
+    if (raw.contains('2')) return 'Pendiente';
+    if (raw.contains('3')) return 'En Ejecución';
+    if (raw.contains('4')) return 'Parada';
+    if (raw.contains('5')) return 'Finalizada';
+    if (raw.contains('6')) return 'Facturada';
+    return raw;
+  }
+
+  static Color _colorEstado(String raw) {
+    if (raw.contains('1')) return Colors.blue;
+    if (raw.contains('2')) return Colors.orange;
+    if (raw.contains('3')) return Colors.cyan;
+    if (raw.contains('4')) return Colors.red;
+    if (raw.contains('5')) return Colors.green;
+    if (raw.contains('6')) return Colors.purple;
+    return Colors.grey;
   }
 
   String _formatOrderNbr(String nbr) {
@@ -1107,21 +1082,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return t;
   }
 
-  (String, Color) _mapPrioridad(String rawPrioridad) {
-    if (rawPrioridad.isEmpty) return ('Baja', Colors.grey);
-    var text = rawPrioridad;
-    Color color = Colors.grey;
-    if (text.contains('1')) {
-      text = 'Alta';
-      color = Colors.redAccent;
-    } else if (text.contains('2')) {
-      text = 'Media';
-      color = Colors.orangeAccent;
-    } else if (text.contains('3')) {
-      text = 'Baja';
-      color = Colors.greenAccent;
-    }
-    return (text, color);
+  static String _labelPrioridad(String raw) {
+    if (raw.contains('1')) return 'Alta';
+    if (raw.contains('2')) return 'Media';
+    if (raw.contains('3')) return 'Baja';
+    return raw.isEmpty ? 'Baja' : raw;
+  }
+
+  static Color _colorPrioridad(String raw) {
+    if (raw.contains('1')) return Colors.redAccent;
+    if (raw.contains('2')) return Colors.orangeAccent;
+    if (raw.contains('3')) return Colors.greenAccent;
+    return Colors.grey;
   }
 
   bool _isSerigrafiadoFamily() {
@@ -1145,9 +1117,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.16),
+        color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.7)),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
       ),
       child: Text(
         value,
@@ -1156,6 +1128,39 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+
+  Widget _buildAppBarStatusChip(String estado) {
+    final color = _colorEstado(estado);
+    final label = _labelEstado(estado);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1660,13 +1665,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       height: height,
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _cardBorder(theme)),
         boxShadow: [
           BoxShadow(
             color: _cardShadow(theme),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1675,20 +1680,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: _cardHeaderFill(theme),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(12),
-              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
                     ),
                   ),
                 ),
@@ -1732,254 +1736,254 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Color _panelItemFill(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
     return isDark
-        ? Colors.white.withOpacity(0.03)
-        : theme.colorScheme.primary.withOpacity(0.05);
+        ? Colors.white.withValues(alpha: 0.03)
+        : theme.colorScheme.primary.withValues(alpha: 0.05);
   }
 
   Color _panelItemBorder(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
     return isDark
-        ? Colors.white24
-        : theme.colorScheme.outline.withOpacity(0.35);
+        ? Colors.white.withValues(alpha: 0.24)
+        : theme.colorScheme.outline.withValues(alpha: 0.3);
   }
 
   Color _cardHeaderFill(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
     return isDark
-        ? Colors.black26
-        : theme.colorScheme.primary.withOpacity(0.08);
+        ? Colors.white.withValues(alpha: 0.04)
+        : theme.colorScheme.primary.withValues(alpha: 0.06);
   }
 
   Color _cardBorder(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
     return isDark
-        ? Colors.white12
-        : theme.colorScheme.outline.withOpacity(0.32);
+        ? Colors.white.withValues(alpha: 0.1)
+        : theme.colorScheme.outline.withValues(alpha: 0.22);
   }
 
   Color _cardShadow(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    return isDark ? Colors.black26 : Colors.black12;
+    return isDark
+        ? Colors.black.withValues(alpha: 0.3)
+        : Colors.black.withValues(alpha: 0.06);
   }
 
   Widget _buildHeaderCard(ThemeData theme) {
     final order = _detail!.agentOrder;
     final isTablet = _isTabletWidth(context);
 
-    // Map Estado to User Logic
-    // 1=Validada,2=Pendiente,3=En Ejecución,4=Parada,5=Finalizada,6=Facturada
-    String estadoText = order.estado;
-    Color estadoColor = Colors.grey;
-    if (estadoText.contains('1')) {
-      estadoText = 'Validada';
-      estadoColor = Colors.blue;
-    } else if (estadoText.contains('2')) {
-      estadoText = 'Pendiente';
-      estadoColor = Colors.orange;
-    } else if (estadoText.contains('3')) {
-      estadoText = 'En Ejecución';
-      estadoColor = Colors.cyan;
-    } else if (estadoText.contains('4')) {
-      estadoText = 'Parada';
-      estadoColor = Colors.red;
-    } else if (estadoText.contains('5')) {
-      estadoText = 'Finalizada';
-      estadoColor = Colors.green;
-    } else if (estadoText.contains('6')) {
-      estadoText = 'Facturada';
-      estadoColor = Colors.purple;
-    }
-
-    // Map Prioridad to User Logic
-    // 1=Alta, 2=Media, 3=Baja
-    String prioText = order.prioridad;
-    Color prioColor = Colors.grey;
-    if (prioText.contains('1')) {
-      prioText = 'Alta';
-      prioColor = Colors.redAccent;
-    } else if (prioText.contains('2')) {
-      prioText = 'Media';
-      prioColor = Colors.orangeAccent;
-    } else if (prioText.contains('3')) {
-      prioText = 'Baja';
-      prioColor = Colors.greenAccent;
-    }
+    final estadoText = _labelEstado(order.estado);
+    final estadoColor = _colorEstado(order.estado);
+    final prioText = _labelPrioridad(order.prioridad);
+    final prioColor = _colorPrioridad(order.prioridad);
 
     final isValidada = order.estado.contains('1');
     final isPendiente = order.estado.contains('2');
+    final isEnEjecucion = order.estado.contains('3');
+    final isParada = order.estado.contains('4');
 
     final currentFamily = _sessionActiveFamily ?? order.family;
-    // Multi-service visibility fix: show all assigned families if available
-    final familyText = order.subfamilies.isNotEmpty 
-        ? order.subfamiliesDisplay 
+    final familyText = order.subfamilies.isNotEmpty
+        ? order.subfamiliesDisplay
         : ((currentFamily?.trim().isEmpty ?? true) ? 'SIN ASIGNAR' : currentFamily!);
-          
     final subCount = order.subfamilies.length;
-    final familyLabel = subCount > 1 
-        ? 'Servicios ($subCount)' 
-        : 'Familia';
-
+    final familyLabel = subCount > 1 ? 'Servicios ($subCount)' : 'Familia';
     final doneCount = order.completedFamilies.length;
     final progressText = subCount > 1 ? ' ($doneCount/$subCount)' : '';
 
     return _buildCard(
       theme: theme,
       title: 'Información de la Orden',
-      actions: [
-        if (isValidada)
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.icon(
-              onPressed: () => _updateStatus('2', allowWorkflowAction: true),
-              icon: const Icon(Icons.assignment_turned_in),
-              label: const Text('Recepcionar'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.start,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: isTablet ? 20 : 16,
+            runSpacing: isTablet ? 12 : 12,
+            children: [
+              _buildInfoItem('Cliente', order.customer),
+              _buildInfoItem(
+                'Fecha',
+                order.orderDate != null
+                    ? DateFormat('yyyy-MM-dd').format(order.orderDate!)
+                    : '-',
               ),
-            ),
-          ),
-        if (isPendiente)
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.icon(
-              onPressed: () => _updateStatus('3', allowWorkflowAction: true),
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Comenzar Orden'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.tealAccent,
-                foregroundColor: Colors.black,
+              _buildBadgeItem(
+                'Estado',
+                estadoText,
+                estadoColor,
+                onTap: _canEditOrderMeta
+                    ? () => _showStatusPicker(order.estado)
+                    : null,
               ),
-            ),
-          ),
-        if (order.estado.contains('3') || order.estado.contains('4'))
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.icon(
-              onPressed: () => _updateStatus('5'),
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('Finalizar Orden'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.greenAccent,
-                foregroundColor: Colors.black,
+              _buildBadgeItem('Prioridad', prioText, prioColor),
+              _buildBadgeItem(
+                'Proyecto',
+                (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
+                    ? (_activeProyectoName ?? order.proyecto)!
+                    : 'SIN PROYECTO',
+                (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
+                    ? Colors.indigoAccent
+                    : Colors.grey,
+                onTap: _canEditProyectoOrFamily
+                    ? () => _showProyectoPicker(order.proyecto ?? '')
+                    : null,
               ),
-            ),
-          ),
-        if (order.estado.contains('3'))
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.icon(
-              onPressed: () => _updateStatus('4'),
-              icon: const Icon(Icons.pause),
-              label: const Text('Parar Orden'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                foregroundColor: Colors.white,
+              _buildBadgeItem(
+                familyLabel,
+                familyText + progressText,
+                Colors.orange,
+                onTap: _canEditProyectoOrFamily
+                    ? () => _showFamilyPicker(order.family ?? '')
+                    : null,
               ),
-            ),
-          ),
-        if (order.estado.contains('5') &&
-            (order.family ?? '').trim().toUpperCase() == 'CAMBIO DE SERIAL' &&
-            !_hasXlsxAttached())
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.icon(
-              onPressed: () async {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Adjuntando Excel...')),
-                );
-                try {
-                  await _exportFinalSerialFileToSftpAndAttachArchivo();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Archivo adjuntado correctamente'),
+              if (subCount > 1 && isEnEjecucion)
+                _buildBadgeItem(
+                  'Enfoque',
+                  'Cambiar de Servicio',
+                  Colors.tealAccent,
+                  onTap: () async {
+                    final choice = await showDialog<String>(
+                      context: context,
+                      builder: (context) => FamilySelectionDialog(
+                        families: order.subfamilies
+                            .where((f) => !order.completedFamilies.contains(f))
+                            .toList(),
+                        title: 'Cambiar Enfoque de Sesión',
+                        currentFamily: _sessionActiveFamily,
                       ),
                     );
-                    await _loadData();
-                  }
-                } catch (e) {
-                  if (mounted)
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error adjuntando XLSX: $e')),
-                    );
-                }
-              },
-              icon: const Icon(Icons.attach_file),
-              label: const Text('Adjuntar XLSX'),
-            ),
+                    if (choice != null && mounted) {
+                      setState(() => _sessionActiveFamily = choice);
+                    }
+                  },
+                ),
+              _buildBadgeItem(
+                'Asignado',
+                order.assignedToName ?? order.assignedTo ?? 'SIN ASIGNAR',
+                order.assignedTo != null ? Colors.orange : Colors.grey,
+                onTap: _isPrivilegedRole
+                    ? () => _showAssigneePicker(order.assignedTo)
+                    : null,
+              ),
+            ],
           ),
-      ],
-      child: Wrap(
-        alignment: WrapAlignment.start,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: isTablet ? 20 : 16,
-        runSpacing: isTablet ? 12 : 12,
+          _buildWorkflowActions(order, isValidada, isPendiente, isEnEjecucion, isParada),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkflowActions(
+    AgentOrder order,
+    bool isValidada,
+    bool isPendiente,
+    bool isEnEjecucion,
+    bool isParada,
+  ) {
+    final xlsxNeeded = order.estado.contains('5') &&
+        (order.family ?? '').trim().toUpperCase() == 'CAMBIO DE SERIAL' &&
+        !_hasXlsxAttached();
+
+    final anyAction = isValidada || isPendiente || isEnEjecucion || isParada || xlsxNeeded;
+    if (!anyAction) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoItem('Cliente', order.customer),
-          _buildInfoItem(
-            'Fecha',
-            order.orderDate != null
-                ? DateFormat('yyyy-MM-dd').format(order.orderDate!)
-                : '-',
-          ),
-          _buildBadgeItem(
-            'Estado',
-            estadoText,
-            estadoColor,
-            onTap: _canEditOrderMeta
-                ? () => _showStatusPicker(order.estado)
-                : null,
-          ),
-          _buildBadgeItem('Prioridad', prioText, prioColor),
-          _buildBadgeItem(
-            'Proyecto',
-            (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
-                ? (_activeProyectoName ?? order.proyecto)!
-                : 'SIN PROYECTO',
-            (_activeProyectoName ?? order.proyecto)?.trim().isNotEmpty == true
-                ? Colors.indigoAccent
-                : Colors.grey,
-            onTap: _canEditProyectoOrFamily
-                ? () => _showProyectoPicker(order.proyecto ?? '')
-                : null,
-          ),
-          _buildBadgeItem(
-            familyLabel,
-            familyText + progressText,
-            Colors.orange,
-            onTap: _canEditProyectoOrFamily
-                ? () => _showFamilyPicker(order.family ?? '')
-                : null,
-          ),
-          if (subCount > 1 && order.estado.contains('3'))
-            _buildBadgeItem(
-              'Enfoque',
-              'Cambiar de Servicio',
-              Colors.tealAccent,
-              onTap: () async {
-                final choice = await showDialog<String>(
-                  context: context,
-                  builder: (context) => FamilySelectionDialog(
-                    families: order.subfamilies.where((f) => !order.completedFamilies.contains(f)).toList(),
-                    title: 'Cambiar Enfoque de Sesión',
-                    currentFamily: _sessionActiveFamily,
+          Divider(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (isValidada)
+                FilledButton.icon(
+                  onPressed: () => _updateStatus('2', allowWorkflowAction: true),
+                  icon: const Icon(Icons.assignment_turned_in, size: 18),
+                  label: const Text('Recepcionar'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
-                );
-                if (choice != null && mounted) {
-                  setState(() => _sessionActiveFamily = choice);
-                }
-              },
-            ),
-          _buildBadgeItem(
-            'Asignado',
-            order.assignedToName ?? order.assignedTo ?? 'SIN ASIGNAR',
-            order.assignedTo != null ? Colors.orange : Colors.grey,
-            onTap: _isPrivilegedRole
-                ? () => _showAssigneePicker(order.assignedTo)
-                : null,
+                ),
+              if (isPendiente)
+                FilledButton.icon(
+                  onPressed: () => _updateStatus('3', allowWorkflowAction: true),
+                  icon: const Icon(Icons.play_arrow, size: 18),
+                  label: const Text('Comenzar'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.tealAccent,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              if (isParada)
+                FilledButton.icon(
+                  onPressed: () => _updateStatus('3', allowWorkflowAction: true),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Reanudar'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.cyan,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              if (isEnEjecucion || isParada)
+                FilledButton.icon(
+                  onPressed: () => _updateStatus('5'),
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('Finalizar'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.greenAccent,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              if (isEnEjecucion)
+                OutlinedButton.icon(
+                  onPressed: () => _updateStatus('4'),
+                  icon: const Icon(Icons.pause, size: 18),
+                  label: const Text('Parar'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(color: Colors.redAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              if (xlsxNeeded)
+                FilledButton.icon(
+                  onPressed: () async {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Adjuntando Excel...')),
+                    );
+                    try {
+                      await _exportFinalSerialFileToSftpAndAttachArchivo();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Archivo adjuntado correctamente')),
+                        );
+                        await _loadData();
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error adjuntando XLSX: $e')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.attach_file, size: 18),
+                  label: const Text('Adjuntar XLSX'),
+                ),
+            ],
           ),
         ],
       ),
@@ -2457,6 +2461,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _statusOption(String code, String label, Color color, String current) {
     final isSelected = current.contains(code);
+    final currentN = int.tryParse(current.trim()) ?? 0;
+    final newN = int.tryParse(code) ?? 0;
+    final isBackwards = !isSelected && newN < currentN;
     return ListTile(
       focusNode: FocusNode(canRequestFocus: false),
       leading: Container(
@@ -2471,17 +2478,72 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
       ),
-      trailing: isSelected ? Icon(Icons.check, color: color) : null,
+      trailing: isSelected
+          ? Icon(Icons.check, color: color)
+          : isBackwards
+              ? const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 18)
+              : null,
       onTap: () {
-        debugPrint('Selected status option: $code ($label)');
         Navigator.pop(context);
-        if (!isSelected) {
-          _updateStatus(code);
+        if (isSelected) return;
+        if (isBackwards) {
+          _confirmForceStatus(code, label, color);
         } else {
-          debugPrint('Status is already $code, skipping update.');
+          _updateStatus(code);
         }
       },
     );
+  }
+
+  Future<void> _confirmForceStatus(String code, String label, Color color) async {
+    final currentLabel = _labelEstado(_detail?.agentOrder.estado ?? '');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+            const SizedBox(width: 8),
+            const Text('Forzar retroceso', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Text(
+          '¿Seguro que quieres retroceder de "$currentLabel" a "$label"?\n\nEsta acción quedará registrada en el log.',
+          style: const TextStyle(color: Colors.white70, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orangeAccent,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Forzar', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _loading = true);
+    try {
+      final ok = await _orderOpsService!.updateAgentOrder(
+        _detail!.agentOrder.idnbr,
+        estado: code,
+        forceEstado: true,
+      );
+      if (ok) await _loadData();
+    } catch (e) {
+      debugPrint('Error forcing status: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _updateStatus(
@@ -3072,6 +3134,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildInfoItem(String label, String value, {int maxLines = 2}) {
     final isTablet = _isTabletWidth(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -3079,7 +3143,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         children: [
           SelectableText(
             label,
-            style: TextStyle(color: Colors.white60, fontSize: isTablet ? 11 : 12),
+            style: TextStyle(
+              color: isDark ? Colors.white60 : Colors.black54,
+              fontSize: isTablet ? 11 : 12,
+            ),
           ),
           const SizedBox(height: 2),
           SelectableText(
@@ -3455,6 +3522,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return _buildEmptyState(theme, 'Sin servicios asignados');
     }
 
+    final isDark = theme.brightness == Brightness.dark;
+
     return _buildCard(
       theme: theme,
       title: 'Servicios de Montaje / Extras',
@@ -3471,34 +3540,64 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         spacing: 16,
         runSpacing: 16,
         children: _services.map((svc) {
-          final statusColor = _canViewFinancialData
+          Color? statusColor = _canViewFinancialData
               ? _getPriceColor(
                   actual: svc.orderUnitPrice ?? 0,
                   theoretical: svc.theoreticalPvd,
                   cost: svc.coste ?? 0,
-                )
+                  )
               : null;
+
+          // Find alert state for this SKU
+          AgentServiceAlert? alert;
+          for (final a in _orderAlerts) {
+            if (a.sku == svc.skuConfig) {
+              alert = a;
+              break;
+            }
+          }
+
+          // If no alert exists in db but there is a discrepancy, virtualize a pending one
+          if (alert == null && statusColor != null && (statusColor == Colors.redAccent || statusColor == Colors.yellowAccent)) {
+            alert = AgentServiceAlert(
+              idnbr: widget.orderId,
+              orderNbr: _detail?.agentOrder.orderNbr ?? '',
+              customer: _detail?.agentOrder.customer ?? '',
+              sku: svc.skuConfig ?? '',
+              description: svc.description ?? 'Discrepancia detectada',
+              coste: svc.coste ?? 0.0,
+              theoreticalPvd: svc.theoreticalPvd ?? 0.0,
+              orderUnitPrice: svc.orderUnitPrice ?? 0.0,
+              colorState: statusColor == Colors.redAccent ? 'red' : 'yellow',
+              status: 'pending',
+              notes: '',
+            );
+          }
+
+          // Override display colors based on validation status
+          if (alert != null) {
+            if (alert.status == 'validated') {
+              statusColor = Colors.greenAccent; // Override to green / resolved
+            } else if (alert.status == 'reported') {
+              statusColor = Colors.blueAccent; // Override to blue / reported
+            }
+          }
 
           return Container(
             constraints: const BoxConstraints(maxWidth: 320),
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: statusColor?.withOpacity(0.1) ?? Colors.black12,
+              color: statusColor?.withOpacity(0.1) ?? (isDark ? Colors.black12 : Colors.black.withOpacity(0.05)),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: statusColor?.withOpacity(0.5) ?? Colors.white12,
+                color: statusColor?.withOpacity(0.5) ?? (isDark ? Colors.white12 : Colors.black12),
                 width: statusColor != null ? 2 : 1,
               ),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Checkbox(
-                  value: true,
-                  onChanged: (v) {},
-                  activeColor: statusColor ?? theme.colorScheme.secondary,
-                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3533,7 +3632,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                 ),
                               ),
                             )
-                          else if (statusColor != null)
+                          else if (statusColor != null && alert != null && alert.status == 'pending')
                             const Tooltip(
                               message: 'Discrepancia de precio detectada',
                               child: Icon(
@@ -3559,15 +3658,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       const SizedBox(height: 4),
                       Text(
                         svc.description ?? 'Sin descripción',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.white70,
+                          color: isDark ? Colors.white70 : Colors.black87,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (_canViewFinancialData) ...[
-                        const Divider(height: 16, color: Colors.white10),
+                        Divider(height: 16, color: isDark ? Colors.white10 : Colors.black12),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -3605,6 +3704,67 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             ),
                           ),
                         ),
+                      if (alert != null) ...[
+                        Divider(height: 16, color: isDark ? Colors.white10 : Colors.black12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: alert.status == 'validated'
+                                              ? Colors.green
+                                              : alert.status == 'reported'
+                                                  ? Colors.blue
+                                                  : Colors.orange,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Validación: ${alert.status.toUpperCase()}',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: alert.status == 'validated'
+                                              ? Colors.greenAccent
+                                              : alert.status == 'reported'
+                                                  ? Colors.blueAccent
+                                                  : Colors.orangeAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (alert.notes.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: Text(
+                                        'Notas: ${alert.notes}',
+                                        style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_note, size: 18),
+                              tooltip: 'Editar validación',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => _showServiceValidationDialog(alert!),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -3622,6 +3782,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     Color? color,
     bool isBold = false,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3631,7 +3793,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-            color: color ?? Colors.white,
+            color: color ?? (isDark ? Colors.white : Colors.black87),
           ),
         ),
       ],
@@ -3649,71 +3811,297 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return Colors.yellowAccent;
   }
 
+  Future<void> _updateAlertStatus(AgentServiceAlert alert, String newStatus, String notes) async {
+    setState(() => _loading = true);
+    try {
+      final ok = await _orderOpsService!.updateServiceAlert(alert.idnbr, alert.sku, newStatus, notes);
+      if (ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Alerta de servicio actualizada a: $newStatus')),
+          );
+        }
+        await _loadData();
+      } else {
+        throw Exception('No se pudo actualizar la alerta');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showServiceValidationDialog(AgentServiceAlert alert) {
+    String currentStatus = alert.status;
+    final notesCtrl = TextEditingController(text: alert.notes);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.verified_user_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Validar / Reportar Alerta',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Artículo: ${alert.sku}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    Text(
+                      alert.description,
+                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7), fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Precio venta: ${alert.orderUnitPrice.toStringAsFixed(2)} €'),
+                        Text('Precio teórico: ${alert.theoreticalPvd.toStringAsFixed(2)} €'),
+                      ],
+                    ),
+                    Text(
+                      'Coste: ${alert.coste.toStringAsFixed(2)} €',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const Divider(height: 24),
+                    const Text(
+                      'Estado de Validación:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: currentStatus,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'pending', child: Text('Pendiente (Alerta Activa)')),
+                        DropdownMenuItem(value: 'validated', child: Text('Validado (Forzar a Verde)')),
+                        DropdownMenuItem(value: 'reported', child: Text('Reportado (Seguimiento)')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() => currentStatus = val);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Notas / Justificación:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: notesCtrl,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: 'Añade notas sobre la discrepancia o justificación...',
+                        filled: true,
+                        fillColor: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _updateAlertStatus(alert, currentStatus, notesCtrl.text);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildObservationsCard(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return _buildCard(
       theme: theme,
       title: 'Observaciones',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _obsController,
-                    decoration: const InputDecoration(
-                      hintText: 'Añadir nueva observación...',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(16),
+          SizedBox(
+            height: 360,
+            child: _observations.isEmpty
+                ? Center(
+                    child: Text(
+                      'Sin observaciones aún',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                        fontSize: 13,
+                      ),
                     ),
-                    maxLines: 2,
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: _observations.length,
+                    itemBuilder: (ctx, i) {
+                      final obs = _observations[i];
+                      final author = obs.author ?? 'Usuario';
+                      final initials = author
+                          .split(' ')
+                          .take(2)
+                          .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+                          .join();
+                      final dateStr = obs.createdAt != null
+                          ? DateFormat('dd MMM, HH:mm').format(obs.createdAt!)
+                          : '';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.18),
+                              child: Text(
+                                initials,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        author,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (dateStr.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          dateStr,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.05)
+                                          : Colors.black.withValues(alpha: 0.04),
+                                      borderRadius: const BorderRadius.only(
+                                        topRight: Radius.circular(12),
+                                        bottomLeft: Radius.circular(12),
+                                        bottomRight: Radius.circular(12),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      obs.body,
+                                      style: const TextStyle(fontSize: 13, height: 1.45),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ElevatedButton.icon(
-                    onPressed: _addObservation,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Añadir'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
-          const SizedBox(height: 16),
-          if (_observations.isNotEmpty) ...[
-            const Divider(),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _observations.length,
-              separatorBuilder: (_, __) => const Divider(),
-              itemBuilder: (ctx, i) {
-                final obs = _observations[i];
-                final dateStr = obs.createdAt != null
-                    ? DateFormat('yyyy-MM-dd HH:mm').format(obs.createdAt!)
-                    : '';
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(obs.body, style: const TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                    '${obs.author ?? "Usuario"} • $dateStr',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+          Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _obsController,
+                  decoration: InputDecoration(
+                    hintText: 'Escribe una observación...',
+                    hintStyle: TextStyle(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+                      fontSize: 13,
+                    ),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.04)
+                        : Colors.black.withValues(alpha: 0.03),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   ),
-                  leading: const Icon(Icons.comment, color: Colors.grey),
-                );
-              },
-            ),
-          ],
+                  maxLines: 2,
+                  minLines: 1,
+                  style: const TextStyle(fontSize: 13),
+                  onSubmitted: (_) => _addObservation(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _addObservation,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Icon(Icons.send_rounded, size: 18),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -4920,148 +5308,48 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         : Colors.white70;
   }
 
+  /// Extracts the username from messages written by the new audit format: "[user @ ip] ...".
+  /// Falls back to the explicit author field, then to 'Sistema'.
+  String _resolveActor(String? author, String message) {
+    if ((author ?? '').trim().isNotEmpty) return author!.trim();
+    final match = RegExp(r'^\[([^\]@]+)\s*@').firstMatch(message.trim());
+    if (match != null) return match.group(1)!.trim();
+    return 'Sistema';
+  }
+
+  /// Group consecutive entries from the same actor within a 30-second window.
+  List<_LogGroup> _groupLogEntries(List<_LogEntry> entries) {
+    final groups = <_LogGroup>[];
+    for (final e in entries) {
+      if (groups.isNotEmpty) {
+        final last = groups.last;
+        final sameActor = last.actor == e.actor;
+        final closeInTime = last.date != null && e.date != null &&
+            last.date!.difference(e.date!).abs().inSeconds <= 30;
+        if (sameActor && closeInTime) {
+          last.entries.add(e);
+          continue;
+        }
+      }
+      groups.add(_LogGroup(
+        date: e.date,
+        actor: e.actor,
+        entries: [e],
+      ));
+    }
+    return groups;
+  }
+
   void _showAllLogsDialog(List<_LogEntry> entries) {
+    final orderNbr = _detail?.agentOrder.orderNbr ?? '';
+    final groups = _groupLogEntries(entries);
     showDialog(
       context: context,
-      builder: (ctx) {
-        final orderNbr = _detail?.agentOrder.orderNbr ?? '';
-        return Dialog(
-          backgroundColor: const Color(0xFF12122A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
-          child: SizedBox(
-            width: 860,
-            child: Column(
-              children: [
-                // Title bar
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.list_alt, color: Colors.white54, size: 20),
-                      const SizedBox(width: 10),
-                      Text(
-                        'LOG de Sistema${orderNbr.isNotEmpty ? ' — Orden $orderNbr' : ''}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${entries.length} entradas',
-                        style: const TextStyle(color: Colors.white38, fontSize: 13),
-                      ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white54),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        tooltip: 'Cerrar',
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(color: Colors.white12, height: 20),
-                // Log entries list
-                Expanded(
-                  child: Scrollbar(
-                    thumbVisibility: true,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      itemCount: entries.length,
-                      separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1),
-                      itemBuilder: (_, i) {
-                        final e = entries[i];
-                        final dateStr = e.date != null
-                            ? DateFormat('yyyy-MM-dd HH:mm:ss').format(e.date!)
-                            : '—';
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Color dot
-                              Padding(
-                                padding: const EdgeInsets.only(top: 3, right: 10),
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: e.color,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ),
-                              // Meta column
-                              SizedBox(
-                                width: 200,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      dateStr,
-                                      style: const TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 11,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      e.actor,
-                                      style: const TextStyle(
-                                        color: Colors.white60,
-                                        fontSize: 12,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: e.color.withAlpha(30),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: e.color.withAlpha(80), width: 1),
-                                      ),
-                                      child: Text(
-                                        e.action,
-                                        style: TextStyle(
-                                          color: e.color,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 0.6,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              // Full message
-                              Expanded(
-                                child: SelectableText(
-                                  e.message,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    height: 1.6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (ctx) => _AllLogsDialog(
+        orderNbr: orderNbr,
+        totalEntries: entries.length,
+        groups: groups,
+      ),
     );
   }
 
@@ -5087,9 +5375,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ...qualityLogs.map(
         (ql) => _LogEntry(
           date: ql.createdAt,
-          actor: (ql.author ?? '').trim().isNotEmpty
-              ? ql.author!.trim()
-              : 'Sistema',
+          actor: _resolveActor(ql.author, ql.message),
           action: _qualityActionLabel(ql),
           message: ql.message,
           color: _qualityActionColor(ql),
@@ -5328,6 +5614,217 @@ class _LogEntry {
     required this.message,
     required this.color,
   });
+}
+
+class _LogGroup {
+  final DateTime? date;
+  final String actor;
+  final List<_LogEntry> entries;
+
+  _LogGroup({required this.date, required this.actor, required this.entries});
+}
+
+class _AllLogsDialog extends StatefulWidget {
+  final String orderNbr;
+  final int totalEntries;
+  final List<_LogGroup> groups;
+
+  const _AllLogsDialog({
+    required this.orderNbr,
+    required this.totalEntries,
+    required this.groups,
+  });
+
+  @override
+  State<_AllLogsDialog> createState() => _AllLogsDialogState();
+}
+
+class _AllLogsDialogState extends State<_AllLogsDialog> {
+  late final Set<int> _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-expand groups with 3 or fewer entries; collapse larger bursts.
+    _expanded = {
+      for (int i = 0; i < widget.groups.length; i++)
+        if (widget.groups[i].entries.length <= 3) i,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = widget.groups;
+    return Dialog(
+      backgroundColor: const Color(0xFF12122A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+      child: SizedBox(
+        width: 860,
+        child: Column(
+          children: [
+            // Title bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
+              child: Row(
+                children: [
+                  const Icon(Icons.list_alt, color: Colors.white54, size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    'LOG de Sistema${widget.orderNbr.isNotEmpty ? ' — Orden ${widget.orderNbr}' : ''}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${widget.totalEntries} entradas · ${groups.length} grupos',
+                    style: const TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54),
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Cerrar',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white12, height: 20),
+            Expanded(
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: groups.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 4),
+                  itemBuilder: (_, i) {
+                    final group = groups[i];
+                    final isExpanded = _expanded.contains(i);
+                    final isBurst = group.entries.length > 1;
+                    final dateStr = group.date != null
+                        ? DateFormat('yyyy-MM-dd HH:mm:ss').format(group.date!)
+                        : '—';
+                    // Pick the highest-severity color in the group
+                    Color groupColor = group.entries.first.color;
+                    for (final e in group.entries) {
+                      if (e.color == Colors.redAccent) { groupColor = Colors.redAccent; break; }
+                      if (e.color == Colors.orangeAccent) groupColor = Colors.orangeAccent;
+                    }
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(6),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border(
+                          left: BorderSide(color: groupColor.withAlpha(120), width: 3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Group header — always visible
+                          InkWell(
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(8),
+                              topRight: Radius.circular(8),
+                            ),
+                            onTap: isBurst
+                                ? () => setState(() {
+                                    if (isExpanded) { _expanded.remove(i); }
+                                    else { _expanded.add(i); }
+                                  })
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(color: groupColor, shape: BoxShape.circle),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(dateStr,
+                                    style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace')),
+                                  const SizedBox(width: 10),
+                                  Text(group.actor,
+                                    style: const TextStyle(color: Colors.white60, fontSize: 12, fontStyle: FontStyle.italic)),
+                                  if (isBurst) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: groupColor.withAlpha(30),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: groupColor.withAlpha(80)),
+                                      ),
+                                      child: Text('${group.entries.length} cambios',
+                                        style: TextStyle(color: groupColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ),
+                                    const Spacer(),
+                                    Icon(
+                                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                                      color: Colors.white38, size: 18,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Entries
+                          if (!isBurst || isExpanded)
+                            ...group.entries.map((e) => Padding(
+                              padding: const EdgeInsets.fromLTRB(30, 2, 14, 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 5, right: 8),
+                                    width: 6, height: 6,
+                                    decoration: BoxDecoration(color: e.color, shape: BoxShape.circle),
+                                  ),
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 10, top: 1),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: e.color.withAlpha(25),
+                                      borderRadius: BorderRadius.circular(3),
+                                      border: Border.all(color: e.color.withAlpha(70)),
+                                    ),
+                                    child: Text(e.action,
+                                      style: TextStyle(color: e.color, fontSize: 9,
+                                          fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                                  ),
+                                  Expanded(
+                                    child: SelectableText(e.message,
+                                      style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5)),
+                                  ),
+                                ],
+                              ),
+                            )),
+                          // Collapsed summary
+                          if (isBurst && !isExpanded)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(30, 0, 14, 10),
+                              child: Text(
+                                group.entries.map((e) => e.action).toSet().join(' · '),
+                                style: const TextStyle(color: Colors.white38, fontSize: 11),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PickedImage {
