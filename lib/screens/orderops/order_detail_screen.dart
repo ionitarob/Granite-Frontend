@@ -2503,50 +2503,110 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     ];
 
     // Case: Moving to En Ejecución (3)
-    if (code == '3' && allPossibleFamilies.length >= 1) {
-      if (_sessionActiveFamily != null && allPossibleFamilies.contains(_sessionActiveFamily)) {
-        // Already have a session family, just update state to 3
+    if (code == '3') {
+      final currentUser = ApiService.instance?.currentUser;
+      final userName = currentUser?.displayName() ?? currentUser?.username ?? 'tu usuario';
+
+      // Always confirm before moving to En Ejecución — order gets auto-assigned to current user.
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Iniciar ejecución',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            '¿Seguro que quieres ejecutar esta orden?\nSe va a asignar a $userName.',
+            style: const TextStyle(color: Colors.white70, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.cyan,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Sí, ejecutar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      if (allPossibleFamilies.length >= 1) {
+        if (_sessionActiveFamily != null && allPossibleFamilies.contains(_sessionActiveFamily)) {
+          setState(() => _loading = true);
+          try {
+            final ok = await _orderOpsService!.updateAgentOrder(
+              order.idnbr,
+              estado: '3',
+              family: _sessionActiveFamily,
+              assignedTo: currentUser?.username,
+              assignedToName: currentUser?.displayName(),
+            );
+            if (ok) await _loadData();
+            return;
+          } catch (e) {
+            debugPrint('Error starting order: $e');
+            setState(() => _loading = false);
+            return;
+          }
+        }
+
+        final selectedFamily = await showDialog<String>(
+          context: context,
+          builder: (context) => FamilySelectionDialog(
+            families: allPossibleFamilies,
+            title: 'Iniciar Servicio',
+            currentFamily: _sessionActiveFamily ?? order.family,
+          ),
+        );
+
+        if (selectedFamily == null) return;
+
         setState(() => _loading = true);
         try {
           final ok = await _orderOpsService!.updateAgentOrder(
             order.idnbr,
             estado: '3',
-            family: _sessionActiveFamily,
+            family: selectedFamily,
+            assignedTo: currentUser?.username,
+            assignedToName: currentUser?.displayName(),
           );
-          if (ok) await _loadData();
+          if (ok) {
+            setState(() => _sessionActiveFamily = selectedFamily);
+            await _loadData();
+          }
           return;
         } catch (e) {
-          debugPrint('Error starting order: $e');
+          debugPrint('Error starting subfamily: $e');
           setState(() => _loading = false);
           return;
         }
       }
 
-      final selectedFamily = await showDialog<String>(
-        context: context,
-        builder: (context) => FamilySelectionDialog(
-          families: allPossibleFamilies,
-          title: 'Iniciar Servicio',
-          currentFamily: _sessionActiveFamily ?? order.family,
-        ),
-      );
-
-      if (selectedFamily == null) return; // User cancelled
-
+      // No families defined — just update state + assign
       setState(() => _loading = true);
       try {
         final ok = await _orderOpsService!.updateAgentOrder(
           order.idnbr,
           estado: '3',
-          family: selectedFamily,
+          assignedTo: currentUser?.username,
+          assignedToName: currentUser?.displayName(),
         );
-        if (ok) {
-          setState(() => _sessionActiveFamily = selectedFamily);
-          await _loadData();
-        }
+        if (ok) await _loadData();
         return;
       } catch (e) {
-        debugPrint('Error starting subfamily: $e');
+        debugPrint('Error starting order (no family): $e');
         setState(() => _loading = false);
         return;
       }
@@ -4860,6 +4920,151 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         : Colors.white70;
   }
 
+  void _showAllLogsDialog(List<_LogEntry> entries) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final orderNbr = _detail?.agentOrder.orderNbr ?? '';
+        return Dialog(
+          backgroundColor: const Color(0xFF12122A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+          child: SizedBox(
+            width: 860,
+            child: Column(
+              children: [
+                // Title bar
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.list_alt, color: Colors.white54, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        'LOG de Sistema${orderNbr.isNotEmpty ? ' — Orden $orderNbr' : ''}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${entries.length} entradas',
+                        style: const TextStyle(color: Colors.white38, fontSize: 13),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        tooltip: 'Cerrar',
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 20),
+                // Log entries list
+                Expanded(
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: entries.length,
+                      separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (_, i) {
+                        final e = entries[i];
+                        final dateStr = e.date != null
+                            ? DateFormat('yyyy-MM-dd HH:mm:ss').format(e.date!)
+                            : '—';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Color dot
+                              Padding(
+                                padding: const EdgeInsets.only(top: 3, right: 10),
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: e.color,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                              // Meta column
+                              SizedBox(
+                                width: 200,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      dateStr,
+                                      style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      e.actor,
+                                      style: const TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 12,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: e.color.withAlpha(30),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: e.color.withAlpha(80), width: 1),
+                                      ),
+                                      child: Text(
+                                        e.action,
+                                        style: TextStyle(
+                                          color: e.color,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // Full message
+                              Expanded(
+                                child: SelectableText(
+                                  e.message,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    height: 1.6,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildLogCard(ThemeData theme) {
     final workItems = _detail?.workItems ?? [];
     final qualityLogs = _detail?.qualityLogs ?? [];
@@ -4927,6 +5132,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       theme: theme,
       title: 'LOG de Sistema',
       actions: [
+        if (combined.isNotEmpty)
+          TextButton.icon(
+            onPressed: () => _showAllLogsDialog(combined),
+            icon: const Icon(Icons.open_in_full, size: 16),
+            label: Text('Ver todos (${combined.length})'),
+          ),
         TextButton.icon(
           onPressed: () => setState(() => _showLogs = !_showLogs),
           icon: Icon(_showLogs ? Icons.expand_less : Icons.expand_more),
@@ -4941,7 +5152,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   child: Center(child: Text('Sin registros de LOG.')),
                 )
           : Container(
-              constraints: const BoxConstraints(maxHeight: 220),
+              constraints: const BoxConstraints(maxHeight: 480),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final viewportWidth = constraints.maxWidth;
@@ -5012,42 +5223,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: combined.map((entry) {
                                         final dateStr = entry.date != null
-                                            ? DateFormat(
-                                                'yyyy-MM-dd HH:mm',
-                                              ).format(entry.date!)
+                                            ? DateFormat('yyyy-MM-dd HH:mm:ss').format(entry.date!)
                                             : '';
                                         return Container(
-                                          decoration: BoxDecoration(
+                                          decoration: const BoxDecoration(
                                             border: Border(
-                                              bottom: const BorderSide(
-                                                color: Colors.white10,
-                                              ),
-                                              left: BorderSide(
-                                                color: Colors.transparent,
-                                                width: 4,
-                                              ),
+                                              bottom: BorderSide(color: Colors.white10),
                                             ),
                                           ),
                                           child: Row(
                                             children: [
-                                              _dataCell(
-                                                dateStr,
-                                                _logDateColumnWidth,
-                                              ),
-                                              _dataCell(
-                                                entry.actor,
-                                                _logActorColumnWidth,
-                                              ),
+                                              _dataCell(dateStr, _logDateColumnWidth),
+                                              _dataCell(entry.actor, _logActorColumnWidth),
                                               _dataCell(
                                                 entry.action,
                                                 _logActionColumnWidth,
                                                 isBold: true,
                                                 color: entry.color,
                                               ),
-                                              _dataCell(
-                                                entry.message,
-                                                _logMessageColumnWidth,
-                                              ),
+                                              _dataCell(entry.message, _logMessageColumnWidth),
                                             ],
                                           ),
                                         );

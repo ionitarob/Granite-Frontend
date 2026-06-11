@@ -122,6 +122,6 @@ SPEC CHECKSUMS:
   syncfusion_pdfviewer_macos: 94d2eafcb3475d32309d4ba282ef02dc75fd682f
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
 
-PODFILE CHECKSUM: 0af13ea7a15fad8c02a495a737daafd743f372ad
+PODFILE CHECKSUM: efc41fe92aa8259988abb30e1d06a7e32bcad53d
 
 COCOAPODS: 1.16.2
