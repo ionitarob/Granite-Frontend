@@ -359,17 +359,12 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
   }
 
   Widget _buildStepDatos(ThemeData theme, FormPalette palette) {
-    final hasSim = widget.simController.text.isNotEmpty;
-    final isSimReadOnly = hasSim && !_overrideSimEditable;
-    final dbSim = widget.lookupResult?['sim']?.toString();
-    final hasDbMapping = dbSim != null && dbSim.isNotEmpty;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _SectionHeader(
           title: 'Datos de la pulsera',
-          subtitle: 'Identifica el terminal y su tarjeta SIM.',
+          subtitle: 'Identifica el terminal.',
           titleColor: palette.textPrimary,
           subtitleColor: palette.textMuted,
         ),
@@ -403,109 +398,6 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
         const SizedBox(height: 16),
         _buildContratoSelection(theme, palette),
         const SizedBox(height: 16),
-        // SIM input field
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: widget.simController,
-                focusNode: _simFocus,
-                readOnly: isSimReadOnly,
-                decoration: _inputDecoration(
-                  theme,
-                  palette,
-                  'Tarjeta SIM (ICCID - 20 dígitos)',
-                  Icons.sim_card_outlined,
-                ).copyWith(
-                  filled: true,
-                  fillColor: isSimReadOnly ? palette.fieldFill.withOpacity(0.5) : palette.fieldFill,
-                  suffixIcon: isSimReadOnly
-                      ? const Icon(Icons.lock_outline, size: 18, color: Colors.green)
-                      : null,
-                ),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: palette.textPrimary,
-                ),
-                cursorColor: palette.textPrimary,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(20),
-                ],
-                validator: (value) {
-                  final trimmed = value?.trim() ?? '';
-                  if (trimmed.isEmpty) return 'Introduce la SIM';
-                  if (trimmed.length < 15) return 'Mínimo 15 dígitos';
-                  return null;
-                },
-              ),
-            ),
-            if (isSimReadOnly) ...[
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    _overrideSimEditable = true;
-                  });
-                },
-                tooltip: 'Editar SIM manualmente',
-                icon: const Icon(Icons.edit_off_outlined),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (!hasDbMapping) ...[
-          TextFormField(
-            controller: widget.imei2Controller,
-            decoration: _inputDecoration(
-              theme,
-              palette,
-              'IMEI 2 (15 dígitos)',
-              Icons.confirmation_number_outlined,
-            ),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: palette.textPrimary,
-            ),
-            cursorColor: palette.textPrimary,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(15),
-            ],
-            validator: (value) {
-              if (hasDbMapping) return null;
-              final trimmed = value?.trim() ?? '';
-              // IMEI2 is optional — some devices only have IMEI1 + BT
-              if (trimmed.isNotEmpty && trimmed.length != 15) {
-                return 'Deben ser 15 dígitos';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: widget.btController,
-            decoration: _inputDecoration(
-              theme,
-              palette,
-              'Bluetooth MAC (BT)',
-              Icons.bluetooth_audio,
-            ),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: palette.textPrimary,
-            ),
-            cursorColor: palette.textPrimary,
-            validator: (value) {
-              if (hasDbMapping) return null;
-              final trimmed = value?.trim() ?? '';
-              if (trimmed.isEmpty) return 'Introduce el Bluetooth MAC';
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-        ],
         TextFormField(
           controller: widget.bateriaController,
           decoration: _inputDecoration(
@@ -544,7 +436,7 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
       children: [
         _SectionHeader(
           title: 'Escáner de Códigos QR',
-          subtitle: 'Escanee los códigos QR del terminal y de la SIM.',
+          subtitle: 'Escanee el código QR del terminal.',
           titleColor: palette.textPrimary,
           subtitleColor: palette.textMuted,
         ),
@@ -557,7 +449,7 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
             'Código QR del IMEI',
             Icons.qr_code_scanner,
           ).copyWith(
-            helperText: 'Escanee el código QR que contiene IMEI1, IMEI2 y BT.',
+            helperText: 'Escanee el código QR que contiene el IMEI.',
             helperStyle: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
           ),
           style: theme.textTheme.bodyMedium?.copyWith(
@@ -566,126 +458,42 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
           cursorColor: palette.textPrimary,
           onChanged: (val) {
             final text = val.trim();
-            if (text.contains('IMEI1:')) {
-              final imei1Reg = RegExp(r'IMEI1:([^;]+)');
-              final imei2Reg = RegExp(r'IMEI2:([^;]+)');
-              final btReg = RegExp(r'BT:([^;]+)');
-
-              final m1 = imei1Reg.firstMatch(text);
-              String im1 = '';
-              if (m1 != null) {
-                im1 = m1.group(1)!.trim();
-                if (im1.isNotEmpty && widget.imeiController.text != im1) {
-                  widget.imeiController.text = im1;
-                }
-              }
-              final m2 = imei2Reg.firstMatch(text);
-              String im2 = '';
-              if (m2 != null) {
-                im2 = m2.group(1)!.trim();
-                if (im2.isNotEmpty && widget.imei2Controller.text != im2) {
-                  widget.imei2Controller.text = im2;
-                }
-              }
-              final m3 = btReg.firstMatch(text);
-              String btVal = '';
-              if (m3 != null) {
-                btVal = m3.group(1)!.trim().replaceAll(':', '');
-                if (btVal.isNotEmpty && widget.btController.text != btVal) {
-                  widget.btController.text = btVal;
-                }
-              }
-
-              if (im1.isNotEmpty && btVal.isNotEmpty) {
-                final imei2Part = im2.isNotEmpty ? 'IMEI2:$im2;' : '';
-                final cleanQrText = 'IMEI1:$im1;${imei2Part}BT:$btVal;';
-                if (text != cleanQrText) {
-                  widget.imeiQrController.text = cleanQrText;
-                }
+            if (text.length == 15 && RegExp(r'^\d+$').hasMatch(text)) {
+              if (widget.imeiController.text != text) {
+                widget.imeiController.text = text;
               }
             }
           },
         ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: widget.simQrController,
-          decoration: _inputDecoration(
-            theme,
-            palette,
-            'Código QR del SIM',
-            Icons.qr_code_2,
-          ),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: palette.textPrimary,
-          ),
-          cursorColor: palette.textPrimary,
-          onChanged: (val) {
-            final text = val.trim();
-            if (text.isNotEmpty && widget.simController.text != text) {
-              widget.simController.text = text;
-            }
-          },
-        ),
-        if (widget.imeiQrController.text.isNotEmpty || widget.simQrController.text.isNotEmpty) ...[
+        if (widget.imeiQrController.text.isNotEmpty) ...[
           const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              if (widget.imeiQrController.text.isNotEmpty)
-                Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: BarcodeWidget(
-                        barcode: Barcode.qrCode(),
-                        data: widget.imeiQrController.text,
-                        width: 140,
-                        height: 140,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'QR IMEI',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: palette.textPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: BarcodeWidget(
+                    barcode: Barcode.qrCode(),
+                    data: widget.imeiQrController.text,
+                    width: 140,
+                    height: 140,
+                    color: Colors.black,
+                  ),
                 ),
-              if (widget.simQrController.text.isNotEmpty)
-                Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: BarcodeWidget(
-                        barcode: Barcode.qrCode(),
-                        data: widget.simQrController.text,
-                        width: 140,
-                        height: 140,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'QR SIM',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: palette.textPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 8),
+                Text(
+                  'QR IMEI',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: palette.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-            ],
+              ],
+            ),
           ),
         ],
       ],
@@ -782,31 +590,11 @@ class _FormularioPulseraNewState extends State<FormularioPulseraNew> {
             onPressed: () {
               final form = _formKey.currentState;
               if (form != null && form.validate()) {
-                // When moving from "Datos" step to "Escáner QR" step,
-                // auto-build the QR format strings if there is no DB lookup
-                // result (user filled IMEI2, BT and SIM manually).
                 final steps = _getSteps();
                 final isOnDatosStep = steps[_currentStep] == 'Datos';
                 if (isOnDatosStep && widget.lookupResult == null) {
                   final imei1 = widget.imeiController.text.trim();
-                  final imei2 = widget.imei2Controller.text.trim();
-                  final bt = widget.btController.text.trim();
-                  final currentQr = widget.imeiQrController.text.trim();
-                  final btClean = bt.replaceAll(':', '');
-                  // Auto-build IMEI QR string if IMEI1 + BT are filled
-                  // and the field doesn't already have the formatted string.
-                  // IMEI2 is optional — include it only when provided.
-                  if (imei1.isNotEmpty && bt.isNotEmpty &&
-                      !currentQr.contains('IMEI1:')) {
-                    final imei2Part = imei2.isNotEmpty ? 'IMEI2:$imei2;' : '';
-                    widget.imeiQrController.text =
-                        'IMEI1:$imei1;${imei2Part}BT:$btClean;';
-                  }
-                  // Auto-populate SIM QR field from SIM controller.
-                  final sim = widget.simController.text.trim();
-                  if (sim.isNotEmpty && widget.simQrController.text.trim().isEmpty) {
-                    widget.simQrController.text = sim;
-                  }
+                  widget.imeiQrController.text = imei1;
                 }
                 setState(() {
                   _currentStep++;
