@@ -33,6 +33,7 @@ import '../../widgets/family_selection_dialog.dart';
 import '../../utils/formatters.dart';
 import 'serigrafia_panel.dart';
 import '../../widgets/multi_family_selection_dialog.dart';
+import '../analisis_y_serveis/create_service_dialog.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -761,7 +762,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final order = _detail!.agentOrder;
     final sourceOrder = _detail!.sourceOrder;
     final lines = (sourceOrder?['lines'] as List<dynamic>?) ?? const [];
-    const topCardHeight = 244.0;
     final estadoLabel = _labelEstado(order.estado);
     final estadoColor = _colorEstado(order.estado);
     final prioLabel = _labelPrioridad(order.prioridad);
@@ -772,174 +772,156 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         final isWide = constraints.maxWidth >= 1100;
         final isMedium = constraints.maxWidth >= 760;
 
-        final infoAndObsWidth = isWide
-            ? (constraints.maxWidth - 48) * 0.22
-            : isMedium
-            ? (constraints.maxWidth - 16) / 2
-            : constraints.maxWidth;
+        Widget infoCard() => _buildSummaryCard(
+          theme,
+          'Informacion de la Orden',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildInfoItem('Cliente', order.customer, maxLines: 2),
+              const SizedBox(height: 2),
+              _buildInfoItem('Orden', _formatOrderNbr(order.orderNbr), maxLines: 1),
+              const SizedBox(height: 2),
+              _buildInfoItem(
+                'Fecha',
+                order.orderDate != null
+                    ? DateFormat('yyyy-MM-dd').format(order.orderDate!)
+                    : '-',
+                maxLines: 1,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _buildMiniBadge('Estado: $estadoLabel', estadoColor),
+                  _buildMiniBadge('Prioridad: $prioLabel', prioColor),
+                  GestureDetector(
+                    onTap: _canEditProyectoOrFamily
+                        ? () => _showFamilyPicker(order.family ?? '')
+                        : null,
+                    child: _buildMiniBadge(
+                      'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
+                      order.family?.trim().isEmpty ?? true
+                          ? Colors.red
+                          : const Color(0xFF00897B),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          headerTrailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (order.estado.contains('3')) ...[
+                OutlinedButton(
+                  onPressed: () => _updateStatus('4', allowWorkflowAction: true),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red, width: 1.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Parar', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (order.estado.contains('4')) ...[
+                ElevatedButton(
+                  onPressed: () => _updateStatus('3', allowWorkflowAction: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00838F),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Reanudar', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+                const SizedBox(width: 6),
+              ],
+              ElevatedButton(
+                onPressed: order.estado.contains('5')
+                    ? null
+                    : () => _updateStatus('5', allowWorkflowAction: true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Finalizar', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        );
 
-        final linesAndServicesWidth = isWide
-            ? (constraints.maxWidth - 48) * 0.28
-            : isMedium
-            ? (constraints.maxWidth - 16) / 2
-            : constraints.maxWidth;
+        Widget linesCard() => _buildSummaryCard(
+          theme,
+          'Lineas de la orden',
+          _buildLinesPreview(theme, lines, order.family),
+          count: lines.length,
+        );
+
+        Widget servicesCard() => _buildSummaryCard(
+          theme,
+          'Servicios de montaje',
+          _buildServicesPreview(theme),
+          count: _services.length,
+        );
+
+        Widget obsCard() => _buildSummaryCard(
+          theme,
+          'Observaciones',
+          _buildObservacionesPreview(theme),
+          onTap: () => _obsFocusNode.requestFocus(),
+          headerTrailing: IconButton(
+            icon: const Icon(Icons.add_comment_rounded, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () => _obsFocusNode.requestFocus(),
+            tooltip: 'Añadir observación',
+          ),
+          count: _observations.length,
+        );
+
+        const cardHeight = 300.0;
+
+        if (isWide) {
+          final infoW = (constraints.maxWidth - 48) * 0.22;
+          final linesW = (constraints.maxWidth - 48) * 0.28;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: infoW, height: cardHeight, child: infoCard()),
+              const SizedBox(width: 16),
+              SizedBox(width: linesW, height: cardHeight, child: linesCard()),
+              const SizedBox(width: 16),
+              SizedBox(width: linesW, height: cardHeight, child: servicesCard()),
+              const SizedBox(width: 16),
+              SizedBox(width: infoW, height: cardHeight, child: obsCard()),
+            ],
+          );
+        }
+
+        final halfWidth = (constraints.maxWidth - 16) / 2;
+        final fullWidth = constraints.maxWidth;
 
         return Wrap(
           spacing: 16,
           runSpacing: 16,
           children: [
-            SizedBox(
-              width: infoAndObsWidth,
-              child: _buildSummaryCard(
-                theme,
-                'Informacion de la Orden',
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildInfoItem('Cliente', order.customer, maxLines: 1),
-                    const SizedBox(height: 4),
-                    _buildInfoItem('Orden', order.orderNbr, maxLines: 1),
-                    const SizedBox(height: 4),
-                    _buildInfoItem(
-                      'Fecha',
-                      order.orderDate != null
-                          ? DateFormat('yyyy-MM-dd').format(order.orderDate!)
-                          : '-',
-                      maxLines: 1,
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        _buildMiniBadge('Estado: $estadoLabel', estadoColor),
-                        _buildMiniBadge('Prioridad: $prioLabel', prioColor),
-                        GestureDetector(
-                          onTap: _canEditProyectoOrFamily
-                              ? () => _showFamilyPicker(order.family ?? '')
-                              : null,
-                          child: _buildMiniBadge(
-                            'Familia: ${order.family?.trim().isEmpty ?? true ? 'SIN ASIGNAR' : order.family!.toUpperCase()}',
-                            order.family?.trim().isEmpty ?? true
-                                ? Colors.redAccent
-                                : Colors.tealAccent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                headerTrailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (order.estado.contains('3')) ...[
-                      OutlinedButton(
-                        onPressed: () =>
-                            _updateStatus('4', allowWorkflowAction: true),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.redAccent,
-                          side: const BorderSide(
-                            color: Colors.redAccent,
-                            width: 1.5,
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          minimumSize: const Size(0, 40),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Parar',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (order.estado.contains('4')) ...[
-                      ElevatedButton(
-                        onPressed: () =>
-                            _updateStatus('3', allowWorkflowAction: true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.cyan,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          minimumSize: const Size(0, 40),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Reanudar',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    ElevatedButton(
-                      onPressed: order.estado.contains('5')
-                          ? null
-                          : () => _updateStatus('5', allowWorkflowAction: true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: const Size(0, 40),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'Finalizar',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                height: topCardHeight,
-              ),
-            ),
-            SizedBox(
-              width: linesAndServicesWidth,
-              child: _buildSummaryCard(
-                theme,
-                'Lineas de la orden',
-                _buildLinesPreview(theme, lines, order.family),
-                count: lines.length,
-                height: topCardHeight,
-              ),
-            ),
-            SizedBox(
-              width: linesAndServicesWidth,
-              child: _buildSummaryCard(
-                theme,
-                'Servicios de montaje',
-                _buildServicesPreview(theme),
-                count: _services.length,
-                height: topCardHeight,
-              ),
-            ),
-            SizedBox(
-              width: infoAndObsWidth,
-              child: _buildSummaryCard(
-                theme,
-                'Observaciones',
-                _buildObservacionesPreview(theme),
-                onTap: () => _obsFocusNode.requestFocus(),
-                headerTrailing: IconButton(
-                  icon: const Icon(Icons.add_comment_rounded, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => _obsFocusNode.requestFocus(),
-                  tooltip: 'Añadir observación',
-                ),
-                count: _observations.length,
-                height: topCardHeight,
-              ),
-            ),
+            SizedBox(width: isMedium ? halfWidth : fullWidth, child: infoCard()),
+            SizedBox(width: isMedium ? halfWidth : fullWidth, child: linesCard()),
+            SizedBox(width: isMedium ? halfWidth : fullWidth, child: servicesCard()),
+            SizedBox(width: isMedium ? halfWidth : fullWidth, child: obsCard()),
           ],
         );
       },
@@ -983,7 +965,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: height != null ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Row(
             children: [
@@ -1114,17 +1096,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       _photos.any((p) => _isImageFile(p) || _isPdfFile(p));
 
   Widget _buildMiniBadge(String value, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // In light mode, use a darkened shade so text is legible on white cards
+    final textColor = isDark ? color : HSLColor.fromColor(color).withLightness(
+      (HSLColor.fromColor(color).lightness * 0.55).clamp(0.0, 0.6),
+    ).toColor();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
+        color: color.withValues(alpha: isDark ? 0.18 : 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.7)),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.7 : 0.5)),
       ),
       child: Text(
         value,
         style: TextStyle(
-          color: color,
+          color: textColor,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
@@ -1200,10 +1187,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        Expanded(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 200),
           child: Scrollbar(
             thumbVisibility: _showPersistentScrollbar(context),
             child: ListView.separated(
+              shrinkWrap: true,
               padding: const EdgeInsets.only(right: 12, top: 8),
               itemCount: lines.length,
               separatorBuilder: (context, index) => Divider(
@@ -1294,10 +1283,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 200),
           child: Scrollbar(
             thumbVisibility: _showPersistentScrollbar(context),
             child: ListView.separated(
+              shrinkWrap: true,
               padding: const EdgeInsets.only(right: 12, top: 4),
               itemCount: _services.length,
               separatorBuilder: (context, index) => Divider(
@@ -1353,7 +1344,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _buildObservacionesPreview(ThemeData theme) {
     return Column(
       children: [
-        Expanded(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 160),
           child: Scrollbar(
             thumbVisibility: _showPersistentScrollbar(context),
             child: _observations.isEmpty
@@ -1378,6 +1370,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     ),
                   )
                 : ListView.separated(
+                    shrinkWrap: true,
                     itemCount: _observations.length,
                     padding: const EdgeInsets.only(right: 12, top: 4),
                     separatorBuilder: (context, index) => Divider(
@@ -1870,7 +1863,74 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ),
             ],
           ),
+          _buildKpiTimestamps(order, theme),
           _buildWorkflowActions(order, isValidada, isPendiente, isEnEjecucion, isParada),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKpiTimestamps(AgentOrder order, ThemeData theme) {
+    String fmtTs(DateTime? dt) =>
+        dt != null ? DateFormat('dd/MM/yy HH:mm').format(dt) : '-';
+
+    final rows = [
+      if (order.receivedAt != null) ('Recepcionada', order.receivedAt, Colors.blue),
+      if (order.startedAt != null) ('Iniciada', order.startedAt, Colors.cyan),
+      if (order.stoppedAt != null) ('Última parada', order.stoppedAt, Colors.red),
+      if (order.completedAt != null) ('Finalizada', order.completedAt, Colors.green),
+    ];
+
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            children: [
+              for (final (label, dt, color) in rows)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.schedule_rounded, size: 12, color: color.withValues(alpha: 0.8)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$label: ${fmtTs(dt)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              if (order.stopReason != null && order.stopReason!.isNotEmpty)
+                Tooltip(
+                  message: order.stopReason!,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 12, color: Colors.red.withValues(alpha: 0.7)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Motivo: ${order.stopReason!.length > 40 ? '${order.stopReason!.substring(0, 40)}…' : order.stopReason!}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.red.withValues(alpha: 0.75),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -2495,6 +2555,96 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  /// CFG001 §6.3 — returns the motivo text, or null if the user cancelled.
+  Future<String?> _showMotivoDialog() async {
+    final controller = TextEditingController();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1A1A2E) : theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.pause_circle_outline_rounded, color: Colors.red, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text('Motivo de parada', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Indica el motivo por el que se detiene esta orden. Es obligatorio según el procedimiento CFG001.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                maxLength: 500,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'Ej: Falta de material, espera de confirmación del cliente...',
+                  hintStyle: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.35), fontSize: 13),
+                  filled: true,
+                  fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+                onChanged: (_) => setS(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: Text('Cancelar', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+            ),
+            FilledButton(
+              onPressed: controller.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(controller.text.trim()),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+                disabledBackgroundColor: Colors.red.withValues(alpha: 0.3),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Detener orden', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    controller.dispose();
+    return result;
+  }
+
   Future<void> _confirmForceStatus(String code, String label, Color color) async {
     final currentLabel = _labelEstado(_detail?.agentOrder.estado ?? '');
     final confirmed = await showDialog<bool>(
@@ -2603,6 +2753,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
 
       if (confirmed != true) return;
+
+      // Cambio de Serial: require creating an Análisis y Servicios entry before starting
+      final nfFamily = _normalizeText(order.family ?? '');
+      if (nfFamily.contains('CAMBIO') && nfFamily.contains('SERIAL')) {
+        final serviceCreated = await showDialog<bool>(
+          context: context,
+          barrierDismissible: true,
+          builder: (ctx) => CreateServiceDialog(
+            initialOrderNbr: _formatOrderNbr(order.orderNbr),
+          ),
+        );
+        if (!mounted || serviceCreated != true) return;
+      }
 
       if (allPossibleFamilies.length >= 1) {
         if (_sessionActiveFamily != null && allPossibleFamilies.contains(_sessionActiveFamily)) {
@@ -2731,6 +2894,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       }
     }
 
+    // CFG001 §6.3 — mandatory stop reason when pausing
+    String? stopReason;
+    if (code == '4') {
+      stopReason = await _showMotivoDialog();
+      if (stopReason == null) return; // user cancelled
+    }
+
     if (!_canEditOrderMeta && !allowWorkflowAction) {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -2773,6 +2943,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final result = await _orderOpsService!.updateAgentOrderWithResult(
         _detail!.agentOrder.idnbr,
         estado: code,
+        stopReason: stopReason,
       );
       debugPrint('Update status success: ${result.ok}');
       if (result.ok) {
@@ -2788,6 +2959,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               backgroundColor: Colors.green,
             ),
           );
+          // Cambio de Serial finalizada → send user to historial
+          if (code == '5') {
+            final nfFam = _normalizeText(
+              _detail?.agentOrder.family ?? '',
+            );
+            if (nfFam.contains('CAMBIO') && nfFam.contains('SERIAL')) {
+              Navigator.of(context).pushReplacementNamed(
+                HistorialCambiosSerialScreen.routeName,
+              );
+            }
+          }
         }
       } else {
         String backendMessage =

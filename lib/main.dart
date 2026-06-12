@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import 'services/notification_provider.dart';
 import 'services/xiaomi_provider.dart';
 import 'widgets/notification_bar.dart';
@@ -79,6 +80,10 @@ import 'services/navigation_tracker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+  windowManager.waitUntilReadyToShow(
+    const WindowOptions(minimumSize: Size(1280, 720)),
+  );
   try {
     await initializeDateFormatting('es');
   } catch (_) {

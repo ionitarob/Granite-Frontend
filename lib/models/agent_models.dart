@@ -40,6 +40,12 @@ class AgentOrder {
   final double planProgressPct;
   final String? planNextTask;
 
+  // CFG001 §6 — per-state KPI timestamps
+  final DateTime? receivedAt;
+  final DateTime? startedAt;
+  final DateTime? stoppedAt;
+  final String? stopReason;
+
   // Completion Fields
   final DateTime? completedAt;
   final String? completionSummary;
@@ -92,6 +98,10 @@ class AgentOrder {
     this.planOpen = 0,
     this.planProgressPct = 0.0,
     this.planNextTask,
+    this.receivedAt,
+    this.startedAt,
+    this.stoppedAt,
+    this.stopReason,
     this.completedAt,
     this.completionSummary,
     this.completionAuthor,
@@ -179,6 +189,10 @@ class AgentOrder {
       planOpen: json['plan_open'] as int? ?? 0,
       planProgressPct: asDouble(json['plan_progress_pct']) ?? 0.0,
       planNextTask: json['plan_next_task'] as String?,
+      receivedAt: json['received_at'] != null ? DateTime.tryParse(json['received_at']) : null,
+      startedAt: json['started_at'] != null ? DateTime.tryParse(json['started_at']) : null,
+      stoppedAt: json['stopped_at'] != null ? DateTime.tryParse(json['stopped_at']) : null,
+      stopReason: json['stop_reason'] as String?,
       completedAt: json['completed_at'] != null
           ? DateTime.tryParse(json['completed_at'])
           : null,

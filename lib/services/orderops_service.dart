@@ -207,6 +207,7 @@ class OrderOpsService {
     String? estado,
     bool? forceEstado,
     String? reason,
+    String? stopReason,
     bool? markCompleted,
     String? completionSummary,
     String? completionAuthor,
@@ -223,6 +224,7 @@ class OrderOpsService {
     if (estado != null) body['estado'] = estado;
     if (forceEstado == true) body['force_estado'] = true;
     if (reason != null) body['reason'] = reason;
+    if (stopReason != null) body['stop_reason'] = stopReason;
     if (markCompleted != null) body['mark_completed'] = markCompleted;
     if (family != null) body['family'] = family;
     if (proyectoId != null) {
@@ -256,6 +258,7 @@ class OrderOpsService {
     String? department,
     String? estado,
     String? reason,
+    String? stopReason,
     bool? markCompleted,
     String? completionSummary,
     String? completionAuthor,
@@ -271,6 +274,7 @@ class OrderOpsService {
     if (department != null) body['department'] = department;
     if (estado != null) body['estado'] = estado;
     if (reason != null) body['reason'] = reason;
+    if (stopReason != null) body['stop_reason'] = stopReason;
     if (markCompleted != null) body['mark_completed'] = markCompleted;
     if (family != null) body['family'] = family;
     if (proyectoId != null) {

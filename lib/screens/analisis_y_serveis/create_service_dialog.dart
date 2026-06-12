@@ -3,7 +3,9 @@ import '../../services/analisis_service.dart';
 import '../../models/analisis_models.dart';
 
 class CreateServiceDialog extends StatefulWidget {
-  const CreateServiceDialog({super.key});
+  const CreateServiceDialog({super.key, this.initialOrderNbr});
+
+  final String? initialOrderNbr;
 
   @override
   State<CreateServiceDialog> createState() => _CreateServiceDialogState();
@@ -47,6 +49,9 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialOrderNbr != null) {
+      _orderController.text = widget.initialOrderNbr!;
+    }
     _loadData();
   }
 
