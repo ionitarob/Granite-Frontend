@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../services/api_service.dart';
 import '../../services/orderops_service.dart';
@@ -26,6 +28,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
   bool _loading = true;
   bool _syncingOrders = false;
   bool _importingCsv = false;
+  bool _exportingOrders = false;
   double _syncProgress = 0.0;
   String _syncMessage = '';
   String? _error;
@@ -445,6 +448,34 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
     }
   }
 
+  Future<void> _handleExportOrders() async {
+    if (_exportingOrders || _orderOpsService == null) return;
+    setState(() => _exportingOrders = true);
+    try {
+      final bytes = await _orderOpsService!.exportOrdersExcel();
+      if (!mounted) return;
+
+      final dir = await getDownloadsDirectory() ?? await getTemporaryDirectory();
+      final fileName = 'ordenes_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.xlsx';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exportado: ${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error exportando: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingOrders = false);
+    }
+  }
+
   void _onOrderTap(AgentOrder order) {
     Navigator.of(context)
         .push(
@@ -670,6 +701,20 @@ class _OrderQueueScreenState extends State<OrderQueueScreen> {
                   onPressed: _handleImportCsv,
                   tooltip: 'Importar Ordenes (CSV)',
                 ),
+        _exportingOrders
+            ? const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : IconButton(
+                icon: const Icon(Icons.download_rounded, color: Colors.greenAccent),
+                onPressed: _handleExportOrders,
+                tooltip: 'Exportar Órdenes (Excel)',
+              ),
         IconButton(
           icon: const Icon(Icons.refresh),
           onPressed: () => _loadOrders(),

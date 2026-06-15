@@ -51,6 +51,9 @@ class AgentOrder {
   final String? completionSummary;
   final String? completionAuthor;
 
+  // Facturación
+  final DateTime? invoiceDate;
+
   final List<String> subfamilies;
   final List<String> completedFamilies;
 
@@ -110,6 +113,7 @@ class AgentOrder {
     this.assignedTo,
     this.assignedToName,
     this.durationMs,
+    this.invoiceDate,
     required this.searchableOrderNbr,
     required this.searchableCustomer,
     required this.searchableDesc,
@@ -217,6 +221,7 @@ class AgentOrder {
       assignedTo: json['assigned_to'] as String?,
       assignedToName: json['assigned_to_name'] as String?,
       durationMs: json['duration_ms'] as int?,
+      invoiceDate: json['invoice_date'] != null ? DateTime.tryParse(json['invoice_date'].toString()) : null,
       searchableOrderNbr: oNbr.toLowerCase().replaceAll('-', ''),
       searchableCustomer: cust.toLowerCase(),
       searchableDesc: desc.toLowerCase(),

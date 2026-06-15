@@ -1870,6 +1870,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  /// Parses "FACTURA: 291074371 FECHA: 25-03-2026" from COMENTARIOS.
+  /// Returns (facturaNum, fechaStr) — either may be null if not found.
+  (String?, String?) _parseFacturaFromComentarios() {
+    final comentarios =
+        (_detail?.sourceOrder?['header']?['COMENTARIOS'] as String?) ?? '';
+    if (comentarios.isEmpty) return (null, null);
+
+    final numMatch = RegExp(r'FACTURA:\s*(\S+)', caseSensitive: false).firstMatch(comentarios);
+    final fechaMatch = RegExp(r'FECHA:\s*(\S+)', caseSensitive: false).firstMatch(comentarios);
+
+    return (numMatch?.group(1), fechaMatch?.group(1));
+  }
+
   Widget _buildKpiTimestamps(AgentOrder order, ThemeData theme) {
     String fmtTs(DateTime? dt) =>
         dt != null ? DateFormat('dd/MM/yy HH:mm').format(dt) : '-';
@@ -1879,9 +1892,29 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (order.startedAt != null) ('Iniciada', order.startedAt, Colors.cyan),
       if (order.stoppedAt != null) ('Última parada', order.stoppedAt, Colors.red),
       if (order.completedAt != null) ('Finalizada', order.completedAt, Colors.green),
+      if (order.invoiceDate != null) ('Facturada', order.invoiceDate, Colors.purple),
     ];
 
-    if (rows.isEmpty) return const SizedBox.shrink();
+    final (facturaNum, facturaFecha) = _parseFacturaFromComentarios();
+    final hasFactura = facturaNum != null || facturaFecha != null;
+
+    if (rows.isEmpty && !hasFactura) return const SizedBox.shrink();
+
+    Widget tsChip(String label, DateTime? dt, Color color) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.schedule_rounded, size: 12, color: color.withValues(alpha: 0.8)),
+            const SizedBox(width: 4),
+            Text(
+              '$label: ${fmtTs(dt)}',
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        );
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -1894,22 +1927,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             spacing: 10,
             runSpacing: 6,
             children: [
-              for (final (label, dt, color) in rows)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.schedule_rounded, size: 12, color: color.withValues(alpha: 0.8)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$label: ${fmtTs(dt)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+              for (final (label, dt, color) in rows) tsChip(label, dt, color),
               if (order.stopReason != null && order.stopReason!.isNotEmpty)
                 Tooltip(
                   message: order.stopReason!,
@@ -1931,6 +1949,47 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ),
             ],
           ),
+          if (hasFactura) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 6,
+              children: [
+                if (facturaNum != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.receipt_long_rounded, size: 12, color: Colors.purple.withValues(alpha: 0.8)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Nº Factura: $facturaNum',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                if (facturaFecha != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.calendar_today_rounded, size: 12, color: Colors.purple.withValues(alpha: 0.8)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Fecha Factura: $facturaFecha',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
