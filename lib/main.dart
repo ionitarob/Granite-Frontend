@@ -81,9 +81,6 @@ import 'services/navigation_tracker.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
-  windowManager.waitUntilReadyToShow(
-    const WindowOptions(minimumSize: Size(1280, 720)),
-  );
   try {
     await initializeDateFormatting('es');
   } catch (_) {
