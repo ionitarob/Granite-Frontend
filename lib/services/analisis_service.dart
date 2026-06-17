@@ -301,6 +301,17 @@ class AnalisisService {
     }
   }
 
+  Future<int> closeTransactionByPrevi(String previ) async {
+    final res = await _client.post(
+      '/serveis/transactions/close_by_previ/',
+      jsonBody: {'previ': previ},
+    );
+    if (!res.ok) {
+      throw _asException(res, fallback: 'Error closing transaction by previ');
+    }
+    return (res.body['closed'] as num?)?.toInt() ?? 0;
+  }
+
   Future<Transaction> togglePaymentStatus(int id, bool paid) async {
     final res = await _client.post(
       '/serveis/transactions/pay/$id/',

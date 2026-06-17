@@ -178,6 +178,16 @@ class XiaomiProvider extends ChangeNotifier {
     return false;
   }
 
+  Future<bool> deleteCesb(int id) async {
+    try {
+      final resp = await apiService.client.post('/xiaomieco/delete_cesb/', jsonBody: {'id': id});
+      return resp.ok;
+    } catch (e) {
+      debugPrint('Error deleteCesb: $e');
+    }
+    return false;
+  }
+
   Future<bool> startCesb(String cesb, int teamId) async {
     try {
       final resp = await apiService.client.post('/xiaomieco/empezar_cesb/', jsonBody: {

@@ -34,6 +34,7 @@ import '../../utils/formatters.dart';
 import 'serigrafia_panel.dart';
 import '../../widgets/multi_family_selection_dialog.dart';
 import '../analisis_y_serveis/create_service_dialog.dart';
+import '../../services/analisis_service.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -3018,12 +3019,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          // Cambio de Serial finalizada → send user to historial
+          // Cambio de Serial finalizada → close AyS service and send user to historial
           if (code == '5') {
             final nfFam = _normalizeText(
               _detail?.agentOrder.family ?? '',
             );
             if (nfFam.contains('CAMBIO') && nfFam.contains('SERIAL')) {
+              final previ = _formatOrderNbr(
+                _detail!.agentOrder.orderNbr,
+              ).trim();
+              try {
+                await const AnalisisService().closeTransactionByPrevi(previ);
+              } catch (e) {
+                debugPrint('closeTransactionByPrevi failed for $previ: $e');
+              }
+              if (!mounted) return;
               Navigator.of(context).pushReplacementNamed(
                 HistorialCambiosSerialScreen.routeName,
               );

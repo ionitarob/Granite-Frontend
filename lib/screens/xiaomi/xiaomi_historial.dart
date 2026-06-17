@@ -292,6 +292,41 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
     }
   }
 
+  Future<void> _deleteCesb(int id, String cesbLabel) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar registro?'),
+        content: Text('Se eliminará el CESB "$cesbLabel" de forma permanente. Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final provider = Provider.of<XiaomiProvider>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await provider.deleteCesb(id);
+    if (!mounted) return;
+    if (success) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('CESB "$cesbLabel" eliminado'), backgroundColor: Colors.red),
+      );
+      fetchHistorico();
+      fetchPending();
+    } else {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Error al eliminar CESB "$cesbLabel"'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Future<void> _unvalidateCesb(String cesb) async {
     final code = cesb.trim();
     if (code.isEmpty) return;
@@ -707,7 +742,7 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
                     ? _buildNoData(theme)
                     : Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: _LazyDataTable(records: records, theme: theme),
+                        child: _LazyDataTable(records: records, theme: theme, onDelete: _deleteCesb),
                       ),
           )
         else
@@ -720,7 +755,7 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: SizedBox(
                         height: 400, // Reasonable height for the table on mobile
-                        child: _LazyDataTable(records: records, theme: theme),
+                        child: _LazyDataTable(records: records, theme: theme, onDelete: _deleteCesb),
                       ),
                     ),
       ],
@@ -811,6 +846,10 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
                       }
                     },
                     onUnvalidate: (isValidated || isStarted) ? () => _unvalidateCesb(item['cesb'] ?? '') : null,
+                    onDelete: () {
+                      final id = item['id'];
+                      if (id != null) _deleteCesb(id as int, item['cesb'] ?? '');
+                    },
                   );
                 },
               );
@@ -950,6 +989,7 @@ class _PendingCesbTile extends StatelessWidget {
   final bool isStarted;
   final VoidCallback onTap;
   final VoidCallback? onUnvalidate;
+  final VoidCallback? onDelete;
 
   const _PendingCesbTile({
     required this.item,
@@ -957,6 +997,7 @@ class _PendingCesbTile extends StatelessWidget {
     required this.isStarted,
     required this.onTap,
     this.onUnvalidate,
+    this.onDelete,
   });
 
   @override
@@ -989,6 +1030,13 @@ class _PendingCesbTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (onDelete != null)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.redAccent),
+                onPressed: onDelete,
+                tooltip: 'Eliminar CESB mal picado',
+              ),
             if (onUnvalidate != null)
               IconButton(
                 visualDensity: VisualDensity.compact,
@@ -1094,8 +1142,9 @@ class _FilterChip extends StatelessWidget {
 class _LazyDataTable extends StatefulWidget {
   final List records;
   final ThemeData theme;
+  final Future<void> Function(int id, String cesb)? onDelete;
 
-  const _LazyDataTable({required this.records, required this.theme});
+  const _LazyDataTable({required this.records, required this.theme, this.onDelete});
 
   @override
   State<_LazyDataTable> createState() => _LazyDataTableState();
@@ -1396,6 +1445,20 @@ class _LazyDataTableState extends State<_LazyDataTable> {
                               dateStr,
                               flex: columnFlex['fecha']!,
                             ),
+                            if (widget.onDelete != null)
+                              SizedBox(
+                                width: 40,
+                                child: IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                                  tooltip: 'Eliminar registro',
+                                  onPressed: () {
+                                    final id = r['registro'];
+                                    final cesb = val(r['cesb']);
+                                    if (id != null) widget.onDelete!(id as int, cesb);
+                                  },
+                                ),
+                              ),
                           ],
                         ),
                       );

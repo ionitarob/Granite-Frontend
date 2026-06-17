@@ -277,7 +277,12 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
                                   'Cliente',
                                   _clientes,
                                   _cliente,
-                                  (v) => setState(() => _cliente = v),
+                                  (v) => setState(() {
+                                    _cliente = v;
+                                    if (!(v?.toUpperCase().contains('VODAFONE') ?? false)) {
+                                      _sapController.clear();
+                                    }
+                                  }),
                                 ),
                                 const SizedBox(height: 16),
                                 _buildServiceAutocomplete(),
@@ -317,13 +322,7 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
                                   'Numero SAP VDF',
                                   _sapController,
                                   'Ingrese numero SAP VDF',
-                                  enabled:
-                                      _idXiaomi == null ||
-                                      _idXiaomi == 'No Aplica' ||
-                                      (_idXiaomi?.toUpperCase().contains(
-                                            'VODAFONE',
-                                          ) ??
-                                          false),
+                                  enabled: _cliente?.toUpperCase().contains('VODAFONE') ?? false,
                                 ),
                                 const SizedBox(height: 16),
                                 _buildTextField(
@@ -812,13 +811,6 @@ class _CreateServiceDialogState extends State<CreateServiceDialog> {
           onChanged: (v) {
             setState(() {
               _idXiaomi = v;
-              if (v != null && v != 'No Aplica') {
-                // If it's not VODAFONE, clear SAP
-                bool isVodafone = v.toUpperCase().contains('VODAFONE');
-                if (!isVodafone) {
-                  _sapController.clear();
-                }
-              }
             });
           },
           decoration: InputDecoration(

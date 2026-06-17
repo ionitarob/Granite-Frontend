@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config.dart';
 import '../../widgets/animated_background.dart';
@@ -40,10 +39,9 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
   bool _cargando = false;
   final ScrollController _hScrollCtrl = ScrollController();
   final ValueNotifier<bool> _dragging = ValueNotifier<bool>(false);
-  SharedPreferences? _prefs;
-  int? _pendingEmpresaId;
   // Auto-scroll while dragging
   Timer? _autoScrollTimer;
+  Timer? _pollTimer;
   Offset? _lastPointerLocal; // position inside board viewport
   double _boardWidth = 0; // viewport width from LayoutBuilder
   static const double _edgeSize = 80; // px near borders to trigger autoscroll
@@ -55,18 +53,17 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
   List<Map<String, dynamic>> _unassigned = [];
   List<Map<String, dynamic>> _empresas = [];
 
-  static const _prefsKeyFecha = 'job_selector_fecha';
-  static const _prefsKeyEmpresa = 'job_selector_empresa';
-
   @override
   void initState() {
     super.initState();
-    _initializeState();
-    // Stop autoscroll when drag ends
     _dragging.addListener(() {
-      if (!_dragging.value) {
-        _stopAutoScroll();
-      }
+      if (!_dragging.value) _stopAutoScroll();
+    });
+    _cargarEmpresas().then((_) {
+      if (mounted) _cargarBoard();
+    });
+    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted && !_cargando) _cargarBoard();
     });
   }
 
@@ -75,114 +72,22 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
     _hScrollCtrl.dispose();
     _dragging.dispose();
     _stopAutoScroll();
+    _pollTimer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _initializeState() async {
-    SharedPreferences? prefs;
-    try {
-      prefs = await SharedPreferences.getInstance();
-    } catch (_) {
-      prefs = null;
-    }
-
-    if (!mounted) return;
-
-    DateTime? savedDate;
-    bool hasSavedEmpresa = false;
-    int? savedEmpresa;
-    if (prefs != null) {
-      final dateStr = prefs.getString(_prefsKeyFecha);
-      if (dateStr != null) {
-        savedDate = DateTime.tryParse(dateStr);
-      }
-      if (prefs.containsKey(_prefsKeyEmpresa)) {
-        hasSavedEmpresa = true;
-        savedEmpresa = prefs.getInt(_prefsKeyEmpresa);
-      }
-    }
-
-    setState(() {
-      _prefs = prefs;
-      if (savedDate != null) {
-        _fecha = savedDate;
-      }
-      if (hasSavedEmpresa) {
-        _pendingEmpresaId = savedEmpresa;
-      }
-    });
-
-    if (savedDate == null) {
-      if (prefs != null) {
-        await prefs.setString(_prefsKeyFecha, _fecha.toIso8601String());
-      } else {
-        await _saveFecha(_fecha);
-      }
-    }
-
-    await _cargarEmpresas();
-
-    if (!mounted) return;
-
-    if (_pendingEmpresaId != null) {
-      final exists = _empresas.any((e) {
-        final id = e['id'];
-        if (id is int) return id == _pendingEmpresaId;
-        if (id is num) return id.toInt() == _pendingEmpresaId;
-        return false;
-      });
-      if (exists) {
-        setState(() => _empresaId = _pendingEmpresaId);
-      } else {
-        await _saveEmpresa(null);
-      }
-    }
-
-    _pendingEmpresaId = null;
-
-    await _cargarBoard();
   }
 
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Future<SharedPreferences?> _getPrefs() async {
-    if (_prefs != null) return _prefs;
-    try {
-      _prefs = await SharedPreferences.getInstance();
-    } catch (_) {
-      _prefs = null;
-    }
-    return _prefs;
-  }
-
-  Future<void> _saveFecha(DateTime fecha) async {
-    final prefs = await _getPrefs();
-    if (prefs == null) return;
-    await prefs.setString(_prefsKeyFecha, fecha.toIso8601String());
-  }
-
-  Future<void> _saveEmpresa(int? empresaId) async {
-    final prefs = await _getPrefs();
-    if (prefs == null) return;
-    if (empresaId == null) {
-      await prefs.remove(_prefsKeyEmpresa);
-    } else {
-      await prefs.setInt(_prefsKeyEmpresa, empresaId);
-    }
-  }
-
   Future<void> _applyFechaChange(DateTime newDate) async {
     if (_isSameDay(_fecha, newDate)) return;
     setState(() => _fecha = newDate);
-    await _saveFecha(newDate);
     await _cargarBoard();
   }
 
   Future<void> _updateEmpresaFilter(int? empresaId) async {
     if (_empresaId == empresaId) return;
     setState(() => _empresaId = empresaId);
-    await _saveEmpresa(empresaId);
     await _cargarBoard();
   }
 
