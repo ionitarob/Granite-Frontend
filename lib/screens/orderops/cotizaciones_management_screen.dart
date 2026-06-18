@@ -39,12 +39,7 @@ class _CotizacionesManagementScreenState
   static const Color _cSurface = Color(0xFF0F172A);
   static const Color _cBorder = Color(0xFF334155);
 
-  bool get _isPrivileged {
-    final raw =
-        (ApiService.instance?.currentUser?.role ?? '').trim().toLowerCase();
-    final role = raw.startsWith('role_') ? raw.substring(5) : raw;
-    return role == 'admin' || role == 'chief';
-  }
+  bool _forbidden = false;
 
   @override
   void initState() {
@@ -179,7 +174,6 @@ class _CotizacionesManagementScreenState
   }
 
   Future<void> _load() async {
-    if (!_isPrivileged) return;
     if (_editingRowId != null) {
       _cancelInlineEdit();
     }
@@ -189,6 +183,7 @@ class _CotizacionesManagementScreenState
     setState(() {
       _loading = true;
       _error = null;
+      _forbidden = false;
     });
     try {
       final data = await service.listCotizacionesAdmin(
@@ -207,7 +202,14 @@ class _CotizacionesManagementScreenState
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      final msg = e.toString();
+      setState(() {
+        if (msg.contains('403') || msg.toLowerCase().contains('forbidden')) {
+          _forbidden = true;
+        } else {
+          _error = msg;
+        }
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1413,9 +1415,25 @@ class _CotizacionesManagementScreenState
                 constraints: const BoxConstraints(maxWidth: 1500),
                 child: Padding(
                   padding: EdgeInsets.all(isMobile ? 10 : 16),
-                  child: !_isPrivileged
-                      ? const Center(
-                          child: Text('Acceso restringido a admin/chief'),
+                  child: _forbidden
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.lock_outline, size: 48, color: Colors.red),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Sin permisos para acceder a cotizaciones.',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton.icon(
+                                onPressed: _load,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Reintentar'),
+                              ),
+                            ],
+                          ),
                         )
                       : Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -1931,9 +1949,25 @@ class _CotizacionesManagementScreenState
                         ),
                         const SizedBox(height: 12),
                         if (_error != null)
-                          Text(
-                            _error!,
-                            style: const TextStyle(color: Colors.redAccent),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _error!,
+                                    style: const TextStyle(color: Colors.redAccent),
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  onPressed: _load,
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Reintentar'),
+                                ),
+                              ],
+                            ),
                           ),
                         if (!isMobile) ...[
                           const SizedBox(height: 10),

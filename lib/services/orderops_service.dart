@@ -8,6 +8,132 @@ class OrderOpsService {
 
   OrderOpsService(this._client);
 
+  // --- Aprovisionamiento ---
+
+  Future<List<AprovisionamientoRecord>> getAprovisionamiento() async {
+    final result = await _client.get('/orderops/aprovisionamiento');
+    if (!result.ok) return [];
+    return (result.body as List? ?? [])
+        .map((e) => AprovisionamientoRecord.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<AprovisionamientoRecord?> createAprovisionamiento({
+    required String customer,
+    String? orderNbr,
+    String? notas,
+    String? family,
+    String? subfamilies,
+    String? prioridad,
+    String? assignedTo,
+    String? assignedToName,
+    bool autoApply = true,
+  }) async {
+    final result = await _client.post('/orderops/aprovisionamiento', jsonBody: {
+      'customer': customer,
+      if (orderNbr != null && orderNbr.isNotEmpty) 'order_nbr': orderNbr,
+      if (notas != null && notas.isNotEmpty) 'notas': notas,
+      if (family != null && family.isNotEmpty) 'family': family,
+      if (subfamilies != null && subfamilies.isNotEmpty) 'subfamilies': subfamilies,
+      if (prioridad != null && prioridad.isNotEmpty) 'prioridad': prioridad,
+      if (assignedTo != null && assignedTo.isNotEmpty) 'assigned_to': assignedTo,
+      if (assignedToName != null && assignedToName.isNotEmpty) 'assigned_to_name': assignedToName,
+      'auto_apply': autoApply,
+    });
+    if (!result.ok) return null;
+    return AprovisionamientoRecord.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<AprovisionamientoRecord?> updateAprovisionamiento(
+    int id, {
+    String? customer,
+    String? orderNbr,
+    String? notas,
+    String? family,
+    String? subfamilies,
+    String? prioridad,
+    String? assignedTo,
+    String? assignedToName,
+    bool? autoApply,
+  }) async {
+    final body = <String, dynamic>{};
+    if (customer != null) body['customer'] = customer;
+    if (orderNbr != null) body['order_nbr'] = orderNbr;
+    if (notas != null) body['notas'] = notas;
+    if (family != null) body['family'] = family;
+    if (subfamilies != null) body['subfamilies'] = subfamilies;
+    if (prioridad != null) body['prioridad'] = prioridad;
+    if (assignedTo != null) body['assigned_to'] = assignedTo;
+    if (assignedToName != null) body['assigned_to_name'] = assignedToName;
+    if (autoApply != null) body['auto_apply'] = autoApply;
+    final result = await _client.patch('/orderops/aprovisionamiento/$id', jsonBody: body);
+    if (!result.ok) return null;
+    return AprovisionamientoRecord.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> deleteAprovisionamiento(int id) async {
+    final result = await _client.delete('/orderops/aprovisionamiento/$id');
+    return result.ok;
+  }
+
+  /// Link by idnbr (internal ID) or by order_nbr string (dashes stripped server-side).
+  Future<Map<String, dynamic>?> linkAprovisionamiento(int id,
+      {int? idnbr, String? orderNbr}) async {
+    assert(idnbr != null || orderNbr != null,
+        'Provide either idnbr or orderNbr');
+    final body = <String, dynamic>{};
+    if (idnbr != null) body['idnbr'] = idnbr;
+    if (orderNbr != null) body['order_nbr'] = orderNbr;
+    final result =
+        await _client.post('/orderops/aprovisionamiento/$id/link', jsonBody: body);
+    if (!result.ok) throw Exception('${result.statusCode}: ${result.body}');
+    return Map<String, dynamic>.from(result.body as Map);
+  }
+
+  Future<AprovisionamientoServicio?> addAprovisionamientoServicio(int recordId, String servicio, {String? detalles}) async {
+    final result = await _client.post('/orderops/aprovisionamiento/$recordId/servicios', jsonBody: {
+      'servicio': servicio,
+      if (detalles != null && detalles.isNotEmpty) 'detalles': detalles,
+    });
+    if (!result.ok) return null;
+    return AprovisionamientoServicio.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> toggleAprovisionamientoServicio(int recordId, int servicioId, bool done) async {
+    final result = await _client.patch(
+      '/orderops/aprovisionamiento/$recordId/servicios/$servicioId',
+      jsonBody: {'done': done},
+    );
+    return result.ok;
+  }
+
+  Future<bool> deleteAprovisionamientoServicio(int recordId, int servicioId) async {
+    final result = await _client.delete('/orderops/aprovisionamiento/$recordId/servicios/$servicioId');
+    return result.ok;
+  }
+
+  Future<AprovisionamientoTask?> addAprovisionamientoTask(int recordId, String titulo) async {
+    final result = await _client.post(
+      '/orderops/aprovisionamiento/$recordId/tasks',
+      jsonBody: {'titulo': titulo},
+    );
+    if (!result.ok) return null;
+    return AprovisionamientoTask.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> toggleAprovisionamientoTask(int recordId, int taskId, bool done) async {
+    final result = await _client.patch(
+      '/orderops/aprovisionamiento/$recordId/tasks/$taskId',
+      jsonBody: {'done': done},
+    );
+    return result.ok;
+  }
+
+  Future<bool> deleteAprovisionamientoTask(int recordId, int taskId) async {
+    final result = await _client.delete('/orderops/aprovisionamiento/$recordId/tasks/$taskId');
+    return result.ok;
+  }
+
   // --- Proyectos ---
 
   Future<List<Proyecto>> getProyectos() async {
@@ -36,6 +162,38 @@ class OrderOpsService {
 
   Future<bool> deleteProyecto(int id) async {
     final result = await _client.delete('/orderops/proyectos/$id');
+    return result.ok;
+  }
+
+  Future<ProyectoTask?> createProyectoTask(int proyectoId, String title) async {
+    final result = await _client.post(
+      '/orderops/proyectos/$proyectoId/tasks',
+      jsonBody: {'title': title},
+    );
+    if (!result.ok) return null;
+    return ProyectoTask.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> toggleProyectoTask(int proyectoId, int taskId, bool done) async {
+    final result = await _client.patch(
+      '/orderops/proyectos/$proyectoId/tasks/$taskId',
+      jsonBody: {'done': done},
+    );
+    return result.ok;
+  }
+
+  Future<bool> renameProyectoTask(int proyectoId, int taskId, String title) async {
+    final result = await _client.patch(
+      '/orderops/proyectos/$proyectoId/tasks/$taskId',
+      jsonBody: {'title': title},
+    );
+    return result.ok;
+  }
+
+  Future<bool> deleteProyectoTask(int proyectoId, int taskId) async {
+    final result = await _client.delete(
+      '/orderops/proyectos/$proyectoId/tasks/$taskId',
+    );
     return result.ok;
   }
 
@@ -250,6 +408,36 @@ class OrderOpsService {
       jsonBody: body,
     );
     return result.ok;
+  }
+
+  /// Apply the same fields to multiple orders at once.
+  Future<Map<String, dynamic>> bulkUpdateOrders(
+    List<int> idnbrs, {
+    String? family,
+    List<String>? subfamilies,
+    String? estado,
+    String? prioridad,
+    String? assignedTo,
+    String? assignedToName,
+    String? observation,
+    bool forceEstado = false,
+  }) async {
+    final body = <String, dynamic>{'idnbrs': idnbrs};
+    if (family != null) body['family'] = family;
+    if (subfamilies != null) body['subfamilies'] = subfamilies;
+    if (estado != null) body['estado'] = estado;
+    if (prioridad != null) body['prioridad'] = prioridad;
+    if (assignedTo != null) body['assigned_to'] = assignedTo;
+    if (assignedToName != null) body['assigned_to_name'] = assignedToName;
+    if (observation != null && observation.isNotEmpty) body['observation'] = observation;
+    if (forceEstado) body['force_estado'] = true;
+
+    final result = await _client.post(
+      '/orderops/agent-orders/bulk-update',
+      jsonBody: body,
+    );
+    if (!result.ok) throw Exception('${result.statusCode}: Error en actualización masiva');
+    return Map<String, dynamic>.from(result.body as Map);
   }
 
   /// Same as updateAgentOrder but returns full ApiResult for rich error handling.
@@ -736,7 +924,7 @@ class OrderOpsService {
     final qs = Uri(queryParameters: queryParams).query;
     final result = await _client.get('/orderops/catalog/cotizaciones?$qs');
     if (!result.ok || result.body is! Map) {
-      throw Exception('No se pudo cargar cotizaciones');
+      throw Exception('${result.statusCode}: No se pudo cargar cotizaciones');
     }
     return Map<String, dynamic>.from(result.body as Map);
   }
@@ -788,6 +976,18 @@ class OrderOpsService {
         }
       }
     }
+  }
+
+  /// Search employees by name. Returns list of {id, display_name, empresa_nombre}.
+  Future<List<Map<String, dynamic>>> getEmployees({String q = '', int limit = 50}) async {
+    final qs = Uri(queryParameters: {
+      if (q.isNotEmpty) 'q': q,
+      'limit': limit.toString(),
+    }).query;
+    final result = await _client.get('/orderops/employees${qs.isNotEmpty ? '?$qs' : ''}');
+    if (!result.ok) return [];
+    final list = (result.body as Map?)?['results'] as List? ?? [];
+    return list.map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   /// Fetch users belonging to the "Ingram" company.
@@ -862,11 +1062,29 @@ class OrderOpsService {
     );
   }
 
-  Future<List<AgentServiceAlert>> getServiceAlerts() async {
+  // Cached so per-order detail loads don't re-fetch this global catalog.
+  static List<AgentServiceAlert>? _alertsCache;
+  static DateTime? _alertsCachedAt;
+
+  Future<List<AgentServiceAlert>> getServiceAlerts({bool forceRefresh = false}) async {
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _alertsCache != null &&
+        _alertsCachedAt != null &&
+        now.difference(_alertsCachedAt!).inMinutes < 5) {
+      return _alertsCache!;
+    }
     final result = await _client.get('/orderops/service-alerts');
     if (!result.ok) throw Exception('Failed to load service alerts');
     final List<dynamic> data = result.body['results'] ?? [];
-    return data.map((e) => AgentServiceAlert.fromJson(e)).toList();
+    _alertsCache = data.map((e) => AgentServiceAlert.fromJson(e)).toList();
+    _alertsCachedAt = now;
+    return _alertsCache!;
+  }
+
+  void invalidateAlertsCache() {
+    _alertsCache = null;
+    _alertsCachedAt = null;
   }
 
   Future<bool> updateServiceAlert(int idnbr, String sku, String status, String notes) async {
@@ -880,5 +1098,146 @@ class OrderOpsService {
       },
     );
     return result.ok;
+  }
+
+  // --- Order Tasks ---
+
+  Future<List<AgentOrderTask>> getOrderTasks(int idnbr) async {
+    final result = await _client.get('/orderops/agent-orders/$idnbr/tasks');
+    if (!result.ok) return [];
+    final list = result.body is List
+        ? result.body as List
+        : ((result.body as Map?))?['results'] as List? ?? [];
+    return list
+        .map((e) => AgentOrderTask.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<AgentOrderTask?> addOrderTask(int idnbr, String titulo) async {
+    final result = await _client.post(
+      '/orderops/agent-orders/$idnbr/tasks',
+      jsonBody: {'titulo': titulo},
+    );
+    if (!result.ok) return null;
+    return AgentOrderTask.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> toggleOrderTask(int idnbr, int taskId, bool done) async {
+    final result = await _client.patch(
+      '/orderops/agent-orders/$idnbr/tasks/$taskId',
+      jsonBody: {'done': done},
+    );
+    return result.ok;
+  }
+
+  Future<bool> deleteOrderTask(int idnbr, int taskId) async {
+    final result = await _client.delete('/orderops/agent-orders/$idnbr/tasks/$taskId');
+    return result.ok;
+  }
+
+  // --- Checklist Templates ---
+
+  Future<List<ChecklistTemplate>> getChecklistTemplates({String? family}) async {
+    final qs = family != null && family.isNotEmpty
+        ? '?family=${Uri.encodeComponent(family)}'
+        : '';
+    final result = await _client.get('/orderops/checklist-templates$qs');
+    if (!result.ok) return [];
+    final list = result.body is List
+        ? result.body as List
+        : ((result.body as Map?))?['results'] as List? ?? [];
+    return list
+        .map((e) => ChecklistTemplate.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<ChecklistTemplate?> createChecklistTemplate({
+    required String name,
+    String? description,
+    String? family,
+  }) async {
+    final result = await _client.post('/orderops/checklist-templates', jsonBody: {
+      'name': name,
+      if (description != null && description.isNotEmpty) 'description': description,
+      if (family != null && family.isNotEmpty) 'family': family,
+    });
+    if (!result.ok) return null;
+    return ChecklistTemplate.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> updateChecklistTemplate(int id, {String? name, String? description, String? family}) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (description != null) body['description'] = description;
+    if (family != null) body['family'] = family;
+    final result = await _client.patch('/orderops/checklist-templates/$id', jsonBody: body);
+    return result.ok;
+  }
+
+  Future<bool> deleteChecklistTemplate(int id) async {
+    final result = await _client.delete('/orderops/checklist-templates/$id');
+    return result.ok;
+  }
+
+  Future<ChecklistTemplateItem?> addTemplateItem(int templateId, String titulo, {int? sortOrder}) async {
+    final result = await _client.post(
+      '/orderops/checklist-templates/$templateId/items',
+      jsonBody: {
+        'titulo': titulo,
+        if (sortOrder != null) 'sort_order': sortOrder,
+      },
+    );
+    if (!result.ok) return null;
+    return ChecklistTemplateItem.fromJson(result.body as Map<String, dynamic>);
+  }
+
+  Future<bool> updateTemplateItem(int templateId, int itemId, {String? titulo, int? sortOrder}) async {
+    final body = <String, dynamic>{};
+    if (titulo != null) body['titulo'] = titulo;
+    if (sortOrder != null) body['sort_order'] = sortOrder;
+    final result = await _client.patch(
+      '/orderops/checklist-templates/$templateId/items/$itemId',
+      jsonBody: body,
+    );
+    return result.ok;
+  }
+
+  Future<bool> deleteTemplateItem(int templateId, int itemId) async {
+    final result = await _client.delete('/orderops/checklist-templates/$templateId/items/$itemId');
+    return result.ok;
+  }
+
+  /// Apply a template to an order — creates AgentOrderTask rows from template items.
+  Future<List<AgentOrderTask>> applyChecklistTemplate(int templateId, int idnbr) async {
+    final result = await _client.post(
+      '/orderops/checklist-templates/$templateId/apply',
+      jsonBody: {'idnbr': idnbr},
+    );
+    if (!result.ok) return [];
+    final list = (result.body as Map?)?['tasks'] as List? ?? [];
+    return list
+        .map((e) => AgentOrderTask.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  // --- Mis Tareas ---
+
+  /// Returns combined list of order tasks + aprv tasks for the given user.
+  /// Each item has: id, type ('order'|'aprovisionamiento'), idnbr/aprovisionamiento_id,
+  /// order_nbr, customer, titulo, done, sort_order.
+  Future<List<Map<String, dynamic>>> getMyTasks({String? assignedTo}) async {
+    final qs = assignedTo != null && assignedTo.isNotEmpty
+        ? '?assigned_to=${Uri.encodeComponent(assignedTo)}'
+        : '';
+    final result = await _client.get('/orderops/my-tasks$qs');
+    if (!result.ok) return [];
+    final body = result.body as Map? ?? {};
+    final orderTasks = (body['order_tasks'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final aprovTasks = (body['aprov_tasks'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    return [...orderTasks, ...aprovTasks];
   }
 }

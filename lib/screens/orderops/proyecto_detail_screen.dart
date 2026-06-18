@@ -46,6 +46,7 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
   @override
   void dispose() {
     _obsController.dispose();
+    _taskController.dispose();
     super.dispose();
   }
 
@@ -64,6 +65,7 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
       final updated = await _service!.getProyectoDetail(widget.proyecto.id);
       setState(() {
         _detailedProyecto = updated;
+        _localTasks = List.of(updated.tasks ?? []);
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -453,6 +455,8 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
                             ),
                     ),
 
+                    const SizedBox(height: 24),
+                    _buildChecklistPanel(theme),
                     const SizedBox(height: 24),
                     _buildObservationsPanel(theme),
                     const SizedBox(height: 24),
@@ -847,6 +851,256 @@ class _ProyectoDetailScreenState extends State<ProyectoDetailScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  // ── Checklist ──────────────────────────────────────────────────────────────
+
+  List<ProyectoTask> _localTasks = [];
+  final TextEditingController _taskController = TextEditingController();
+
+  Future<void> _addTask() async {
+    final title = _taskController.text.trim();
+    if (title.isEmpty || _service == null) return;
+    final proyecto = _detailedProyecto ?? widget.proyecto;
+    final task = await _service!.createProyectoTask(proyecto.id, title);
+    if (task != null) {
+      _taskController.clear();
+      setState(() => _localTasks.add(task));
+    }
+  }
+
+  Future<void> _toggleTask(ProyectoTask task) async {
+    if (_service == null) return;
+    final proyecto = _detailedProyecto ?? widget.proyecto;
+    final newDone = !task.done;
+    setState(() {
+      final idx = _localTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) _localTasks[idx] = task.copyWith(done: newDone);
+    });
+    final ok = await _service!.toggleProyectoTask(proyecto.id, task.id, newDone);
+    if (!ok) {
+      setState(() {
+        final idx = _localTasks.indexWhere((t) => t.id == task.id);
+        if (idx != -1) _localTasks[idx] = task.copyWith(done: task.done);
+      });
+    }
+  }
+
+  Future<void> _deleteTask(ProyectoTask task) async {
+    if (_service == null) return;
+    final proyecto = _detailedProyecto ?? widget.proyecto;
+    setState(() => _localTasks.removeWhere((t) => t.id == task.id));
+    await _service!.deleteProyectoTask(proyecto.id, task.id);
+  }
+
+  Future<void> _renameTask(ProyectoTask task) async {
+    if (_service == null) return;
+    final ctrl = TextEditingController(text: task.title);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editar tarea'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar')),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      final newTitle = ctrl.text.trim();
+      final proyecto = _detailedProyecto ?? widget.proyecto;
+      setState(() {
+        final idx = _localTasks.indexWhere((t) => t.id == task.id);
+        if (idx != -1) _localTasks[idx] = task.copyWith(title: newTitle);
+      });
+      await _service!.renameProyectoTask(proyecto.id, task.id, newTitle);
+    }
+  }
+
+  Widget _buildChecklistPanel(ThemeData theme) {
+    final isLight = theme.brightness == Brightness.light;
+
+    final done = _localTasks.where((t) => t.done).length;
+    final total = _localTasks.length;
+    final pct = total > 0 ? done / total : 0.0;
+
+    return _buildSectionShell(
+      theme,
+      title: 'Checklist de Tareas',
+      trailing: total > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: pct == 1.0
+                    ? Colors.green.withOpacity(0.15)
+                    : theme.colorScheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: pct == 1.0
+                      ? Colors.green.withOpacity(0.5)
+                      : theme.colorScheme.primary.withOpacity(0.3),
+                ),
+              ),
+              child: Text(
+                '$done / $total',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: pct == 1.0 ? Colors.green : theme.colorScheme.primary,
+                ),
+              ),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Progress bar
+          if (total > 0) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 6,
+                backgroundColor: theme.colorScheme.outline.withOpacity(0.15),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  pct == 1.0 ? Colors.green : theme.colorScheme.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+
+          // Task list
+          if (_localTasks.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.checklist_rounded,
+                      size: 18, color: theme.colorScheme.onSurface.withOpacity(0.3)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Sin tareas. Añade la primera abajo.',
+                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._localTasks.map((task) => _buildTaskRow(task, theme, isLight)),
+
+          const SizedBox(height: 12),
+
+          // Add task row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _taskController,
+                  onSubmitted: (_) => _addTask(),
+                  decoration: InputDecoration(
+                    hintText: 'Nueva tarea...',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: theme.colorScheme.surface.withOpacity(0.45),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: _addTask,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.all(12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Icon(Icons.add_rounded, size: 20),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskRow(ProyectoTask task, ThemeData theme, bool isLight) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: task.done
+              ? (isLight ? Colors.green.withOpacity(0.06) : Colors.green.withOpacity(0.08))
+              : theme.colorScheme.surface.withOpacity(0.35),
+          border: Border.all(
+            color: task.done
+                ? Colors.green.withOpacity(0.28)
+                : theme.colorScheme.outline.withOpacity(0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Checkbox
+            SizedBox(
+              width: 44,
+              child: Checkbox(
+                value: task.done,
+                onChanged: (_) => _toggleTask(task),
+                activeColor: Colors.green,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+              ),
+            ),
+            // Title
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _toggleTask(task),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    task.title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      decoration: task.done ? TextDecoration.lineThrough : null,
+                      color: task.done
+                          ? theme.colorScheme.onSurface.withOpacity(0.45)
+                          : null,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Actions
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.edit_outlined, size: 16,
+                      color: theme.colorScheme.onSurface.withOpacity(0.45)),
+                  tooltip: 'Editar',
+                  onPressed: () => _renameTask(task),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(6),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                  tooltip: 'Eliminar',
+                  onPressed: () => _deleteTask(task),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(6),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildObservationsPanel(ThemeData theme) {

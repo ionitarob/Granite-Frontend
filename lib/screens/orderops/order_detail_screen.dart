@@ -64,6 +64,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   List<AgentOrderPhoto> _photos = [];
   List<AgentOrderService> _services = [];
   List<AgentServiceAlert> _orderAlerts = [];
+  List<AgentOrderTask> _tasks = [];
+  bool _tasksLoading = false;
   final Map<int, Uint8List> _pdfPreviewCache = {};
 
   bool _loading = true;
@@ -261,18 +263,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      // detail response now embeds observations + services — no extra round trips needed
       final detail = await _orderOpsService!.getAgentOrder(widget.orderId);
-      final futures = await Future.wait([
-        _orderOpsService!.getObservations(widget.orderId),
-        _orderOpsService!.getPhotos(widget.orderId),
-        _orderOpsService!.getServices(widget.orderId),
-        _orderOpsService!.getServiceAlerts(),
-      ]);
+      final allAlerts = await _orderOpsService!.getServiceAlerts();
 
-      var observations = futures[0] as List<AgentOrderObservation>;
-      var photos = futures[1] as List<AgentOrderPhoto>;
-      final services = futures[2] as List<AgentOrderService>;
-      final allAlerts = futures[3] as List<AgentServiceAlert>;
+      var observations = detail.observations;
+      var photos = detail.photos;
+      final services = detail.services;
       final orderAlerts = allAlerts.where((a) => a.idnbr == widget.orderId).toList();
 
       int? proyectoId;
@@ -300,6 +297,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         debugPrint('Could not merge Proyecto data into order detail: $e');
       }
 
+      // Load tasks in parallel (not embedded in detail response)
+      final tasksFuture = _orderOpsService!.getOrderTasks(widget.orderId);
+
+      final tasks = await tasksFuture;
+
       if (mounted) {
         setState(() {
           _detail = detail;
@@ -309,6 +311,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _photos = photos;
           _services = services;
           _orderAlerts = orderAlerts;
+          _tasks = tasks;
           _loading = false;
           _error = null;
         });
@@ -893,21 +896,49 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           count: _observations.length,
         );
 
+        Widget tasksCard() => _buildSummaryCard(
+          theme,
+          'Tareas',
+          _buildTasksPreview(theme),
+          count: _tasks.length,
+          headerTrailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.playlist_add_check_rounded, size: 18),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Aplicar plantilla',
+                onPressed: _showTemplatePickerDialog,
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.add_task_rounded, size: 18),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Añadir tarea',
+                onPressed: _addOrderTask,
+              ),
+            ],
+          ),
+        );
+
         const cardHeight = 300.0;
 
         if (isWide) {
-          final infoW = (constraints.maxWidth - 48) * 0.22;
-          final linesW = (constraints.maxWidth - 48) * 0.28;
+          final colW = (constraints.maxWidth - 64) / 5;
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: infoW, height: cardHeight, child: infoCard()),
+              SizedBox(width: colW, height: cardHeight, child: infoCard()),
               const SizedBox(width: 16),
-              SizedBox(width: linesW, height: cardHeight, child: linesCard()),
+              SizedBox(width: colW * 1.2, height: cardHeight, child: linesCard()),
               const SizedBox(width: 16),
-              SizedBox(width: linesW, height: cardHeight, child: servicesCard()),
+              SizedBox(width: colW * 1.2, height: cardHeight, child: servicesCard()),
               const SizedBox(width: 16),
-              SizedBox(width: infoW, height: cardHeight, child: obsCard()),
+              SizedBox(width: colW, height: cardHeight, child: obsCard()),
+              const SizedBox(width: 16),
+              SizedBox(width: colW * 0.6, height: cardHeight, child: tasksCard()),
             ],
           );
         }
@@ -923,6 +954,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             SizedBox(width: isMedium ? halfWidth : fullWidth, child: linesCard()),
             SizedBox(width: isMedium ? halfWidth : fullWidth, child: servicesCard()),
             SizedBox(width: isMedium ? halfWidth : fullWidth, child: obsCard()),
+            SizedBox(width: isMedium ? halfWidth : fullWidth, child: tasksCard()),
           ],
         );
       },
@@ -1645,6 +1677,176 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // --- Order Tasks ---
+
+  Future<void> _addOrderTask() async {
+    if (_orderOpsService == null) return;
+    final ctrl = TextEditingController();
+    final titulo = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nueva tarea'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Descripción de la tarea…',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+            child: const Text('Añadir'),
+          ),
+        ],
+      ),
+    );
+    if (titulo == null || titulo.isEmpty) return;
+    final task = await _orderOpsService!.addOrderTask(widget.orderId, titulo);
+    if (task != null && mounted) {
+      setState(() => _tasks = [..._tasks, task]);
+    }
+  }
+
+  Future<void> _toggleOrderTask(AgentOrderTask task) async {
+    if (_orderOpsService == null) return;
+    final newDone = !task.done;
+    setState(() {
+      _tasks = _tasks
+          .map((t) => t.id == task.id ? t.copyWith(done: newDone) : t)
+          .toList();
+    });
+    final ok = await _orderOpsService!.toggleOrderTask(widget.orderId, task.id, newDone);
+    if (!ok && mounted) {
+      setState(() {
+        _tasks = _tasks
+            .map((t) => t.id == task.id ? t.copyWith(done: task.done) : t)
+            .toList();
+      });
+    }
+  }
+
+  Future<void> _deleteOrderTask(AgentOrderTask task) async {
+    if (_orderOpsService == null) return;
+    final prev = List<AgentOrderTask>.from(_tasks);
+    setState(() => _tasks = _tasks.where((t) => t.id != task.id).toList());
+    final ok = await _orderOpsService!.deleteOrderTask(widget.orderId, task.id);
+    if (!ok && mounted) setState(() => _tasks = prev);
+  }
+
+  Future<void> _showTemplatePickerDialog() async {
+    if (_orderOpsService == null) return;
+    final templates = await _orderOpsService!.getChecklistTemplates();
+    if (!mounted) return;
+    if (templates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay plantillas disponibles')),
+      );
+      return;
+    }
+    final template = await showDialog<ChecklistTemplate>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Aplicar plantilla'),
+        content: SizedBox(
+          width: 320,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: templates.length,
+            itemBuilder: (_, i) {
+              final t = templates[i];
+              return ListTile(
+                title: Text(t.name),
+                subtitle: t.description != null ? Text(t.description!) : null,
+                trailing: t.family != null
+                    ? Chip(label: Text(t.family!, style: const TextStyle(fontSize: 11)))
+                    : null,
+                onTap: () => Navigator.of(ctx).pop(t),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+        ],
+      ),
+    );
+    if (template == null) return;
+    setState(() => _tasksLoading = true);
+    final newTasks = await _orderOpsService!.applyChecklistTemplate(template.id, widget.orderId);
+    if (mounted) {
+      setState(() {
+        _tasks = [..._tasks, ...newTasks];
+        _tasksLoading = false;
+      });
+    }
+  }
+
+  Widget _buildTasksPreview(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 170),
+          child: _tasks.isEmpty
+              ? Center(
+                  child: Text(
+                    'Sin tareas',
+                    style: TextStyle(color: theme.hintColor, fontSize: 13),
+                  ),
+                )
+              : Scrollbar(
+                  thumbVisibility: _showPersistentScrollbar(context),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(right: 8, top: 2),
+                    itemCount: _tasks.length,
+                    itemBuilder: (_, i) {
+                      final task = _tasks[i];
+                      return Row(
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Checkbox(
+                              value: task.done,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              onChanged: (_) => _toggleOrderTask(task),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              task.titulo,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                decoration: task.done ? TextDecoration.lineThrough : null,
+                                color: task.done ? theme.hintColor : null,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 14),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            tooltip: 'Eliminar',
+                            onPressed: () => _deleteOrderTask(task),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+        ),
+      ],
+    );
   }
 
   Widget _buildCard({

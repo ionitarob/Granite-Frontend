@@ -416,9 +416,11 @@ class OrderOpsDetail {
   final AgentOrder agentOrder;
   final LatestLLM? latestLLM;
   final List<WorkItem> workItems;
-  final List<AgentOrderQualityLog> qualityLogs; // New field
-  final List<AgentOrderPhoto> photos; // New field
+  final List<AgentOrderQualityLog> qualityLogs;
+  final List<AgentOrderPhoto> photos;
   final Map<String, dynamic>? sourceOrder;
+  final List<AgentOrderObservation> observations;
+  final List<AgentOrderService> services;
 
   OrderOpsDetail({
     required this.agentOrder,
@@ -427,6 +429,8 @@ class OrderOpsDetail {
     required this.qualityLogs,
     required this.photos,
     this.sourceOrder,
+    this.observations = const [],
+    this.services = const [],
   });
 
   factory OrderOpsDetail.fromJson(Map<String, dynamic> json) {
@@ -445,6 +449,12 @@ class OrderOpsDetail {
           .map((item) => AgentOrderPhoto.fromJson(item))
           .toList(),
       sourceOrder: json['source_order'] as Map<String, dynamic>?,
+      observations: (json['observations'] as List? ?? [])
+          .map((e) => AgentOrderObservation.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      services: (json['services'] as List? ?? [])
+          .map((e) => AgentOrderService.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 }
@@ -562,6 +572,7 @@ class Proyecto {
   final List<AgentOrder>? orders;
   final List<AgentOrderObservation>? observations;
   final List<AgentOrderPhoto>? photos;
+  final List<ProyectoTask>? tasks;
   final List<String> subfamilies;
 
   Proyecto({
@@ -577,6 +588,7 @@ class Proyecto {
     this.orders,
     this.observations,
     this.photos,
+    this.tasks,
     this.subfamilies = const [],
   });
 
@@ -610,6 +622,9 @@ class Proyecto {
       photos: json['photos'] is List
           ? List<dynamic>.from(json['photos']).map((e) => AgentOrderPhoto.fromJson(Map<String, dynamic>.from(e))).toList()
           : null,
+      tasks: json['tasks'] is List
+          ? List<dynamic>.from(json['tasks']).map((e) => ProyectoTask.fromJson(Map<String, dynamic>.from(e))).toList()
+          : null,
       subfamilies: json['subfamilies'] is List
           ? List<String>.from(json['subfamilies'].map((e) => e.toString()))
           : (json['subfamilies'] is String
@@ -618,6 +633,203 @@ class Proyecto {
                   .where((String s) => s.isNotEmpty)
                   .toList()
               : const []),
+    );
+  }
+}
+
+class AprovisionamientoServicio {
+  final int id;
+  final String servicio;
+  final String? detalles;
+  final bool done;
+  final int sortOrder;
+
+  AprovisionamientoServicio({
+    required this.id,
+    required this.servicio,
+    this.detalles,
+    this.done = false,
+    this.sortOrder = 0,
+  });
+
+  factory AprovisionamientoServicio.fromJson(Map<String, dynamic> j) =>
+      AprovisionamientoServicio(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        servicio: j['servicio'] as String? ?? '',
+        detalles: j['detalles'] as String?,
+        done: j['done'] as bool? ?? false,
+        sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+      );
+
+  AprovisionamientoServicio copyWith({bool? done, String? servicio, String? detalles}) =>
+      AprovisionamientoServicio(
+        id: id,
+        servicio: servicio ?? this.servicio,
+        detalles: detalles ?? this.detalles,
+        done: done ?? this.done,
+        sortOrder: sortOrder,
+      );
+}
+
+class AprovisionamientoTask {
+  final int id;
+  final String titulo;
+  final bool done;
+  final int sortOrder;
+  final DateTime? createdAt;
+
+  AprovisionamientoTask({
+    required this.id,
+    required this.titulo,
+    this.done = false,
+    this.sortOrder = 0,
+    this.createdAt,
+  });
+
+  factory AprovisionamientoTask.fromJson(Map<String, dynamic> j) =>
+      AprovisionamientoTask(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        titulo: j['titulo'] as String? ?? '',
+        done: j['done'] as bool? ?? false,
+        sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+      );
+
+  AprovisionamientoTask copyWith({bool? done, String? titulo}) =>
+      AprovisionamientoTask(
+        id: id,
+        titulo: titulo ?? this.titulo,
+        done: done ?? this.done,
+        sortOrder: sortOrder,
+        createdAt: createdAt,
+      );
+}
+
+class AprovisionamientoRecord {
+  final int id;
+  final String? orderNbr;
+  final String customer;
+  final String? notas;
+  final String estado; // pendiente | enlazado
+  final int? linkedIdnbr;
+  final String? family;
+  final String? subfamilies;
+  final String? prioridad;
+  final String? assignedTo;
+  final String? assignedToName;
+  final bool autoApply;
+  final DateTime? createdAt;
+  final List<AprovisionamientoServicio> servicios;
+  final List<AprovisionamientoTask> tasks;
+
+  AprovisionamientoRecord({
+    required this.id,
+    this.orderNbr,
+    required this.customer,
+    this.notas,
+    this.estado = 'pendiente',
+    this.linkedIdnbr,
+    this.family,
+    this.subfamilies,
+    this.prioridad,
+    this.assignedTo,
+    this.assignedToName,
+    this.autoApply = true,
+    this.createdAt,
+    this.servicios = const [],
+    this.tasks = const [],
+  });
+
+  bool get isLinked => estado == 'enlazado' && linkedIdnbr != null;
+  int get doneCount => servicios.where((s) => s.done).length;
+  int get taskDoneCount => tasks.where((t) => t.done).length;
+
+  factory AprovisionamientoRecord.fromJson(Map<String, dynamic> j) =>
+      AprovisionamientoRecord(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        orderNbr: j['order_nbr'] as String?,
+        customer: j['customer'] as String? ?? '',
+        notas: j['notas'] as String?,
+        estado: j['estado'] as String? ?? 'pendiente',
+        linkedIdnbr: (j['linked_idnbr'] as num?)?.toInt(),
+        family: j['family'] as String?,
+        subfamilies: j['subfamilies'] as String?,
+        prioridad: j['prioridad'] as String?,
+        assignedTo: j['assigned_to'] as String?,
+        assignedToName: j['assigned_to_name'] as String?,
+        autoApply: j['auto_apply'] as bool? ?? true,
+        createdAt: j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+        servicios: (j['servicios'] as List? ?? [])
+            .map((e) => AprovisionamientoServicio.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+        tasks: (j['tasks'] as List? ?? [])
+            .map((e) => AprovisionamientoTask.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
+
+  AprovisionamientoRecord copyWith({
+    List<AprovisionamientoServicio>? servicios,
+    List<AprovisionamientoTask>? tasks,
+    String? estado,
+    int? linkedIdnbr,
+  }) =>
+      AprovisionamientoRecord(
+        id: id,
+        orderNbr: orderNbr,
+        customer: customer,
+        notas: notas,
+        estado: estado ?? this.estado,
+        linkedIdnbr: linkedIdnbr ?? this.linkedIdnbr,
+        family: family,
+        subfamilies: subfamilies,
+        prioridad: prioridad,
+        assignedTo: assignedTo,
+        assignedToName: assignedToName,
+        autoApply: autoApply,
+        createdAt: createdAt,
+        servicios: servicios ?? this.servicios,
+        tasks: tasks ?? this.tasks,
+      );
+}
+
+class ProyectoTask {
+  final int id;
+  final String title;
+  final bool done;
+  final int sortOrder;
+  final DateTime? createdAt;
+
+  ProyectoTask({
+    required this.id,
+    required this.title,
+    this.done = false,
+    this.sortOrder = 0,
+    this.createdAt,
+  });
+
+  factory ProyectoTask.fromJson(Map<String, dynamic> json) {
+    return ProyectoTask(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: json['title'] as String? ?? '',
+      done: json['done'] as bool? ?? false,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())
+          : null,
+    );
+  }
+
+  ProyectoTask copyWith({bool? done, String? title}) {
+    return ProyectoTask(
+      id: id,
+      title: title ?? this.title,
+      done: done ?? this.done,
+      sortOrder: sortOrder,
+      createdAt: createdAt,
     );
   }
 }
@@ -715,6 +927,99 @@ class AgentPrinter {
         'name': name,
         'ip': ip,
       };
+}
+
+class AgentOrderTask {
+  final int id;
+  final int idnbr;
+  final String titulo;
+  final bool done;
+  final int sortOrder;
+  final DateTime? createdAt;
+
+  AgentOrderTask({
+    required this.id,
+    required this.idnbr,
+    required this.titulo,
+    this.done = false,
+    this.sortOrder = 0,
+    this.createdAt,
+  });
+
+  factory AgentOrderTask.fromJson(Map<String, dynamic> j) => AgentOrderTask(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        idnbr: (j['idnbr'] as num?)?.toInt() ?? 0,
+        titulo: j['titulo'] as String? ?? '',
+        done: j['done'] as bool? ?? false,
+        sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+      );
+
+  AgentOrderTask copyWith({bool? done, String? titulo}) => AgentOrderTask(
+        id: id,
+        idnbr: idnbr,
+        titulo: titulo ?? this.titulo,
+        done: done ?? this.done,
+        sortOrder: sortOrder,
+        createdAt: createdAt,
+      );
+}
+
+class ChecklistTemplateItem {
+  final int id;
+  final int templateId;
+  final String titulo;
+  final int sortOrder;
+
+  ChecklistTemplateItem({
+    required this.id,
+    required this.templateId,
+    required this.titulo,
+    this.sortOrder = 0,
+  });
+
+  factory ChecklistTemplateItem.fromJson(Map<String, dynamic> j) =>
+      ChecklistTemplateItem(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        templateId: (j['template'] as num?)?.toInt() ?? 0,
+        titulo: j['titulo'] as String? ?? '',
+        sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class ChecklistTemplate {
+  final int id;
+  final String name;
+  final String? description;
+  final String? family;
+  final DateTime? createdAt;
+  final List<ChecklistTemplateItem> items;
+
+  ChecklistTemplate({
+    required this.id,
+    required this.name,
+    this.description,
+    this.family,
+    this.createdAt,
+    this.items = const [],
+  });
+
+  factory ChecklistTemplate.fromJson(Map<String, dynamic> j) =>
+      ChecklistTemplate(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: j['name'] as String? ?? '',
+        description: j['description'] as String?,
+        family: j['family'] as String?,
+        createdAt: j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+        items: (j['items'] as List? ?? [])
+            .map((e) => ChecklistTemplateItem.fromJson(
+                Map<String, dynamic>.from(e as Map)))
+            .toList(),
+      );
 }
 
 class AgentServiceAlert {
