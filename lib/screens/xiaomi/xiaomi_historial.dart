@@ -293,6 +293,7 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
   }
 
   Future<void> _deleteCesb(int id, String cesbLabel) async {
+    debugPrint('[_deleteCesb] called id=$id cesb=$cesbLabel');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -308,11 +309,13 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
         ],
       ),
     );
+    debugPrint('[_deleteCesb] dialog result=$confirmed');
     if (confirmed != true || !mounted) return;
 
     final provider = Provider.of<XiaomiProvider>(context, listen: false);
     final messenger = ScaffoldMessenger.of(context);
     final success = await provider.deleteCesb(id);
+    debugPrint('[_deleteCesb] success=$success');
     if (!mounted) return;
     if (success) {
       messenger.showSnackBar(
@@ -323,6 +326,44 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
     } else {
       messenger.showSnackBar(
         SnackBar(content: Text('Error al eliminar CESB "$cesbLabel"'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _deletePendingCesb(String cesb) async {
+    debugPrint('[_deletePendingCesb] called cesb=$cesb');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar CESB pendiente?'),
+        content: Text('Se eliminará el CESB "$cesb" de forma permanente. Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    debugPrint('[_deletePendingCesb] dialog result=$confirmed');
+    if (confirmed != true || !mounted) return;
+
+    final provider = Provider.of<XiaomiProvider>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await provider.deleteCesbByCode(cesb);
+    debugPrint('[_deletePendingCesb] success=$success');
+    if (!mounted) return;
+    if (success) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('CESB "$cesb" eliminado'), backgroundColor: Colors.red),
+      );
+      fetchHistorico();
+      fetchPending();
+    } else {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Error al eliminar CESB "$cesb"'), backgroundColor: Colors.red),
       );
     }
   }
@@ -847,8 +888,9 @@ class _XiaomiHistoricoPageState extends State<XiaomiHistoricoPage> {
                     },
                     onUnvalidate: (isValidated || isStarted) ? () => _unvalidateCesb(item['cesb'] ?? '') : null,
                     onDelete: () {
-                      final id = item['id'];
-                      if (id != null) _deleteCesb(id as int, item['cesb'] ?? '');
+                      final cesb = item['cesb']?.toString() ?? '';
+                      debugPrint('[pendingDelete] using cesb=$cesb for delete (id was null)');
+                      if (cesb.isNotEmpty) _deletePendingCesb(cesb);
                     },
                   );
                 },
@@ -1455,7 +1497,14 @@ class _LazyDataTableState extends State<_LazyDataTable> {
                                   onPressed: () {
                                     final id = r['registro'];
                                     final cesb = val(r['cesb']);
-                                    if (id != null) widget.onDelete!(id as int, cesb);
+                                    debugPrint('[historialDelete] raw registro=$id type=${id?.runtimeType} cesb=$cesb');
+                                    if (id != null) {
+                                      final idInt = int.tryParse(id.toString());
+                                      debugPrint('[historialDelete] parsed idInt=$idInt');
+                                      if (idInt != null) widget.onDelete!(idInt, cesb);
+                                    } else {
+                                      debugPrint('[historialDelete] id is NULL! full record keys: ${r.keys.toList()}');
+                                    }
                                   },
                                 ),
                               ),

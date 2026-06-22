@@ -179,14 +179,29 @@ class XiaomiProvider extends ChangeNotifier {
   }
 
   Future<bool> deleteCesb(int id) async {
+    debugPrint('[deleteCesb] called with id=$id (type: ${id.runtimeType})');
     try {
       final resp = await apiService.client.post('/xiaomieco/delete_cesb/', jsonBody: {'id': id});
+      debugPrint('[deleteCesb] HTTP ${resp.statusCode} ok=${resp.ok} body=${resp.body} error=${resp.error}');
       return resp.ok;
-    } catch (e) {
-      debugPrint('Error deleteCesb: $e');
+    } catch (e, st) {
+      debugPrint('[deleteCesb] EXCEPTION: $e\n$st');
     }
     return false;
   }
+
+  Future<bool> deleteCesbByCode(String cesb) async {
+    debugPrint('[deleteCesbByCode] called with cesb=$cesb');
+    try {
+      final resp = await apiService.client.post('/xiaomieco/delete_cesb/', jsonBody: {'cesb': cesb});
+      debugPrint('[deleteCesbByCode] HTTP ${resp.statusCode} ok=${resp.ok} body=${resp.body} error=${resp.error}');
+      return resp.ok;
+    } catch (e, st) {
+      debugPrint('[deleteCesbByCode] EXCEPTION: $e\n$st');
+    }
+    return false;
+  }
+
 
   Future<bool> startCesb(String cesb, int teamId) async {
     try {
