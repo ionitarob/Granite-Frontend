@@ -616,17 +616,29 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
       return;
     }
 
-    // 1. Check if this team has an active CESB (started but not finished)
+    // A CESB is "selectable" if it hasn't started yet, OR if it's paused.
+    // Paused items have fecha_hora_inicio != null but fecha_hora_pausa != null.
+    bool isSelectable(Map<String, dynamic>? item) {
+      if (item == null) return false;
+      final notStarted = item['fecha_hora_inicio'] == null;
+      final isPaused = item['fecha_hora_pausa'] != null;
+      return notStarted || isPaused;
+    }
+
+    // 1. Check if this team has an active CESB (started + not paused + not finished)
     // Match by team_name if available, otherwise fallback to team_id comparison
     final active = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
       (item) {
         if (item == null) return false;
+        // Must be started and NOT paused to be considered "active"
+        if (item['fecha_hora_inicio'] == null) return false;
+        if (item['fecha_hora_pausa'] != null) return false;
         final itemTeamName = item['team_name']?.toString().toLowerCase();
         final selectedTeamName = _selectedTeam!.nombre.toLowerCase();
         if (itemTeamName != null && itemTeamName.isNotEmpty) {
-          return itemTeamName == selectedTeamName && item['fecha_hora_inicio'] != null;
+          return itemTeamName == selectedTeamName;
         }
-        return item['team_id'] == _selectedTeam!.id && item['fecha_hora_inicio'] != null;
+        return item['team_id'] == _selectedTeam!.id;
       },
       orElse: () => null,
     );
@@ -650,19 +662,22 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
       _activeCesb = null;
       _stopTimer();
       
-      // 2. Find the NEXT CESB based on priority (oldest date) and validation
-      // Check if there is a manual selection that is still pending (fecha_hora_inicio == null)
+      // 2. Find the NEXT CESB — not started OR paused (both are valid "next" tasks)
       Map<String, dynamic>? next;
       if (_manuallySelectedNextCesbId != null) {
         next = _pendingList.cast<Map<String, dynamic>?>().firstWhere(
-          (item) => item?['cesb'] == _manuallySelectedNextCesbId && item?['fecha_hora_inicio'] == null,
+          (item) => item?['cesb'] == _manuallySelectedNextCesbId && isSelectable(item),
           orElse: () => null,
         );
       }
       
-      // Fallback to priority if no manual selection or if it's no longer valid
+      // Fallback: paused items first (higher priority), then unstarted
       next ??= _pendingList.cast<Map<String, dynamic>?>().firstWhere(
-        (item) => item?['fecha_hora_inicio'] == null,
+        (item) => item?['fecha_hora_pausa'] != null, // paused first
+        orElse: () => null,
+      );
+      next ??= _pendingList.cast<Map<String, dynamic>?>().firstWhere(
+        (item) => item?['fecha_hora_inicio'] == null, // then unstarted
         orElse: () => null,
       );
       
@@ -1598,7 +1613,7 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
               Text('${_nextCesb!['sku']}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey)),
               const SizedBox(height: 12),
               if (isPausedNext)
-                // Paused: show badge + transfer button inline
+                // Paused: show badge + both resume (this team) and transfer buttons
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -1606,38 +1621,74 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.amber.shade700.withOpacity(0.35)),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Icon(Icons.pause_circle_rounded, size: 16, color: Colors.amber.shade700),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'CESB PAUSADO',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber.shade700,
+                      Row(
+                        children: [
+                          Icon(Icons.pause_circle_rounded, size: 16, color: Colors.amber.shade700),
+                          const SizedBox(width: 6),
+                          Text(
+                            'CESB PAUSADO',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade700,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: _submitting
-                            ? null
-                            : () => _transferPausedToThisTeam(context),
-                        icon: const Icon(Icons.swap_horiz_rounded, size: 15),
-                        label: const Text(
-                          'TRANSFERIR A ESTE EQUIPO',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _submitting
+                                  ? null
+                                  : () async {
+                                      setState(() => _submitting = true);
+                                      try {
+                                        final success = await context
+                                            .read<XiaomiProvider>()
+                                            .resumeCesb(_nextCesb!['cesb']);
+                                        if (success) await _refreshData();
+                                      } finally {
+                                        if (mounted) setState(() => _submitting = false);
+                                      }
+                                    },
+                              icon: const Icon(Icons.play_arrow_rounded, size: 15),
+                              label: const Text(
+                                'REANUDAR',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _submitting
+                                  ? null
+                                  : () => _transferPausedToThisTeam(context),
+                              icon: const Icon(Icons.swap_horiz_rounded, size: 15),
+                              label: const Text(
+                                'TRANSFERIR',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.deepPurple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1684,13 +1735,38 @@ class _CerrarCesbScreenState extends State<CerrarCesbScreen> {
           width: double.infinity,
           height: 70,
           child: ElevatedButton.icon(
-            onPressed: (_submitting || !isValidated) ? null : _onEmpezar,
-            icon: const Icon(Icons.play_arrow_rounded, size: 28),
-            label: const Text('EMPEZAR TRABAJO', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            onPressed: _submitting
+                ? null
+                : isPausedNext
+                    ? () async {
+                        // Resume a paused CESB from the next-task view
+                        setState(() => _submitting = true);
+                        try {
+                          final success = await context
+                              .read<XiaomiProvider>()
+                              .resumeCesb(_nextCesb!['cesb']);
+                          if (success) await _refreshData();
+                        } finally {
+                          if (mounted) setState(() => _submitting = false);
+                        }
+                      }
+                    : (!isValidated ? null : _onEmpezar),
+            icon: Icon(
+              isPausedNext ? Icons.play_arrow_rounded : Icons.play_arrow_rounded,
+              size: 28,
+            ),
+            label: Text(
+              isPausedNext ? 'REANUDAR TRABAJO' : 'EMPEZAR TRABAJO',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: theme.colorScheme.onPrimary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor:
+                  isPausedNext ? Colors.green : theme.colorScheme.primary,
+              foregroundColor: isPausedNext
+                  ? Colors.white
+                  : theme.colorScheme.onPrimary,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
             ),
           ),
         ),

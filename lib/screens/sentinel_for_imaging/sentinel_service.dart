@@ -563,6 +563,7 @@ class SentinelService {
     required String image,
     required bool enabled,
     int? orderId,
+    String? postImageScript,
   }) async {
     final api = ApiService.instance;
     if (api == null) throw Exception('ApiService not initialized');
@@ -575,6 +576,9 @@ class SentinelService {
     };
     if (orderId != null) {
       body['order_id'] = orderId;
+    }
+    if (postImageScript != null) {
+      body['post_image_script'] = postImageScript;
     }
 
     final res = await api.client.post(

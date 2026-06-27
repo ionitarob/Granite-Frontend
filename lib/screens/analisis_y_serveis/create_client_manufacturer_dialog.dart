@@ -127,16 +127,19 @@ class _CreateClientManufacturerDialogState
               TextFormField(
                 controller: _nameController,
                 autofocus: true,
+                style: const TextStyle(color: Color(0xFF2C3E50)),
                 decoration: InputDecoration(
                   labelText: _getLabel(),
+                  labelStyle: const TextStyle(color: Color(0xFF7F8C8D)),
                   hintText: 'Ingrese nombre',
+                  hintStyle: const TextStyle(color: Color(0xFFB0BEC5)),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
                   fillColor: Colors.grey.shade50,
                   suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear),
+                    icon: const Icon(Icons.clear, color: Color(0xFF7F8C8D)),
                     onPressed: _nameController.clear,
                   ),
                 ),

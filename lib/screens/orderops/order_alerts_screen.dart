@@ -82,7 +82,7 @@ class _OrderAlertsScreenState extends State<OrderAlertsScreen> {
     });
     try {
       if (_orderOpsService == null) return;
-      final items = await _orderOpsService!.getServiceAlerts();
+      final items = await _orderOpsService!.getServiceAlerts(forceRefresh: true);
       if (mounted) {
         setState(() {
           _alerts = items;
@@ -104,6 +104,7 @@ class _OrderAlertsScreenState extends State<OrderAlertsScreen> {
     try {
       final ok = await _orderOpsService!.updateServiceAlert(alert.idnbr, alert.sku, newStatus, notes);
       if (ok) {
+        _orderOpsService!.invalidateAlertsCache();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Alerta de servicio actualizada a: $newStatus')),

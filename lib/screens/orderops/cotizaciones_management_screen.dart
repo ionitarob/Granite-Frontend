@@ -41,6 +41,11 @@ class _CotizacionesManagementScreenState
 
   bool _forbidden = false;
 
+  // Client-side filters
+  final TextEditingController _minPvdCtrl = TextEditingController();
+  final TextEditingController _maxPvdCtrl = TextEditingController();
+  String? _familyQuickFilter;
+
   @override
   void initState() {
     super.initState();
@@ -81,7 +86,33 @@ class _CotizacionesManagementScreenState
     _disposeInlineCtrls();
     _searchCtrl.dispose();
     _familyCtrl.dispose();
+    _minPvdCtrl.dispose();
+    _maxPvdCtrl.dispose();
     super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredRows {
+    final minPvd = double.tryParse(_minPvdCtrl.text.replaceAll(',', '.'));
+    final maxPvd = double.tryParse(_maxPvdCtrl.text.replaceAll(',', '.'));
+    final fam = _familyQuickFilter;
+    return _rows.where((r) {
+      if (fam != null && fam.isNotEmpty) {
+        if ((r['family']?.toString() ?? '') != fam) return false;
+      }
+      final pvd = double.tryParse(r['pvd']?.toString() ?? '');
+      if (minPvd != null && (pvd == null || pvd < minPvd)) return false;
+      if (maxPvd != null && (pvd == null || pvd > maxPvd)) return false;
+      return true;
+    }).toList();
+  }
+
+  List<String> get _distinctFamilies {
+    final seen = <String>{};
+    return _rows
+        .map((r) => r['family']?.toString() ?? '')
+        .where((f) => f.isNotEmpty && seen.add(f))
+        .toList()
+      ..sort();
   }
 
   void _disposeInlineCtrls() {
@@ -293,8 +324,8 @@ class _CotizacionesManagementScreenState
       title: 'Metadatos',
       color: const Color(0xFF7C3AED),
       children: [
-        _field(extraCtrl, 'Extra info 1', icon: Icons.info_outline),
-        _field(collectionCtrl, 'Collection info', icon: Icons.collections_bookmark_outlined),
+        _field(extraCtrl, 'Info Adicional', icon: Icons.info_outline),
+        _field(collectionCtrl, 'Info Colección', icon: Icons.collections_bookmark_outlined),
       ],
     );
 
@@ -790,7 +821,17 @@ class _CotizacionesManagementScreenState
   String _money(dynamic value) {
     final v = double.tryParse(value?.toString() ?? '');
     if (v == null) return '-';
-    return v.toStringAsFixed(2);
+    final isNeg = v < 0;
+    final abs = v.abs();
+    final parts = abs.toStringAsFixed(2).split('.');
+    final intStr = parts[0];
+    final dec = parts.length > 1 ? parts[1] : '00';
+    final buf = StringBuffer();
+    for (int i = 0; i < intStr.length; i++) {
+      if (i > 0 && (intStr.length - i) % 3 == 0) buf.write('.');
+      buf.write(intStr[i]);
+    }
+    return '${isNeg ? '-' : ''}$buf,$dec €';
   }
 
   Color _familyColor(String family) {
@@ -931,16 +972,24 @@ class _CotizacionesManagementScreenState
   }
 
   Widget _actionsCell(Map<String, dynamic> row) {
+    const sz = 18.0;
+    const box = BoxConstraints(minWidth: 28, minHeight: 28);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           tooltip: 'Editar',
+          iconSize: sz,
+          constraints: box,
+          padding: EdgeInsets.zero,
           onPressed: () => _createOrEdit(initial: row),
           icon: const Icon(Icons.edit),
         ),
         IconButton(
           tooltip: 'Duplicar',
+          iconSize: sz,
+          constraints: box,
+          padding: EdgeInsets.zero,
           onPressed: () {
             final cloned = Map<String, dynamic>.from(row)..remove('id');
             _createOrEdit(initial: cloned);
@@ -949,11 +998,11 @@ class _CotizacionesManagementScreenState
         ),
         IconButton(
           tooltip: 'Eliminar',
+          iconSize: sz,
+          constraints: box,
+          padding: EdgeInsets.zero,
           onPressed: () => _deleteRow(row),
-          icon: Icon(
-            Icons.delete_outline,
-            color: _cDanger,
-          ),
+          icon: Icon(Icons.delete_outline, color: _cDanger),
         ),
       ],
     );
@@ -961,31 +1010,30 @@ class _CotizacionesManagementScreenState
 
   Widget _inlineInput(
     String key, {
-    double width = 160,
+    double? width,
     int maxLines = 1,
     TextInputType? keyboardType,
   }) {
-    return SizedBox(
-      width: width,
-      child: TextField(
-        controller: _inlineCtrls[key],
-        maxLines: maxLines,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          isDense: true,
-          filled: true,
-          fillColor: _cSurface.withOpacity(0.65),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          border: const OutlineInputBorder(),
-          enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: _cPrimary.withOpacity(0.30)),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: _cPrimary, width: 1.6),
-          ),
+    final field = TextField(
+      controller: _inlineCtrls[key],
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      style: const TextStyle(fontSize: 12),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: _cSurface.withOpacity(0.65),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        border: const OutlineInputBorder(),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: _cPrimary.withOpacity(0.30)),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: _cPrimary, width: 1.6),
         ),
       ),
     );
+    return width != null ? SizedBox(width: width, child: field) : field;
   }
 
   Widget _buildDesktopDataTable() {
@@ -997,316 +1045,217 @@ class _CotizacionesManagementScreenState
     final costeColor = isDark ? const Color(0xFFF97316) : const Color(0xFF9A3412);
     final pvdColor = isDark ? const Color(0xFF22C55E) : const Color(0xFF166534);
     final margenColor = isDark ? const Color(0xFFEAB308) : const Color(0xFF854D0E);
+    final divColor = isDark ? _cBorder.withOpacity(0.35) : theme.colorScheme.outline.withOpacity(0.18);
+
+    Widget hdr(int colIdx, String label, {Color? labelColor, VoidCallback? onSort}) {
+      final sorted = _sortColumnIndex == colIdx;
+      return GestureDetector(
+        onTap: onSort,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9),
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                    color: labelColor ?? (isDark ? Colors.white : theme.colorScheme.onSurface),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (onSort != null && sorted) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                  size: 10,
+                  color: labelColor ?? (isDark ? Colors.white70 : theme.colorScheme.onSurface),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget dcell(Widget child, {VoidCallback? onDoubleTap}) {
+      return GestureDetector(
+        onDoubleTap: onDoubleTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: child,
+        ),
+      );
+    }
+
+    final headerRow = TableRow(
+      decoration: BoxDecoration(
+        color: isDark ? _cPrimary.withOpacity(0.22) : _cPrimary.withOpacity(0.12),
+      ),
+      children: [
+        hdr(0, 'ID', onSort: () => _sortBy<num>(0, (r) => int.tryParse(r['id']?.toString() ?? '') ?? 0)),
+        hdr(1, 'Familia', onSort: () => _sortBy<String>(1, (r) => r['family']?.toString() ?? '')),
+        hdr(2, 'Descripción', onSort: () => _sortBy<String>(2, (r) => r['description']?.toString() ?? '')),
+        hdr(3, 'SKU Config', onSort: () => _sortBy<String>(3, (r) => r['sku_config']?.toString() ?? '')),
+        hdr(4, 'SKU HP', labelColor: skuHpColor, onSort: () => _sortBy<String>(4, (r) => r['sku_hp']?.toString() ?? '')),
+        hdr(5, 'SKU Lenovo', labelColor: skuLenovoColor, onSort: () => _sortBy<String>(5, (r) => r['sku_lenovo']?.toString() ?? '')),
+        hdr(6, 'Info Adicional', labelColor: extraInfoColor, onSort: () => _sortBy<String>(6, (r) => r['extra_info_1']?.toString() ?? '')),
+        hdr(7, 'Coste', labelColor: costeColor, onSort: () => _sortBy<num>(7, (r) => double.tryParse(r['coste']?.toString() ?? '') ?? 0)),
+        hdr(8, 'PVD', labelColor: pvdColor, onSort: () => _sortBy<num>(8, (r) => double.tryParse(r['pvd']?.toString() ?? '') ?? 0)),
+        hdr(9, 'Margen', labelColor: margenColor, onSort: () => _sortBy<num>(9, (r) => double.tryParse(r['margen']?.toString() ?? '') ?? 0)),
+        hdr(10, 'Colección', onSort: () => _sortBy<String>(10, (r) => r['collection_info']?.toString() ?? '')),
+        hdr(-1, 'Acciones'),
+      ],
+    );
+
+    final dataRows = _filteredRows.map((row) {
+      final rowId = int.tryParse(row['id']?.toString() ?? '');
+      final isEditing = rowId != null && rowId == _editingRowId;
+      final familyColor = _familyColor(row['family']?.toString() ?? '');
+      final tap = isEditing ? null : () => _startInlineEdit(row);
+
+      return TableRow(
+        decoration: BoxDecoration(
+          color: isEditing
+              ? (isDark ? _cSecondary.withOpacity(0.24) : _cSecondary.withOpacity(0.12))
+              : familyColor.withOpacity(isDark ? 0.10 : 0.05),
+        ),
+        children: [
+          // ID
+          dcell(
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(row['id']?.toString() ?? '-',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+              if (!isEditing) ...[
+                const SizedBox(width: 3),
+                Icon(Icons.edit_note, size: 11, color: _cAccent.withOpacity(0.8)),
+              ],
+            ]),
+            onDoubleTap: tap,
+          ),
+          dcell(isEditing ? _inlineInput('family') : _familyBadge(row['family']?.toString() ?? ''), onDoubleTap: tap),
+          dcell(
+            isEditing
+                ? _inlineInput('description', maxLines: 2)
+                : Text(row['description']?.toString() ?? '', overflow: TextOverflow.ellipsis, maxLines: 2, style: const TextStyle(fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('sku_config')
+                : SelectableText(row['sku_config']?.toString() ?? '', style: const TextStyle(fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('sku_hp')
+                : SelectableText(row['sku_hp']?.toString() ?? '', style: TextStyle(color: skuHpColor, fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('sku_lenovo')
+                : SelectableText(row['sku_lenovo']?.toString() ?? '', style: TextStyle(color: skuLenovoColor, fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('extra_info_1')
+                : Text(row['extra_info_1']?.toString() ?? '', overflow: TextOverflow.ellipsis, style: TextStyle(color: extraInfoColor, fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('coste', keyboardType: const TextInputType.numberWithOptions(decimal: true))
+                : Text(_money(row['coste']), style: TextStyle(color: costeColor, fontWeight: FontWeight.w700, fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('pvd', keyboardType: const TextInputType.numberWithOptions(decimal: true))
+                : Text(_money(row['pvd']), style: TextStyle(color: pvdColor, fontWeight: FontWeight.w700, fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('margen', keyboardType: const TextInputType.numberWithOptions(decimal: true))
+                : Text(_money(row['margen']), style: TextStyle(color: margenColor, fontWeight: FontWeight.w700, fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? _inlineInput('collection_info')
+                : Text(row['collection_info']?.toString() ?? '', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+            onDoubleTap: tap,
+          ),
+          dcell(
+            isEditing
+                ? Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      tooltip: 'Guardar',
+                      iconSize: 20,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      padding: EdgeInsets.zero,
+                      onPressed: _savingInline ? null : _saveInlineEdit,
+                      icon: _savingInline
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.check_circle_outline, color: Colors.greenAccent),
+                    ),
+                    IconButton(
+                      tooltip: 'Cancelar',
+                      iconSize: 20,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      padding: EdgeInsets.zero,
+                      onPressed: _savingInline ? null : _cancelInlineEdit,
+                      icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                    ),
+                  ])
+                : _actionsCell(row),
+          ),
+        ],
+      );
+    }).toList();
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            isDark
-                ? _cSurface.withOpacity(0.90)
-                : theme.colorScheme.surface,
-            isDark
-                ? const Color(0xFF111827).withOpacity(0.92)
-                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.86),
+            isDark ? _cSurface.withOpacity(0.90) : theme.colorScheme.surface,
+            isDark ? const Color(0xFF111827).withOpacity(0.92) : theme.colorScheme.surfaceContainerHighest.withOpacity(0.86),
           ],
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark
-              ? _cBorder.withOpacity(0.85)
-              : theme.colorScheme.outline.withOpacity(0.35),
+          color: isDark ? _cBorder.withOpacity(0.85) : theme.colorScheme.outline.withOpacity(0.35),
         ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SingleChildScrollView(
-            child: DataTable(
-              sortColumnIndex: _sortColumnIndex,
-              sortAscending: _sortAscending,
-              headingTextStyle: theme.textTheme.labelLarge?.copyWith(
-                color: isDark ? Colors.white : theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w700,
-              ),
-              dataTextStyle: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface,
-              ),
-              headingRowColor: WidgetStateProperty.all(
-                isDark
-                    ? _cPrimary.withOpacity(0.22)
-                    : _cPrimary.withOpacity(0.12),
-              ),
-              dataRowColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.selected)) {
-                  return isDark
-                      ? _cPrimary.withOpacity(0.16)
-                      : _cPrimary.withOpacity(0.08);
-                }
-                return isDark
-                    ? _cSurface.withOpacity(0.16)
-                    : theme.colorScheme.surface.withOpacity(0.96);
-              }),
-              dataRowMinHeight: 54,
-              dataRowMaxHeight: 74,
-              columns: [
-                DataColumn(
-                  label: const Text('ID'),
-                  onSort: (_, __) => _sortBy<num>(
-                    0,
-                    (r) => int.tryParse(r['id']?.toString() ?? '') ?? 0,
-                  ),
-                ),
-                DataColumn(
-                  label: const Text('Familia'),
-                  onSort: (_, __) => _sortBy<String>(
-                    1,
-                    (r) => r['family']?.toString() ?? '',
-                  ),
-                ),
-                const DataColumn(label: Text('Descripción')),
-                DataColumn(
-                  label: const Text('SKU Config'),
-                  onSort: (_, __) => _sortBy<String>(
-                    3,
-                    (r) => r['sku_config']?.toString() ?? '',
-                  ),
-                ),
-                DataColumn(
-                  label: Text(
-                    'SKU HP',
-                    style: TextStyle(color: skuHpColor),
-                  ),
-                ),
-                DataColumn(
-                  label: Text(
-                    'SKU Lenovo',
-                    style: TextStyle(color: skuLenovoColor),
-                  ),
-                ),
-                DataColumn(
-                  label: Text(
-                    'Extra Info',
-                    style: TextStyle(color: extraInfoColor),
-                  ),
-                ),
-                DataColumn(
-                  numeric: true,
-                  label: Text(
-                    'Coste',
-                    style: TextStyle(color: costeColor),
-                  ),
-                  onSort: (_, __) => _sortBy<num>(
-                    4,
-                    (r) => double.tryParse(r['coste']?.toString() ?? '') ?? 0,
-                  ),
-                ),
-                DataColumn(
-                  numeric: true,
-                  label: Text(
-                    'PVD',
-                    style: TextStyle(color: pvdColor),
-                  ),
-                  onSort: (_, __) => _sortBy<num>(
-                    5,
-                    (r) => double.tryParse(r['pvd']?.toString() ?? '') ?? 0,
-                  ),
-                ),
-                DataColumn(
-                  numeric: true,
-                  label: Text(
-                    'Margen',
-                    style: TextStyle(color: margenColor),
-                  ),
-                  onSort: (_, __) => _sortBy<num>(
-                    6,
-                    (r) => double.tryParse(r['margen']?.toString() ?? '') ?? 0,
-                  ),
-                ),
-                const DataColumn(label: Text('Collection')),
-              ],
-              rows: _rows.map((row) {
-                final rowId = int.tryParse(row['id']?.toString() ?? '');
-                final isEditing = rowId != null && rowId == _editingRowId;
-                final familyColor = _familyColor(row['family']?.toString() ?? '');
-                return DataRow(
-                  color: WidgetStateProperty.resolveWith((states) {
-                    if (isEditing) {
-                      return isDark
-                          ? _cSecondary.withOpacity(0.26)
-                          : _cSecondary.withOpacity(0.14);
-                    }
-                    return familyColor.withOpacity(isDark ? 0.18 : 0.09);
-                  }),
-                  cells: [
-                    DataCell(
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(row['id']?.toString() ?? '-'),
-                          if (!isEditing) ...[
-                            const SizedBox(width: 6),
-                            Icon(
-                              Icons.edit_note,
-                              size: 14,
-                              color: _cAccent.withOpacity(0.9),
-                            ),
-                          ],
-                          if (isEditing) ...[
-                            const SizedBox(width: 8),
-                            IconButton(
-                              tooltip: 'Guardar fila',
-                              onPressed: _savingInline ? null : _saveInlineEdit,
-                              icon: _savingInline
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.check_circle_outline),
-                            ),
-                            IconButton(
-                              tooltip: 'Cancelar edición',
-                              onPressed: _savingInline ? null : _cancelInlineEdit,
-                              icon: const Icon(Icons.close),
-                            ),
-                          ],
-                        ],
-                      ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('family', width: 150)
-                          : _familyBadge(row['family']?.toString() ?? ''),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('description', width: 320, maxLines: 2)
-                          : SizedBox(
-                              width: 320,
-                              child: Text(
-                                row['description']?.toString() ?? '',
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 2,
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('sku_config', width: 180)
-                          : SizedBox(
-                              width: 180,
-                              child: SelectableText(
-                                row['sku_config']?.toString() ?? '',
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('sku_hp', width: 150)
-                          : SizedBox(
-                              width: 150,
-                              child: SelectableText(
-                                row['sku_hp']?.toString() ?? '',
-                                style: TextStyle(color: skuHpColor),
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('sku_lenovo', width: 150)
-                          : SizedBox(
-                              width: 150,
-                              child: SelectableText(
-                                row['sku_lenovo']?.toString() ?? '',
-                                style: TextStyle(color: skuLenovoColor),
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('extra_info_1', width: 180)
-                          : SizedBox(
-                              width: 180,
-                              child: Text(
-                                row['extra_info_1']?.toString() ?? '',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: extraInfoColor),
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput(
-                              'coste',
-                              width: 100,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            )
-                          : Text(
-                              _money(row['coste']),
-                              style: TextStyle(
-                                color: costeColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput(
-                              'pvd',
-                              width: 100,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            )
-                          : Text(
-                              _money(row['pvd']),
-                              style: TextStyle(
-                                color: pvdColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput(
-                              'margen',
-                              width: 100,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            )
-                          : Text(
-                              _money(row['margen']),
-                              style: TextStyle(
-                                color: margenColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                    DataCell(
-                      isEditing
-                          ? _inlineInput('collection_info', width: 200)
-                          : SizedBox(
-                              width: 200,
-                              child: Text(
-                                row['collection_info']?.toString() ?? '',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                      onDoubleTap: isEditing ? null : () => _startInlineEdit(row),
-                    ),
-                  ],
-                );
-              }).toList(),
+          child: Table(
+            columnWidths: const {
+              0:  FlexColumnWidth(2.5), // ID
+              1:  FlexColumnWidth(9),   // Familia
+              2:  FlexColumnWidth(16),  // Descripción
+              3:  FlexColumnWidth(8),   // SKU Config
+              4:  FlexColumnWidth(7),   // SKU HP
+              5:  FlexColumnWidth(7),   // SKU Lenovo
+              6:  FlexColumnWidth(7),   // Info Adicional
+              7:  FlexColumnWidth(6),   // Coste
+              8:  FlexColumnWidth(6),   // PVD
+              9:  FlexColumnWidth(6),   // Margen
+              10: FlexColumnWidth(7),   // Colección
+              11: FlexColumnWidth(8),   // Acciones
+            },
+            border: TableBorder(
+              horizontalInside: BorderSide(color: divColor, width: 0.5),
             ),
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [headerRow, ...dataRows],
           ),
         ),
       ),
@@ -1812,137 +1761,126 @@ class _CotizacionesManagementScreenState
                                       ],
                                     ),
                                   )
-                                : Wrap(
-                                    spacing: 12,
-                                    runSpacing: 12,
-                                    alignment: WrapAlignment.center,
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      SizedBox(
-                                        width: 320,
-                                        child: TextField(
-                                          controller: _searchCtrl,
-                                          decoration: InputDecoration(
-                                            labelText: 'Buscar',
-                                            hintText: 'Descripción, SKU Config, HP o Lenovo',
-                                            prefixIcon: Icon(
-                                              Icons.search,
-                                              color: isDark
-                                                  ? Colors.white70
-                                                  : theme.colorScheme.onSurface.withOpacity(0.7),
-                                            ),
-                                            filled: true,
-                                            fillColor: isDark
-                                                ? _cSurface.withOpacity(0.55)
-                                                : theme.colorScheme.surface,
-                                            labelStyle: TextStyle(
-                                              color: isDark
-                                                  ? Colors.white70
-                                                  : theme.colorScheme.onSurface.withOpacity(0.72),
-                                            ),
-                                            hintStyle: TextStyle(
-                                              color: isDark
-                                                  ? Colors.white54
-                                                  : theme.colorScheme.onSurface.withOpacity(0.55),
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: isDark
-                                                    ? _cPrimary.withOpacity(0.35)
-                                                    : theme.colorScheme.outline.withOpacity(0.38),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 12,
+                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 320,
+                                            child: TextField(
+                                              controller: _searchCtrl,
+                                              decoration: InputDecoration(
+                                                labelText: 'Buscar',
+                                                hintText: 'Descripción, SKU Config, HP o Lenovo',
+                                                prefixIcon: Icon(Icons.search, color: isDark ? Colors.white70 : theme.colorScheme.onSurface.withOpacity(0.7)),
+                                                filled: true,
+                                                fillColor: isDark ? _cSurface.withOpacity(0.55) : theme.colorScheme.surface,
+                                                labelStyle: TextStyle(color: isDark ? Colors.white70 : theme.colorScheme.onSurface.withOpacity(0.72)),
+                                                hintStyle: TextStyle(color: isDark ? Colors.white54 : theme.colorScheme.onSurface.withOpacity(0.55)),
+                                                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? _cPrimary.withOpacity(0.35) : theme.colorScheme.outline.withOpacity(0.38))),
+                                                focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _cPrimary, width: 1.6)),
                                               ),
-                                            ),
-                                            focusedBorder: const OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: _cPrimary,
-                                                width: 1.6,
-                                              ),
+                                              onSubmitted: (_) { _offset = 0; _load(); },
                                             ),
                                           ),
-                                          onSubmitted: (_) {
-                                            _offset = 0;
-                                            _load();
-                                          },
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 260,
-                                        child: TextField(
-                                          controller: _familyCtrl,
-                                          decoration: InputDecoration(
-                                            labelText: 'Familia',
-                                            prefixIcon: Icon(
-                                              Icons.category_outlined,
-                                              color: isDark
-                                                  ? Colors.white70
-                                                  : theme.colorScheme.onSurface.withOpacity(0.7),
-                                            ),
-                                            filled: true,
-                                            fillColor: isDark
-                                                ? _cSurface.withOpacity(0.55)
-                                                : theme.colorScheme.surface,
-                                            labelStyle: TextStyle(
-                                              color: isDark
-                                                  ? Colors.white70
-                                                  : theme.colorScheme.onSurface.withOpacity(0.72),
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: isDark
-                                                    ? _cSecondary.withOpacity(0.35)
-                                                    : theme.colorScheme.outline.withOpacity(0.38),
+                                          SizedBox(
+                                            width: 120,
+                                            child: TextField(
+                                              controller: _minPvdCtrl,
+                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                              decoration: InputDecoration(
+                                                labelText: 'PVD mín.',
+                                                prefixIcon: const Icon(Icons.euro, size: 16),
+                                                filled: true,
+                                                fillColor: isDark ? _cSurface.withOpacity(0.55) : theme.colorScheme.surface,
+                                                labelStyle: TextStyle(color: isDark ? Colors.white70 : theme.colorScheme.onSurface.withOpacity(0.72)),
+                                                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? _cAccent.withOpacity(0.35) : theme.colorScheme.outline.withOpacity(0.38))),
+                                                focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _cAccent, width: 1.6)),
                                               ),
-                                            ),
-                                            focusedBorder: const OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: _cSecondary,
-                                                width: 1.6,
-                                              ),
+                                              onChanged: (_) => setState(() {}),
                                             ),
                                           ),
-                                          onSubmitted: (_) {
-                                            _offset = 0;
-                                            _load();
-                                          },
-                                        ),
-                                      ),
-                                      FilledButton.icon(
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: _cPrimary,
-                                          foregroundColor: isDark
-                                              ? Colors.white
-                                              : theme.colorScheme.onPrimary,
-                                        ),
-                                        onPressed: _loading
-                                            ? null
-                                            : () {
-                                                _offset = 0;
-                                                _load();
-                                              },
-                                        icon: const Icon(Icons.search),
-                                        label: const Text('Aplicar filtros'),
-                                      ),
-                                      OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: isDark
-                                              ? _cAccent
-                                              : const Color(0xFF92400E),
-                                          side: BorderSide(
-                                            color: isDark
-                                                ? _cAccent.withOpacity(0.65)
-                                                : const Color(0xFFB45309).withOpacity(0.7),
+                                          SizedBox(
+                                            width: 120,
+                                            child: TextField(
+                                              controller: _maxPvdCtrl,
+                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                              decoration: InputDecoration(
+                                                labelText: 'PVD máx.',
+                                                prefixIcon: const Icon(Icons.euro, size: 16),
+                                                filled: true,
+                                                fillColor: isDark ? _cSurface.withOpacity(0.55) : theme.colorScheme.surface,
+                                                labelStyle: TextStyle(color: isDark ? Colors.white70 : theme.colorScheme.onSurface.withOpacity(0.72)),
+                                                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? _cAccent.withOpacity(0.35) : theme.colorScheme.outline.withOpacity(0.38))),
+                                                focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _cAccent, width: 1.6)),
+                                              ),
+                                              onChanged: (_) => setState(() {}),
+                                            ),
                                           ),
-                                        ),
-                                        onPressed: _loading
-                                            ? null
-                                            : () {
-                                                _searchCtrl.clear();
-                                                _familyCtrl.clear();
-                                                _offset = 0;
-                                                _load();
-                                              },
-                                        icon: const Icon(Icons.clear_all),
-                                        label: const Text('Limpiar'),
+                                          FilledButton.icon(
+                                            style: FilledButton.styleFrom(backgroundColor: _cPrimary, foregroundColor: isDark ? Colors.white : theme.colorScheme.onPrimary),
+                                            onPressed: _loading ? null : () { _offset = 0; _load(); },
+                                            icon: const Icon(Icons.search),
+                                            label: const Text('Buscar'),
+                                          ),
+                                          OutlinedButton.icon(
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: isDark ? _cAccent : const Color(0xFF92400E),
+                                              side: BorderSide(color: isDark ? _cAccent.withOpacity(0.65) : const Color(0xFFB45309).withOpacity(0.7)),
+                                            ),
+                                            onPressed: _loading ? null : () {
+                                              _searchCtrl.clear();
+                                              _familyCtrl.clear();
+                                              _minPvdCtrl.clear();
+                                              _maxPvdCtrl.clear();
+                                              setState(() => _familyQuickFilter = null);
+                                              _offset = 0;
+                                              _load();
+                                            },
+                                            icon: const Icon(Icons.clear_all),
+                                            label: const Text('Limpiar'),
+                                          ),
+                                        ],
                                       ),
+                                      if (_distinctFamilies.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 6,
+                                          children: [
+                                            for (final fam in _distinctFamilies)
+                                              GestureDetector(
+                                                onTap: () => setState(() => _familyQuickFilter = _familyQuickFilter == fam ? null : fam),
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(milliseconds: 150),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: _familyQuickFilter == fam
+                                                        ? _familyColor(fam).withOpacity(0.35)
+                                                        : _familyColor(fam).withOpacity(0.10),
+                                                    borderRadius: BorderRadius.circular(999),
+                                                    border: Border.all(
+                                                      color: _familyColor(fam).withOpacity(_familyQuickFilter == fam ? 0.9 : 0.45),
+                                                      width: _familyQuickFilter == fam ? 1.8 : 1,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    fam,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: _familyQuickFilter == fam ? FontWeight.w800 : FontWeight.w600,
+                                                      color: _familyColor(fam),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
                                     ],
                                   ),
                           ),

@@ -650,6 +650,7 @@ class SentinelProvider extends ChangeNotifier {
     required String image,
     required bool enabled,
     int? orderId,
+    String? postImageScript,
   }) async {
     // 1. Send API Request
     await _service.updateImageSelection(
@@ -658,6 +659,7 @@ class SentinelProvider extends ChangeNotifier {
       image: image,
       enabled: enabled,
       orderId: orderId,
+      postImageScript: postImageScript,
     );
 
     // 2. Optimistic Local Update

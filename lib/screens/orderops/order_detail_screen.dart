@@ -263,9 +263,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
-      // detail response now embeds observations + services — no extra round trips needed
-      final detail = await _orderOpsService!.getAgentOrder(widget.orderId);
-      final allAlerts = await _orderOpsService!.getServiceAlerts();
+      // Fire detail, alerts, and tasks in parallel — they're independent.
+      final results = await Future.wait([
+        _orderOpsService!.getAgentOrder(widget.orderId),
+        _orderOpsService!.getServiceAlerts(),
+        _orderOpsService!.getOrderTasks(widget.orderId),
+      ]);
+
+      final detail = results[0] as OrderOpsDetail;
+      final allAlerts = results[1] as List<AgentServiceAlert>;
+      final tasks = results[2] as List<AgentOrderTask>;
 
       var observations = detail.observations;
       var photos = detail.photos;
@@ -277,9 +284,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       try {
         proyectoId = await _resolveActiveProyectoId(detail.agentOrder);
         if (proyectoId != null) {
-          final proyecto = await _orderOpsService!.getProyectoDetail(
-            proyectoId,
-          );
+          final proyecto = await _orderOpsService!.getProyectoDetail(proyectoId);
           proyectoName = proyecto.nombre;
           final scopedProyectoObservations = (proyecto.observations ?? const [])
               .where(_observationBelongsToOrderOrGeneral)
@@ -287,20 +292,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final scopedProyectoPhotos = (proyecto.photos ?? const [])
               .where(_photoBelongsToOrderOrGeneral)
               .toList(growable: false);
-          observations = _mergeObservations(
-            observations,
-            scopedProyectoObservations,
-          );
+          observations = _mergeObservations(observations, scopedProyectoObservations);
           photos = _mergePhotos(photos, scopedProyectoPhotos);
         }
       } catch (e) {
         debugPrint('Could not merge Proyecto data into order detail: $e');
       }
-
-      // Load tasks in parallel (not embedded in detail response)
-      final tasksFuture = _orderOpsService!.getOrderTasks(widget.orderId);
-
-      final tasks = await tasksFuture;
 
       if (mounted) {
         setState(() {
@@ -1237,7 +1234,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 final sku = line['SKU']?.toString() ?? '-';
                 final desc =
                     (line['DESCRIP1'] ?? line['description'])?.toString() ?? '';
-                final qtyRaw = line['QTY_ORD'];
+                final qtyRaw = line['QTY_SHIP'];
                 final qty = (qtyRaw is num)
                     ? qtyRaw.formattedInt
                     : qtyRaw?.toString() ?? '0';
@@ -3030,6 +3027,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       }
 
       if (allPossibleFamilies.length >= 1) {
+        // Seed _sessionActiveFamily from order.family when resuming from paused
+        // (in-memory state is lost on page load, but the server still knows the family)
+        if (_sessionActiveFamily == null && order.family != null && allPossibleFamilies.contains(order.family)) {
+          _sessionActiveFamily = order.family;
+        }
+
         if (_sessionActiveFamily != null && allPossibleFamilies.contains(_sessionActiveFamily)) {
           setState(() => _loading = true);
           try {
@@ -3049,14 +3052,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           }
         }
 
-        final selectedFamily = await showDialog<String>(
-          context: context,
-          builder: (context) => FamilySelectionDialog(
-            families: allPossibleFamilies,
-            title: 'Iniciar Servicio',
-            currentFamily: _sessionActiveFamily ?? order.family,
-          ),
-        );
+        // Auto-select when there's only one option
+        final String? selectedFamily;
+        if (allPossibleFamilies.length == 1) {
+          selectedFamily = allPossibleFamilies.first;
+        } else {
+          if (!mounted) return;
+          selectedFamily = await showDialog<String>(
+            context: context,
+            builder: (context) => FamilySelectionDialog(
+              families: allPossibleFamilies,
+              title: 'Iniciar Servicio',
+              currentFamily: _sessionActiveFamily ?? order.family,
+            ),
+          );
+        }
 
         if (selectedFamily == null) return;
 
@@ -4269,6 +4279,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     try {
       final ok = await _orderOpsService!.updateServiceAlert(alert.idnbr, alert.sku, newStatus, notes);
       if (ok) {
+        _orderOpsService!.invalidateAlertsCache();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Alerta de servicio actualizada a: $newStatus')),

@@ -24,6 +24,8 @@ class AysManagementScreen extends StatefulWidget {
 
 class _AysManagementScreenState extends State<AysManagementScreen> {
   final _analisisService = const AnalisisService();
+  OverlayEntry? _edgeOverlay;
+
   // Data
   List<ProjectFund> _funds = [];
   List<Transaction> _history = [];
@@ -44,6 +46,30 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
   void initState() {
     super.initState();
     _loadAllData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final routeName = ModalRoute.of(context)?.settings.name;
+      final overlay = Overlay.of(context, rootOverlay: true);
+      _edgeOverlay = OverlayEntry(
+        builder: (ctx) => Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          child: SafeArea(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: EdgeNavHandle(
+                user: Provider.of<ApiService>(ctx, listen: false).currentUser,
+                width: 32,
+                currentRoute: routeName,
+                showIndicator: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      overlay.insert(_edgeOverlay!);
+    });
   }
 
   Future<void> _loadAllData({bool showLoader = true}) async {
@@ -136,6 +162,7 @@ class _AysManagementScreenState extends State<AysManagementScreen> {
 
   @override
   void dispose() {
+    _edgeOverlay?.remove();
     super.dispose();
   }
 

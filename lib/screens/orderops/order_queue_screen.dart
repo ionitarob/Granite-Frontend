@@ -245,7 +245,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
     if (!silent) setState(() => _loading = true);
 
     try {
-      final allOrders = await _orderOpsService!.getAgentOrders(limit: 10000);
+      final allOrders = await _orderOpsService!.getAgentOrders(limit: 1000);
       final orders = allOrders.toList();
 
       // PERFORMANCE: Change detection. If no functional changes, skip heavy UI updates.
@@ -725,11 +725,99 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
     }
   }
 
+  Future<void> _showBulkAssigneeDialog() async {
+    if (_selectedOrderIds.isEmpty || _orderOpsService == null) return;
+    List<Map<String, dynamic>> employees = [];
+    try {
+      employees = await _orderOpsService!.getEmployees(limit: 100);
+    } catch (_) {}
+    if (!mounted) return;
+
+    Map<String, dynamic>? picked;
+    final searchCtrl = TextEditingController();
+    List<Map<String, dynamic>> filtered = List.from(employees);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('Asignar — ${_selectedOrderIds.length} órdenes'),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: searchCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Buscar empleado…',
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    isDense: true,
+                  ),
+                  onChanged: (q) => setLocal(() {
+                    final ql = q.toLowerCase();
+                    filtered = employees
+                        .where((e) => (e['display_name'] ?? '').toString().toLowerCase().contains(ql))
+                        .toList();
+                  }),
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final e = filtered[i];
+                      final isSelected = picked?['id'] == e['id'];
+                      return ListTile(
+                        dense: true,
+                        title: Text(e['display_name']?.toString() ?? ''),
+                        subtitle: e['empresa_nombre'] != null
+                            ? Text(e['empresa_nombre'].toString(),
+                                style: const TextStyle(fontSize: 11))
+                            : null,
+                        selected: isSelected,
+                        selectedTileColor: Theme.of(ctx).colorScheme.primary.withValues(alpha: 0.1),
+                        onTap: () => setLocal(() => picked = isSelected ? null : e),
+                        trailing: isSelected
+                            ? Icon(Icons.check_circle, color: Theme.of(ctx).colorScheme.primary, size: 18)
+                            : null,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: picked == null ? null : () => Navigator.of(ctx).pop(true),
+              child: const Text('Asignar'),
+            ),
+          ],
+        ),
+      ),
+    ).then((confirmed) async {
+      searchCtrl.dispose();
+      if (confirmed == true && picked != null) {
+        await _executeBulkUpdate(
+          assignedTo: picked!['id']?.toString(),
+          assignedToName: picked!['display_name']?.toString(),
+        );
+      }
+    });
+  }
+
   Future<void> _executeBulkUpdate({
     String? family,
     List<String>? subfamilies,
     String? estado,
     String? prioridad,
+    String? assignedTo,
+    String? assignedToName,
     String? observation,
   }) async {
     if (_orderOpsService == null || _selectedOrderIds.isEmpty) return;
@@ -750,6 +838,8 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
         subfamilies: subfamilies,
         estado: estado,
         prioridad: prioridad,
+        assignedTo: assignedTo,
+        assignedToName: assignedToName,
         observation: observation,
       );
       if (!mounted) return;
@@ -831,6 +921,14 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
                 label: 'Nota',
                 onTap: _showBulkObservationDialog,
                 color: Colors.orange,
+                isDark: isDark,
+              ),
+              const SizedBox(width: 6),
+              _bulkAction(
+                icon: Icons.person_outlined,
+                label: 'Asignar',
+                onTap: _showBulkAssigneeDialog,
+                color: Colors.purple,
                 isDark: isDark,
               ),
               const Spacer(),
@@ -3222,6 +3320,14 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
               : theme.colorScheme.surface.withOpacity(0.98),
       child: InkWell(
         onTap: () => _onOrderTap(order),
+        onLongPress: () {
+          if (!_selectionMode) {
+            setState(() {
+              _selectionMode = true;
+              _selectedOrderIds.add(order.idnbr);
+            });
+          }
+        },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -3449,6 +3555,14 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
               : theme.colorScheme.surface.withOpacity(isDark ? 0.02 : 0.05),
       child: InkWell(
         onTap: () => _onOrderTap(order),
+        onLongPress: () {
+          if (!_selectionMode) {
+            setState(() {
+              _selectionMode = true;
+              _selectedOrderIds.add(order.idnbr);
+            });
+          }
+        },
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border(

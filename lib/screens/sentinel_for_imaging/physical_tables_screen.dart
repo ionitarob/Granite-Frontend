@@ -1693,6 +1693,7 @@ Role: ${pMap['role']}''';
 
 class _SwitchImageDialogState extends State<_SwitchImageDialog> {
   String? _selectedImage;
+  String? _postImageScript;
   bool _enabled = false;
 
   @override
@@ -1721,6 +1722,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
         // Backend might send null or empty string for no image
         final img = selection['image']?.toString();
         _selectedImage = (img != null && img.isNotEmpty) ? img : null;
+        _postImageScript = selection['post_image_script']?.toString();
       });
     }
   }
@@ -1955,6 +1957,112 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
             ],
           ),
           ),
+
+          // Script injection — only when a non-script image is selected
+          if (_selectedImage != null &&
+              !images.any((i) => i['name'] == _selectedImage && i['type'] == 'script') &&
+              !(_selectedImage?.toUpperCase().startsWith('SCRIPT:') ?? false)) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Script HP BIOS a inyectar (opcional):',
+              style: SentinelTheme.subHeader.copyWith(
+                color: SentinelTheme.primary.withOpacity(0.85),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Opacity(
+              opacity: _enabled ? 1.0 : 0.55,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: SentinelTheme.glassDecoration(
+                  borderRadius: 8,
+                  opacity: 0.05,
+                  border: true,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton2<String>(
+                    value: _postImageScript,
+                    hint: Text(
+                      'Sin inyección de script',
+                      style: SentinelTheme.body.copyWith(
+                        color: SentinelTheme.textDisabled,
+                      ),
+                    ),
+                    dropdownStyleData: DropdownStyleData(
+                      decoration: BoxDecoration(
+                        color: SentinelTheme.bgPanel,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: SentinelTheme.primary.withOpacity(0.3),
+                        ),
+                      ),
+                      offset: const Offset(0, -4),
+                      maxHeight: 250,
+                    ),
+                    menuItemStyleData: const MenuItemStyleData(height: 40),
+                    isExpanded: true,
+                    buttonStyleData: ButtonStyleData(
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    iconStyleData: const IconStyleData(
+                      icon: Icon(Icons.arrow_drop_down, color: SentinelTheme.primary),
+                    ),
+                    items: [
+                      DropdownMenuItem<String>(
+                        value: null,
+                        child: Text(
+                          'Sin inyección de script',
+                          style: SentinelTheme.body.copyWith(
+                            color: SentinelTheme.textDisabled,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                      ...images
+                          .where((i) => i['type']?.toString() == 'script')
+                          .map((pkg) {
+                        final name = pkg['name']?.toString() ?? '';
+                        final displayName = name.startsWith('SCRIPT:') ? name.substring(7) : name;
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.memory, size: 14, color: Colors.greenAccent),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  displayName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: SentinelTheme.body.copyWith(color: Colors.greenAccent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      if (_postImageScript != null &&
+                          !images.any((i) => i['name'] == _postImageScript))
+                        DropdownMenuItem<String>(
+                          value: _postImageScript!,
+                          child: Text(
+                            '$_postImageScript (Archived)',
+                            style: SentinelTheme.body.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: SentinelTheme.warning,
+                            ),
+                          ),
+                        ),
+                    ],
+                    onChanged: _enabled
+                        ? (val) => setState(() => _postImageScript = val)
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ],
+
           if (!_enabled)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -2007,6 +2115,7 @@ class _SwitchImageDialogState extends State<_SwitchImageDialog> {
                 image: _enabled ? (_selectedImage ?? '') : '',
                 enabled: _enabled,
                 orderId: widget.orderId,
+                postImageScript: _postImageScript,
               );
 
               if (mounted) Navigator.pop(context);
@@ -2050,6 +2159,7 @@ class _PortContextPopupState extends State<_PortContextPopup> {
   late bool _enabled;
   bool _isCaptureMode = false;
   String? _selectedImage;
+  String? _postImageScript;
   bool _isLoading = false;
   final TextEditingController _captureNameController = TextEditingController();
   List<AgentOrder> _availableOrders = [];
@@ -2126,6 +2236,7 @@ class _PortContextPopupState extends State<_PortContextPopup> {
         if (selection.containsKey('order_id')) {
           _selectedOrderId = selection['order_id'];
         }
+        _postImageScript = selection['post_image_script']?.toString();
       });
     }
   }
@@ -2167,6 +2278,7 @@ class _PortContextPopupState extends State<_PortContextPopup> {
         image: finalImageToSave,
         enabled: _enabled,
         orderId: _selectedOrderId,
+        postImageScript: _postImageScript,
       );
       if (mounted) widget.onClose();
     } catch (e) {
@@ -2586,6 +2698,118 @@ class _PortContextPopupState extends State<_PortContextPopup> {
                 ),
               ],
             ),
+
+            // Script injection dropdown — only when a non-script image is selected
+            if (_selectedImage != null &&
+                !images.any((i) => i['name'] == _selectedImage && (i['type'] == 'script' || (_selectedImage?.toUpperCase().startsWith('SCRIPT:') ?? false)))) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Script HP BIOS a inyectar (opcional)',
+                style: SentinelTheme.subHeader.copyWith(
+                  color: SentinelTheme.primary.withOpacity(0.85),
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: SentinelTheme.glassDecoration(
+                  borderRadius: 8,
+                  opacity: 0.05,
+                  border: true,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton2<String>(
+                    value: _postImageScript,
+                    hint: Text(
+                      'Sin inyección de script',
+                      style: SentinelTheme.label.copyWith(
+                        color: SentinelTheme.textDisabled,
+                      ),
+                    ),
+                    dropdownStyleData: DropdownStyleData(
+                      decoration: BoxDecoration(
+                        color: SentinelTheme.bgPanel,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: SentinelTheme.primary.withOpacity(0.3),
+                        ),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black54, blurRadius: 10),
+                        ],
+                      ),
+                      elevation: 24,
+                      offset: const Offset(0, -4),
+                      maxHeight: 300,
+                    ),
+                    menuItemStyleData: const MenuItemStyleData(height: 40),
+                    isExpanded: true,
+                    buttonStyleData: ButtonStyleData(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    iconStyleData: const IconStyleData(
+                      icon: Icon(
+                        Icons.arrow_drop_down,
+                        color: SentinelTheme.primary,
+                      ),
+                    ),
+                    items: [
+                      DropdownMenuItem<String>(
+                        value: null,
+                        child: Text(
+                          'Sin inyección de script',
+                          style: SentinelTheme.body.copyWith(
+                            color: SentinelTheme.textDisabled,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                      ...images
+                          .where((i) => i['type']?.toString() == 'script')
+                          .map((pkg) {
+                        final name = pkg['name']?.toString() ?? '';
+                        final displayName = name.startsWith('SCRIPT:')
+                            ? name.substring(7)
+                            : name;
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.memory, size: 14, color: Colors.greenAccent),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  displayName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: SentinelTheme.body.copyWith(
+                                    color: Colors.greenAccent,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      if (_postImageScript != null &&
+                          !images.any((i) => i['name'] == _postImageScript))
+                        DropdownMenuItem<String>(
+                          value: _postImageScript!,
+                          child: Text(
+                            '$_postImageScript (Archived)',
+                            style: SentinelTheme.body.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: SentinelTheme.warning,
+                            ),
+                          ),
+                        ),
+                    ],
+                    onChanged: (val) => setState(() => _postImageScript = val),
+                  ),
+                ),
+              ),
+            ],
               ],
             ],
 

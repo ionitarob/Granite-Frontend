@@ -21,11 +21,20 @@ class _TvHistoryScreenState extends State<TvHistoryScreen> {
   bool _loading = true;
   String? _error;
   List<dynamic> _historial = [];
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _searchCtrl.addListener(() => setState(() => _searchQuery = _searchCtrl.text.trim().toLowerCase()));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -247,15 +256,58 @@ class _TvHistoryScreenState extends State<TvHistoryScreen> {
                 : Column(
                     children: [
                       _buildHeaderStats(),
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          itemCount: _historial.length,
-                          itemBuilder: (context, index) {
-                            final item = _historial[index];
-                            return _buildHistoryCard(item);
-                          },
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        child: TextField(
+                          controller: _searchCtrl,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Buscar por SN, PN, EAN, sticker…',
+                            hintStyle: const TextStyle(color: Colors.white38),
+                            prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, color: Colors.white54),
+                                    onPressed: () => _searchCtrl.clear(),
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.08),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                          ),
                         ),
+                      ),
+                      Expanded(
+                        child: Builder(builder: (_) {
+                          final filtered = _searchQuery.isEmpty
+                              ? _historial
+                              : _historial.where((item) {
+                                  final sn = (item['serial_number'] ?? '').toString().toLowerCase();
+                                  final pn = (item['part_number'] ?? '').toString().toLowerCase();
+                                  final ean = (item['ean'] ?? '').toString().toLowerCase();
+                                  final sticker = (item['sticker'] ?? '').toString().toLowerCase();
+                                  final usuario = (item['usuario'] ?? '').toString().toLowerCase();
+                                  return sn.contains(_searchQuery) ||
+                                      pn.contains(_searchQuery) ||
+                                      ean.contains(_searchQuery) ||
+                                      sticker.contains(_searchQuery) ||
+                                      usuario.contains(_searchQuery);
+                                }).toList();
+                          if (filtered.isEmpty) {
+                            return const Center(
+                              child: Text('Sin resultados', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                            );
+                          }
+                          return ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) => _buildHistoryCard(filtered[index]),
+                          );
+                        }),
                       ),
                     ],
                   ),
