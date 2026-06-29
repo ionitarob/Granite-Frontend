@@ -399,13 +399,13 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        toolbarHeight: 64,
+        toolbarHeight: 48,
         title: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
               color: theme.brightness == Brightness.dark
                   ? Colors.white.withAlpha(28)
                   : Colors.white.withAlpha(200),
@@ -440,9 +440,9 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(100),
+          preferredSize: const Size.fromHeight(88),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
             child: _buildFiltersBar(theme, colorScheme),
           ),
         ),
@@ -463,7 +463,7 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
           ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               child: _cargando
                   ? _buildLoading(theme)
                   : _buildBoardContainer(theme),
@@ -492,105 +492,104 @@ class _JobSelectorScreenState extends State<JobSelectorScreen> {
               ),
             ],
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: 'Día anterior',
-                  icon: Icon(Icons.chevron_left, color: accent),
-                  onPressed: () => unawaited(
-                    _applyFechaChange(_fecha.subtract(const Duration(days: 1))),
-                  ),
-                ),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    backgroundColor: Colors.white.withOpacity(0.05),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Row 1 — date navigation + empresa filter
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Día anterior',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.chevron_left, color: accent),
+                    onPressed: () => unawaited(
+                      _applyFechaChange(_fecha.subtract(const Duration(days: 1))),
                     ),
                   ),
-                  icon: Icon(Icons.calendar_today, size: 18, color: accent),
-                  label: Text(
-                    _fechaStr,
-                    style: TextStyle(
-                      color: kTextOnGlass,
-                      fontWeight: FontWeight.w700,
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      backgroundColor: Colors.white.withValues(alpha: 0.05),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: Icon(Icons.calendar_today, size: 16, color: accent),
+                    label: Text(
+                      _fechaStr,
+                      style: const TextStyle(
+                        color: kTextOnGlass,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2023, 1, 1),
+                        lastDate: DateTime(2030, 12, 31),
+                        initialDate: _fecha,
+                      );
+                      if (picked != null) await _applyFechaChange(picked);
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Día siguiente',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.chevron_right, color: accent),
+                    onPressed: () => unawaited(
+                      _applyFechaChange(_fecha.add(const Duration(days: 1))),
                     ),
                   ),
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2023, 1, 1),
-                      lastDate: DateTime(2030, 12, 31),
-                      initialDate: _fecha,
-                    );
-                    if (picked != null) {
-                      await _applyFechaChange(picked);
-                    }
-                  },
-                ),
-                IconButton(
-                  tooltip: 'Día siguiente',
-                  icon: Icon(Icons.chevron_right, color: accent),
-                  onPressed: () => unawaited(
-                    _applyFechaChange(_fecha.add(const Duration(days: 1))),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 260,
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _empresaId,
-                    isExpanded: true,
-                    dropdownColor: theme.cardColor,
-                    style: const TextStyle(color: kTextOnGlass),
-                    items: _empresas
-                        .map(
-                          (e) => DropdownMenuItem<int>(
-                            value: (e['id'] as num).toInt(),
-                            child: Text(
-                              e['nombre'].toString(),
-                              style: const TextStyle(color: kTextOnGlass),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _empresaId,
+                      isExpanded: true,
+                      dropdownColor: theme.cardColor,
+                      style: const TextStyle(color: kTextOnGlass, fontSize: 13),
+                      items: _empresas
+                          .map(
+                            (e) => DropdownMenuItem<int>(
+                              value: (e['id'] as num).toInt(),
+                              child: Text(
+                                e['nombre'].toString(),
+                                style: const TextStyle(color: kTextOnGlass, fontSize: 13),
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => unawaited(_updateEmpresaFilter(v)),
-                    decoration: InputDecoration(
-                      labelText: 'Empresa (filtra empleados)',
-                      labelStyle: TextStyle(color: kTextSecondary),
-                      isDense: true,
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.03),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: kGlassStroke,
+                          )
+                          .toList(),
+                      onChanged: (v) => unawaited(_updateEmpresaFilter(v)),
+                      decoration: InputDecoration(
+                        labelText: 'Empresa',
+                        labelStyle: TextStyle(color: kTextSecondary, fontSize: 12),
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.03),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: kGlassStroke),
                         ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: kGlassStroke,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: kGlassStroke),
                         ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: accent, width: 1.3),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: accent, width: 1.3),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 24),
-                _Legend(),
-              ],
-            ),
+                ],
+              ),
+              // Row 2 — legend
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 4),
+                child: Align(alignment: Alignment.centerLeft, child: _Legend()),
+              ),
+            ],
           ),
         ),
       ),

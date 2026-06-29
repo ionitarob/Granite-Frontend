@@ -1345,34 +1345,91 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       // Show a preview dialog with the first generated label so the user sees the format
       final proceedPreview = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Vista previa de formato'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Este será el formato que se usará:'),
-              const SizedBox(height: 12),
-              SelectableText(
-                labels.first,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: [FontFeature.tabularFigures()],
+        builder: (ctx) {
+          final scanCtrl = TextEditingController();
+          String scanned = '';
+          return StatefulBuilder(
+            builder: (ctx, setS) {
+              final expected = labels.first.trim();
+              final match = scanned.trim() == expected;
+              final hasInput = scanned.trim().isNotEmpty;
+              return AlertDialog(
+                title: const Text('Vista previa de formato'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Este será el formato que se usará:'),
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      expected,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Escanea una etiqueta para verificar:',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: scanCtrl,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Escanear aquí...',
+                        prefixIcon: const Icon(Icons.qr_code_scanner),
+                        suffixIcon: hasInput
+                            ? Icon(
+                                match ? Icons.check_circle : Icons.cancel,
+                                color: match ? Colors.green : Colors.red,
+                              )
+                            : null,
+                        border: const OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: hasInput
+                                ? (match ? Colors.green : Colors.red)
+                                : Colors.blue,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      onChanged: (v) => setS(() => scanned = v),
+                      onSubmitted: (_) {
+                        if (match) Navigator.of(ctx).pop(true);
+                      },
+                    ),
+                    if (hasInput) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        match
+                            ? '✓ El formato es correcto'
+                            : '✗ No coincide con el formato esperado',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: match ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Aceptar'),
-            ),
-          ],
-        ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('Aceptar'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       );
       if (!mounted) return;
       if (proceedPreview != true) {

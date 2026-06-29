@@ -69,6 +69,7 @@ import 'screens/orderops/work_items_screen.dart';
 import 'screens/orderops/agent_activity_screen.dart';
 import 'screens/orderops/agent_memory_screen.dart';
 import 'screens/orderops/cotizaciones_management_screen.dart';
+import 'screens/orderops/email_templates_screen.dart';
 import 'screens/orderops/proyectos_management_screen.dart';
 import 'screens/orderops/serigrafia_repository_screen.dart';
 import 'screens/orderops/order_alerts_screen.dart';
@@ -288,6 +289,7 @@ class MainApp extends StatelessWidget {
                 '/orderops/activity': (_) => const AgentActivityScreen(),
                 '/orderops/memory': (_) => const AgentMemoryScreen(),
                 '/orderops/cotizaciones': (_) => const CotizacionesManagementScreen(),
+                '/orderops/email-templates': (_) => const EmailTemplatesScreen(),
                 '/orderops/proyectos': (_) => const ProyectosManagementScreen(),
                 '/tv/revision': (_) => const TvRevisionScreen(),
                 '/tv/history': (_) => const TvHistoryScreen(),

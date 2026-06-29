@@ -882,6 +882,21 @@ class _MainSidebarState extends State<MainSidebar> {
                   isDark: isDark,
                   accentColor: Colors.blue,
                 ),
+              if ((user?.role == 'admin' || user?.role == 'chief'))
+                _SidebarTile(
+                  label: 'Plantillas Email',
+                  icon: Icons.email_rounded,
+                  selected: isRoute('/orderops/email-templates'),
+                  onTap: () => _navigate(
+                    context,
+                    '/orderops/email-templates',
+                    closeOverlay: !permanent,
+                  ),
+                  highlight: highlight,
+                  textPrimary: textPrimary,
+                  isDark: isDark,
+                  accentColor: Colors.blue,
+                ),
             ],
           ),
           Padding(
@@ -3051,6 +3066,14 @@ class GlobalMobileSidebarDock extends StatelessWidget {
           title: 'Tabla Cotizaciones',
           icon: Icons.table_chart_rounded,
           route: '/orderops/cotizaciones',
+          currentRoute: currentRoute,
+          accentColor: Colors.blue,
+        ),
+        _menuRouteTile(
+          dialogContext: dialogCtx,
+          title: 'Plantillas Email',
+          icon: Icons.email_rounded,
+          route: '/orderops/email-templates',
           currentRoute: currentRoute,
           accentColor: Colors.blue,
         ),
