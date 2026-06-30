@@ -61,6 +61,7 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
   final TextEditingController _searchController = TextEditingController();
   String? _selectedEstado;
   bool _filterByMe = false;
+  bool _filterNoQuality = false;
 
   // Performance Cache: Avoid redundant computations in build()
   List<AgentOrder> _filteredOrdersList = [];
@@ -197,7 +198,12 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
       }
     }
 
-    // 3. Filter by Search Query (Using pre-calculated searchable fields)
+    // 3. Filter: Sin proceso de calidad (no quality photos, excluding Facturada)
+    if (_filterNoQuality) {
+      list = list.where((o) => o.estado != 'Facturada' && o.qualityPhotosCount == 0).toList();
+    }
+
+    // 4. Filter by Search Query (Using pre-calculated searchable fields)
     final query = _searchController.text.trim().toLowerCase();
     if (query.isNotEmpty) {
       final cleanQuery = query.replaceAll('-', '');
@@ -3036,6 +3042,17 @@ class _OrderQueueScreenState extends State<OrderQueueScreen>
                 isDark: isDark,
                 onTap: () {
                   _filterByMe = !_filterByMe;
+                  _applyFilters();
+                },
+              ),
+              const SizedBox(width: 6),
+              _filterChip(
+                label: 'Sin calidad',
+                selected: _filterNoQuality,
+                color: Colors.orange,
+                isDark: isDark,
+                onTap: () {
+                  setState(() => _filterNoQuality = !_filterNoQuality);
                   _applyFilters();
                 },
               ),

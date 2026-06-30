@@ -417,6 +417,28 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
     return {'box': lastBox, 'units': lastUnits};
   }
 
+  /// Tries to identify a Vodafone SAP prefix from a serial whose format is
+  /// `{sap}{yearDigit}{monthLetter}{day:2}{seq:n}`.  Returns the SAP string
+  /// (digits only, length 4–8) if the pattern is recognised, otherwise null.
+  String? _inferSapFromSerial(String serial) {
+    const vodafoneMonthLetters = {'E', 'F', 'M', 'A', 'Y', 'J', 'L', 'S', 'O', 'N', 'D'};
+    for (int sapLen = 4; sapLen <= 8 && sapLen + 4 < serial.length; sapLen++) {
+      final sapPart = serial.substring(0, sapLen);
+      if (!RegExp(r'^\d+$').hasMatch(sapPart)) break; // SAP must be all digits
+      final rest = serial.substring(sapLen);
+      if (rest.length < 4) continue;
+      final yearChar = rest[0];
+      final monthChar = rest[1];
+      final dayStr = rest.substring(2, 4);
+      if (!RegExp(r'^\d$').hasMatch(yearChar)) continue;
+      if (!vodafoneMonthLetters.contains(monthChar)) continue;
+      final day = int.tryParse(dayStr);
+      if (day == null || day < 1 || day > 31) continue;
+      return sapPart;
+    }
+    return null;
+  }
+
   String? _vodafoneMonthLetter(DateTime date) {
     switch (date.month) {
       case 1:
@@ -1517,6 +1539,7 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
 
       // Extract details from the first record
       final first = list.first as Map;
+
       final dbUnits =
           int.tryParse((first['nr_unidades'] ?? '').toString()) ?? 0;
       final dbSku = (first['nr_sku'] ?? first['sku'] ?? first['csku'] ?? '')
@@ -1732,6 +1755,41 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         }
       }
 
+      // 4. SAP-prefix inference — for Vodafone-style serials that don't start with YYYYMMDD.
+      // Sample the existing new serials and check which type's sapClient they start with.
+      if (foundOp == null || foundType == null) {
+        final sampleSerials = list
+            .whereType<Map>()
+            .map(
+              (m) =>
+                  (m['serial_new'] ??
+                          m['serial_new_label'] ??
+                          m['label_new'])
+                      ?.toString(),
+            )
+            .where((s) => s != null && s.isNotEmpty)
+            .cast<String>()
+            .where((s) => !RegExp(r'^\d{8}').hasMatch(s)) // not date-prefixed
+            .take(5)
+            .toList();
+
+        if (sampleSerials.isNotEmpty) {
+          outer:
+          for (final op in _operators) {
+            final types = await _fetchTypes(op.name);
+            for (final t in types) {
+              final sap = (t.sapClient ?? '').trim();
+              if (sap.length < 3) continue; // too short to be meaningful
+              if (sampleSerials.any((s) => s.startsWith(sap))) {
+                foundOp = op;
+                foundType = t;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+
       // Apply selection
       if (foundOp != null) {
         setState(() => _selectedOperator = foundOp);
@@ -1750,15 +1808,46 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
         selectionError = 'Operador "$dbOperator" no encontrado.';
       }
 
+      // 5. Infer SAP directly from existing serials.
+      // Steps 1-3 may find a product-type record (e.g. tipo_etiqueta_id=144 "REDMI WATCH 6 BLACK")
+      // that carries no sapClient.  If the actual serial_new values follow the Vodafone pattern
+      // {sap}{yearDigit}{monthLetter}{day:2}{seq} we extract the real SAP prefix here and
+      // override whatever sapClient the DB type carries (which may be empty).
+      String? inferredSap;
+      {
+        final sampleSerials = list
+            .whereType<Map>()
+            .map(
+              (m) =>
+                  (m['serial_new'] ??
+                          m['serial_new_label'] ??
+                          m['label_new'])
+                      ?.toString(),
+            )
+            .where((s) => s != null && s.isNotEmpty)
+            .cast<String>()
+            .where((s) => !RegExp(r'^\d{8}').hasMatch(s))
+            .take(5)
+            .toList();
+        for (final s in sampleSerials) {
+          final sap = _inferSapFromSerial(s);
+          if (sap != null) {
+            inferredSap = sap;
+            break;
+          }
+        }
+      }
+
       // Restore sequence (continue from last used + 1), but generate labels from earliest
       final seqBounds = _sequenceBounds(
         list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList(),
-        operatorName: _selectedOperator?.name ?? dbOperator,
-        sapClient: _selectedType?.sapClient,
+        operatorName: inferredSap != null ? 'vodafone' : (_selectedOperator?.name ?? dbOperator),
+        sapClient: inferredSap ?? _selectedType?.sapClient,
       );
       final lastUsedSeq = seqBounds['max'];
+      final nextSeq = (lastUsedSeq ?? 0) + 1;
       if (lastUsedSeq != null) {
-        _startSeqController.text = (lastUsedSeq + 1).toString();
+        _startSeqController.text = nextSeq.toString();
         _continueSequence = true;
       }
       final startSequenceForGeneration = seqBounds['min'] ?? 1;
@@ -1845,16 +1934,132 @@ class _SerialChangeScreenState extends State<SerialChangeScreen> {
       try {
         final labels = await Future<List<String>>(
           () => LocalLabelGenerator.generate(
-            operatorName: _selectedOperator!.name,
+            // When an SAP was inferred from existing serials (Step 5), use it and
+            // force the Vodafone format regardless of what the DB type record says.
+            operatorName: inferredSap != null ? 'vodafone' : _selectedOperator!.name,
             productionDate: _productionDate,
             totalUnits: planned,
             article: _selectedType!.article,
-            sapClient: _selectedType!.sapClient,
+            sapClient: inferredSap ?? _selectedType!.sapClient,
             codeLetter: _selectedType!.codeLetter,
             startSequence: startSequenceForGeneration,
           ),
         );
         if (!mounted) return;
+
+        // Show format preview so the operator can verify the auto-selected type is correct.
+        // Show the NEXT label (nextSeq) so the operator can scan a real one from the roll to confirm.
+        if (labels.isNotEmpty) {
+          // Generate just 1 label at nextSeq for the preview — keeps the labels list untouched.
+          final previewLabel = LocalLabelGenerator.generate(
+            operatorName: inferredSap != null ? 'vodafone' : _selectedOperator!.name,
+            productionDate: _productionDate,
+            totalUnits: 1,
+            article: _selectedType!.article,
+            sapClient: inferredSap ?? _selectedType!.sapClient,
+            codeLetter: _selectedType!.codeLetter,
+            startSequence: nextSeq,
+          ).firstOrNull ?? labels.first;
+          final proceedPreview = await showDialog<bool>(
+            context: context,
+            builder: (ctx) {
+              final scanCtrl = TextEditingController();
+              String scanned = '';
+              return StatefulBuilder(
+                builder: (ctx, setS) {
+                  final expected = previewLabel.trim();
+                  final match = scanned.trim() == expected;
+                  final hasInput = scanned.trim().isNotEmpty;
+                  return AlertDialog(
+                    title: const Text('Verificar formato al reanudar'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Confirma que el formato generado es correcto antes de continuar:',
+                        ),
+                        const SizedBox(height: 10),
+                        SelectableText(
+                          expected,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Escanea una etiqueta para verificar:',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: scanCtrl,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            hintText: 'Escanear aquí...',
+                            prefixIcon: const Icon(Icons.qr_code_scanner),
+                            suffixIcon: hasInput
+                                ? Icon(
+                                    match
+                                        ? Icons.check_circle
+                                        : Icons.cancel,
+                                    color:
+                                        match ? Colors.green : Colors.red,
+                                  )
+                                : null,
+                            border: const OutlineInputBorder(),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: hasInput
+                                    ? (match ? Colors.green : Colors.red)
+                                    : Colors.blue,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                          onChanged: (v) => setS(() => scanned = v),
+                          onSubmitted: (_) {
+                            if (match) Navigator.of(ctx).pop(true);
+                          },
+                        ),
+                        if (hasInput) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            match
+                                ? '✓ El formato es correcto'
+                                : '✗ No coincide — verifica el operador/tipo seleccionado',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: match ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancelar — cambiar tipo'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Aceptar'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+          if (!mounted) return;
+          if (proceedPreview != true) {
+            // User rejected the format — reset so they can pick the right type
+            setState(() => _configLocked = false);
+            return;
+          }
+        }
 
         // Determine if the last box is incomplete
         bool resumeBox = false;

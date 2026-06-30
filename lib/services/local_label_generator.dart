@@ -40,10 +40,12 @@ class LocalLabelGenerator {
         startSequence: startSequence,
       );
     }
-    if (normalized.contains('vodafone')) {
-      final sap = (sapClient ?? '').trim();
+    // Use Vodafone (SAP-based) format when sapClient is set, regardless of operator name.
+    // This handles cases where the operator name doesn't contain "vodafone" exactly.
+    final sap = (sapClient ?? '').trim();
+    if (normalized.contains('vodafone') || sap.isNotEmpty) {
       if (sap.isEmpty) {
-        throw StateError('El tipo seleccionado de Vodafone no tiene SAP asociado.');
+        throw StateError('El tipo seleccionado no tiene SAP asociado.');
       }
       return _buildVodafoneLabels(
         productionDate: productionDate,

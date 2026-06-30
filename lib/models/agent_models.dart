@@ -60,6 +60,7 @@ class AgentOrder {
   final String? assignedTo;
   final String? assignedToName;
   final int? durationMs; // Real duration from backend
+  final int qualityPhotosCount;
 
   // Performance Optimization: Pre-calculated searchable fields
   final String searchableOrderNbr;
@@ -114,6 +115,7 @@ class AgentOrder {
     this.assignedToName,
     this.durationMs,
     this.invoiceDate,
+    this.qualityPhotosCount = 0,
     required this.searchableOrderNbr,
     required this.searchableCustomer,
     required this.searchableDesc,
@@ -222,6 +224,7 @@ class AgentOrder {
       assignedToName: json['assigned_to_name'] as String?,
       durationMs: json['duration_ms'] as int?,
       invoiceDate: json['invoice_date'] != null ? DateTime.tryParse(json['invoice_date'].toString()) : null,
+      qualityPhotosCount: json['quality_photos_count'] as int? ?? 0,
       searchableOrderNbr: oNbr.toLowerCase().replaceAll('-', ''),
       searchableCustomer: cust.toLowerCase(),
       searchableDesc: desc.toLowerCase(),
